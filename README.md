@@ -13,7 +13,7 @@ C:\Users\ADMIN\miniforge3\python.exe app.py
 
 ## 2. Có gì mới
 
-**Đang làm mới giao diện (bước B1–B4b, xem `docs/UI-PLAN.md`)**
+**Làm mới giao diện (B1–B5, xem `docs/UI-PLAN.md`)**
 
 - **Bố cục mới kiểu ứng dụng**: thanh điều hướng bên trái (Chuyển thành văn bản ·
   Luyện phát âm; dưới cùng: Model · Ngôn ngữ, Giao diện tối/sáng, Cài đặt). Cửa sổ hẹp
@@ -25,6 +25,8 @@ C:\Users\ADMIN\miniforge3\python.exe app.py
 - **Ngữ điệu dễ đọc hơn**: một câu nhận xét thay cho các con số; biểu đồ có nhãn từng từ;
   thêm **trọng âm** (từ nào được nhấn, bạn so với mẫu) và **tốc độ đọc** — chỉ để tham
   khảo, không tính điểm. Đáy cột phải có **đường tiến bộ** của 10 lần gần nhất.
+- **Chuyển thành văn bản** và **Cài đặt** theo cùng kiểu: chọn nguồn bằng nút ghép, văn bản
+  đọc dễ hơn, nhật ký thu gọn; Cài đặt lưu ngay khi đổi, công tắc thay ô đánh dấu.
 
 - Font **Be Vietnam Pro** (đi kèm app trong `assets/fonts/`, không cần cài vào Windows);
   ký hiệu phiên âm IPA vẫn hiển thị bằng Segoe UI cho đủ ký tự.
@@ -100,22 +102,23 @@ C:\Users\ADMIN\miniforge3\python.exe app.py
 
 ## 3. Chuyển thành văn bản
 
-Chọn **Nguồn** ở đầu thẻ:
+Chọn **nguồn** ở thanh trên cùng (**File máy tính** | **Link YouTube** | **Ghi âm**):
 
 | Nguồn | Cách dùng |
 |---|---|
-| **File máy tính** | `Chọn…` (hoặc dán đường dẫn) → mp3/wav/m4a/flac/ogg/mp4/mov/mkv/webm |
-| **Link YouTube** | Dán link → chọn *Lấy*, *Chất lượng*, phụ đề → `⬇ Tải video` / `⬇ Tải audio` / `▶ Lấy transcript` (tên nút đổi theo ô *Lấy*). Nếu YouTube chặn tải phụ đề (lỗi 429), video vẫn được lưu và phụ đề do Whisper tạo |
-| **Ghi âm trực tiếp** | `● Bắt đầu thu âm` → đọc (tối đa 15 phút) → `■ Dừng & chuyển thành văn bản` |
+| **File máy tính** | `Chọn file…` (hoặc dán đường dẫn) → mp3/wav/m4a/flac/ogg/mp4/mov/mkv/webm → `▶ Bắt đầu` |
+| **Link YouTube** | Dán link → chọn *Lấy*, *Chất lượng*, công tắc **Kèm phụ đề** + ngôn ngữ, **Nhúng phụ đề vào video** → `Tải video` / `Tải audio` / `▶ Lấy transcript` (tên nút đổi theo ô *Lấy*). Nếu YouTube chặn tải phụ đề (lỗi 429), video vẫn được lưu và phụ đề do Whisper tạo |
+| **Ghi âm** | `● Bắt đầu thu âm` → nói (tối đa 15 phút; có thanh mức âm và đồng hồ) → `■ Dừng & chuyển thành văn bản` |
 
-Sau khi bấm **Bắt đầu**:
+Sau khi bấm nút chạy:
 
-1. Thanh tiến trình + dòng trạng thái cho biết đang ở bước nào.
-2. **Nhật ký** ghi từng bước (tải model, nhận dạng, phụ đề, nhúng…) kèm giờ.
-3. **Hủy** (hoặc `Esc`) để dừng giữa chừng.
-4. Xong: bên phải hiện **Văn bản** (bật `Kèm mốc thời gian` nếu muốn `[00:00:01] …`)
-   và tab **SRT** (xem trước phụ đề chuẩn).
-5. Xuất file: `Sao chép`, `Lưu .txt`, `Lưu .srt`, `Mở thư mục`, `Mở file gốc`.
+1. Thanh tiến trình + dòng trạng thái hiện ngay dưới ô nguồn; nút **Hủy (Esc)** chỉ hiện
+   khi có việc để hủy.
+2. Xong: giữa màn hình là **Văn bản** (chữ to, dòng không quá dài; công tắc
+   `Kèm mốc thời gian` cho `[00:00:01] …`) hoặc **Phụ đề SRT**.
+3. Cột phải: số dòng / số từ / thời lượng, nút **Sao chép văn bản**, `Lưu .txt`,
+   `Lưu .srt`, `Mở thư mục`, `Mở file gốc`.
+4. **Nhật ký** thu gọn ở đáy cột phải (hiện dòng mới nhất) — bấm để mở toàn bộ.
 
 Phím tắt: `Ctrl+O` chọn file · `Ctrl+Enter` bắt đầu · `Ctrl+S` lưu .txt · `Esc` hủy.
 
@@ -217,11 +220,15 @@ hiện gợi ý ngay dưới ô Micro nếu thấy tai nghe mà chưa thấy mic
 
 ## 5. Cài đặt
 
-- Model / Ngôn ngữ (cũng đổi được ở góc dưới thanh điều hướng), **Micro** + `Quét lại` + `Kiểm tra` +
-  `Âm thanh Windows`.
-- Thư mục lưu mặc định, giao diện Sáng/Tối, `Lưu cài đặt`, `Mặc định`.
-- Phụ đề mặc định (kèm phụ đề / ngôn ngữ / nhúng vào MP4).
-- Thông tin phiên bản + tình trạng thư viện (faster-whisper, yt-dlp, ffmpeg, sounddevice).
+**Thay đổi được lưu ngay** (không còn nút "Lưu cài đặt"); `Khôi phục mặc định` ở góc trên.
+
+- **Micro**: chọn thiết bị thu âm, `Thử 2 giây` (kết quả hiện ngay dưới dòng "Kiểm tra
+  micro"), `Quét lại`, `Âm thanh Windows`.
+- **Giao diện và lưu file**: Sáng / Tối, thư mục lưu video và phụ đề.
+- **Phụ đề YouTube mặc định**: kèm phụ đề, ngôn ngữ phụ đề, nhúng vào video.
+- **Phím tắt** và **Giới thiệu** (phiên bản, tình trạng thư viện, ffmpeg).
+- **Model / Ngôn ngữ nhận dạng** chỉ đổi ở góc dưới thanh điều hướng (menu có ghi chú
+  từng model, vd "small — khuyên dùng cho tiếng Việt").
 
 ## 6. Phụ đề khi tải YouTube
 

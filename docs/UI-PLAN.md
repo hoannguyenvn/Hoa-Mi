@@ -2,7 +2,7 @@
 
 > Status: **GATE A passed 2026-10-22** — user approved the spec and accepted the default
 > answers for Q-01…Q-07 (§6). **GATE B passed 2026-10-22** (D-29…D-32). **Phase 3 build
-> in progress: B1, B2 done 2026-10-22 (§5.1–5.2), B3 done 2026-10-23 (§5.3), B4a, B4b done 2026-10-23 (§5.4–5.5), next B5.** Design
+> in progress: B1, B2 done 2026-10-22 (§5.1–5.2), B3 done 2026-10-23 (§5.3), B1–B5 done 2026-10-23 (§5.1–5.6); next Phase 4 (manual verification).** Design
 > — canvas: https://claude.ai/artifact/L1oNuJ2Wq89LK7b8dFfRhK (private to the user).
 > Source of the issues: visual audits on
 > 2026-10-22 (`docs/HANDOFF.md` entries "tiếp 10" and "tiếp 11").
@@ -371,7 +371,7 @@ user checks in the real app. Increments are ordered so each one is useful alone.
 | B3 Trust and feedback ✅ | S-3 evidence gate, S-4 Vietnamese wording + `rhyme`, chips + cards drawn from view-model | P-02, P-03, P-04, P-06, P-07, P-09, P-10 | done |
 | B4a App shell ✅ | app-style layout (§4.1, D-28; replaces S-6 columns): nav rail (60 px icon-only at minimum size) replaces header + tabs; practice toolbar, stage (sentence shows the result), details panel, record button + meter, Thử lại / ▶ Mẫu / ▶ Bạn; mic block → Cài đặt › Micro; transcription + settings re-hosted unchanged (restyle in B5) | P-11…P-13, V-09, V-12, V-15 | done |
 | B4b Chart and progress ✅ | S-5 chart (word labels, plain caption, legend), S-5b stress markers + speed line, S-7 sparkline + per-language weakest sound | C-01…C-04, H-01, H-03 | done |
-| B5 Tab 1 and polish | S-8, V-06, V-14, T-04, settings save-on-change (§4.1), final contrast pass | T-01…T-04, V-06, V-14 | 0,5–1 d |
+| B5 Tab 1 and polish ✅ | S-8, V-06, V-14, T-04, settings save-on-change (§4.1), final contrast pass | T-01…T-04, V-06, V-14 | done |
 
 ### 5.1 B1 result (2026-10-22)
 
@@ -463,6 +463,36 @@ user checks in the real app. Increments are ordered so each one is useful alone.
 - Tests 62/62 (6 new, incl. stress on a synthetic WAV); screenshots reviewed (light, dark,
   minimum); scripted drive with a chart result (details toggle, theme flip, lesson change).
 - Not verified: stress on real learner recordings (thresholds untested — P4), 100/150 %.
+
+### 5.5b Practice layout after the user's real-mic test (2026-10-23)
+
+- Result panel ≈ 48 % of the content area (`side_width`, 340–640 px × S), stage the rest;
+  pills wrap; one-line CẦN SỬA headers; one shared "Chi tiết số đo". A worst case (4 fixes +
+  more + chart) fits one page at 1480×940.
+
+### 5.6 B5 result (2026-10-23)
+
+- Transcription (S-8): toolbar with source segmented control (locked while busy); source bar
+  per source with the run button on the right, "Hủy (Esc)" only when cancellable, progress
+  + status only while processing; empty state (doc icon, title, body; mic icon while
+  recording); skeleton while processing; result = Văn bản | Phụ đề SRT, 12 pt text capped at
+  ~720 px with muted timestamps (text identical to `cues_to_txt`); side panel with tips /
+  progress / "Xong" + stats + Sao chép / Lưu .txt / Lưu .srt / links; collapsed log bar
+  (T-02) showing the last line. T-04: canvas level meter while recording. T-01, T-03, V-11.
+- Settings: grouped rows (Micro, Giao diện và lưu file, Phụ đề YouTube mặc định, Phím tắt,
+  Giới thiệu), switches, theme segmented control, mic-test result inline; **saved on
+  change** (`_autosave`, 0,4 s, only after start-up) + "Khôi phục mặc định". V-14:
+  Model/Ngôn ngữ only in the rail menu, with one-line descriptions (`MODEL_DESC`). V-06 done
+  by the rail theme item. Contrast pass: covered by `theme_text_contrast_ok`.
+- Shared: `_mk_seg` (practice toolbar now uses it), `_mk_switch`, `_link_state`;
+  removed `_build_text_tab`, `_build_result`, `_mk_mic_row`, `_init_sash`, `_fix_sash`,
+  `pw_text`, `self.stats`, `MODEL_HINT`, the "⬇" glyph (missing in the font).
+- Tests 63/63 (`transcription_screen_states`); screenshots incl. empty/processing/result/
+  log/YouTube/recording, settings light/dark, minimum size; scripted drive (lock while
+  processing, views, timestamp text, log, recording meter, autosave, mic-test message,
+  restore defaults) with no callback errors.
+- Not verified: real file / YouTube / recording runs through the new screen by hand;
+  100/150 % scaling.
 
 Not in this plan: C-05 (needs real Vietnamese sample recordings — content work, Q-07).
 

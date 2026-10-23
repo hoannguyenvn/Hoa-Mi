@@ -141,8 +141,13 @@ def main() -> int:
     A._show_screen("stt")
     A.src.set("file")
     A._src_changed()
+    shot("00_stt_empty_light")
     A.file_path.set(r"D:\Bai giang\bai-giang-n-l.mp3")
     A._log("File: bai-giang-n-l.mp3  ·  model small")
+    A._set_stt_state("processing")
+    A._pbar(0.62)
+    A.status.set("Bước 2/2 · đang nhận dạng giọng nói… 62 %")
+    shot("00b_stt_processing_light")
     A._on_result({"cues": [
         (0.0, 3.2, "Xin chào các bạn, hôm nay chúng ta sẽ học cách phát âm âm N và L."),
         (3.2, 7.9, "Đầu tiên, hãy đặt đầu lưỡi chạm vào lợi trên, ngay sau răng cửa."),
@@ -150,6 +155,9 @@ def main() -> int:
         (12.4, 18.0, "Bây giờ hãy đọc theo tôi: na, la, năm, lăm, nên, lên.")],
         "media": None, "base": "bai-giang-n-l", "note": "Xong: 4 dòng · vi (99%)"})
     shot("01_stt_result_light")
+    A._toggle_log()
+    shot("01b_stt_log_open_light")
+    A._toggle_log()
     A.src.set("yt")
     A._src_changed()
     A.yt_url.set("https://www.youtube.com/watch?v=2UIqadUjQf8")
@@ -158,6 +166,15 @@ def main() -> int:
     shot("02_stt_youtube_subs_off_light")
     A.y_subs.set(True)
     A._yt_subs_changed()
+    A.src.set("rec")
+    A._src_changed()
+    A._set_stt_state("recording")
+    A.lbl_rec_level.configure(text="● Đang thu · 0:12 / 15:00")
+    A._draw_meter(0.08, A.stt_meter)
+    shot("02b_stt_recording_light")
+    A._set_stt_state("idle")
+    A.src.set("file")
+    A._src_changed()
 
     # ---- Luyện phát âm ----
     A._show_screen("prac")
@@ -217,6 +234,13 @@ def main() -> int:
     shot("12_prac_vi_min_light")
     theme("dark")
     shot("13_prac_vi_min_dark")
+    theme("light")
+    A._show_screen("stt")
+    A.src.set("yt")
+    A._src_changed()
+    shot("14_stt_youtube_min_light")
+    A._show_screen("set")
+    shot("15_settings_min_light")
     A.destroy()
     print("saved to", out)
     return 0

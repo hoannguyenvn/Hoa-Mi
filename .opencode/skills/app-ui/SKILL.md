@@ -19,9 +19,9 @@ App(tk.Tk)
 ├─ _apply_theme()  → ttk.Style("clam") + màu cho tk.Text
 ├─ _build_ui()     → thanh điều hướng `rail` + `content` chứa 3 màn hình (B4a, D-28)
 │   ├─ _build_rail()            (logo · 2 mục · chân: Model·Ngôn ngữ ▾, theme, Cài đặt)
-│   ├─ _build_text_screen()     → _toolbar + status bar + _build_text_tab() (B5 làm lại)
+│   ├─ _build_text_screen()     → toolbar + nút ghép nguồn · thanh nguồn · vùng chữ · panel (B5)
 │   ├─ _build_practice_tab()    → toolbar · sân khấu _build_stage · panel _build_side
-│   └─ _build_settings_screen() → _toolbar + status bar + _build_settings_tab()
+│   └─ _build_settings_screen() → toolbar · 2 cột nhóm hàng (`_set_group`/`_set_row`) · lưu ngay
 ├─ _show_screen(key) → "stt" | "prac" | "set" (thay ttk.Notebook; vào "set" quét lại mic)
 ├─ _on_root_resize   → nav_compact(): < 1240×S thì thanh 60 px chỉ biểu tượng
 ├─ _poll()         → vòng 80 ms đọc self._queue
@@ -174,8 +174,25 @@ subs, embed, sub_lang, mic, geometry
 - Ô Ngôn ngữ: combobox gắn `self.lang_label` (tên tiếng Việt, `LANG_LABELS`); `self.lang`
   vẫn giữ mã và là thứ được lưu/đọc — hai biến tự đồng bộ qua trace.
 - Icon cửa sổ: `_set_icon()` vẽ bằng `logo_rows` (không file ảnh).
-- Kiểm tra bằng mắt: `tools/ui_shots.py <nhãn>` chụp 15 trạng thái vào
+- Kiểm tra bằng mắt: `tools/ui_shots.py <nhãn>` chụp 21 trạng thái vào
   `%TEMP%\oriole_shots\<nhãn>\` mà không ghi config/lịch sử.
+
+### Màn Văn bản + Cài đặt (B5, S-8)
+
+- Văn bản: `stt_view(state, has_result)` (hàm thuần) → vùng chữ `sd_empty` (cũng dùng khi
+  đang thu, biểu tượng mic đỏ) / `sd_proc` (thanh xương) / `sd_res` (`txt_out` role `"doc"`:
+  không viền, tag `doc` có `rmargin` giới hạn ~720 px, tag `time` mờ cho `[hh:mm:ss]` —
+  chữ giữ đúng `cues_to_txt` để Lưu/Sao chép không đổi), panel `ss_empty` (mẹo) /
+  `ss_busy` / `ss_res` (thống kê `st_vals`, `btn_copy`, `btn_txt`, `btn_srt`, link
+  `btn_folder`/`btn_open` qua `_link_state`). `_stt_view()` gọi từ `_set_stt_state`,
+  `_on_result`, `_on_error`, `_src_changed`. `btn_cancel` chỉ pack khi `cancel_enabled`;
+  tiến trình `stt_prog` (pbar + `status`) chỉ khi `processing`; ghi âm: `stt_meter` (T-04).
+  Nhật ký: `log_txt` trong `log_box` ẩn; thanh `log_last` hiện dòng cuối, `_toggle_log`.
+- Cài đặt: `_set_group(parent, title)` + `_set_row(g, label, sub, sub_var, last, vertical,
+  compact)`; công tắc `_mk_switch(var)`; theme bằng `_mk_seg`. Lưu ngay: trace các biến cấu
+  hình → `_autosave` (gom 0,4 s) → `_save_cfg` + "✓ Đã lưu"; chỉ bật sau khi dựng xong
+  (`_autosave_on`) nên khởi động không ghi `config.json`. Thử mic → queue `mic_test` →
+  `mic_test_msg`. Model/Ngôn ngữ chỉ ở menu thanh điều hướng (V-14, `MODEL_DESC`).
 
 ### Khung app-style (B4a, D-28) — widget tk thuần theo theme
 
@@ -183,14 +200,14 @@ subs, embed, sub_lang, mic, geometry
   `_frame(parent, bg=token)`, `_lbl(parent, text, bg=, fg=, size=)`, `_link_lbl`, `_hline`;
   hoặc `_tw(widget, bg="side", fg="muted")` — đăng ký vào `self._themed` để `_retheme_tk()`
   tô lại khi đổi theme. Phần **vẽ Canvas** đăng ký hàm vào `self._redraws`
-  (`_draw_rail`, `_draw_seg`, `_draw_rec_btn`, `_redraw_words`, `_redraw_pills`,
+  (`_draw_rail`, nút ghép `_mk_seg`, công tắc `_mk_switch`, `_draw_rec_btn`, `_redraw_words`, `_redraw_pills`,
   `_draw_intonation`, vòng điểm). Widget tk không đăng ký sẽ **giữ màu theme cũ**.
 - Thanh điều hướng: `_rail_item` (vạch accent 3 px + biểu tượng + nhãn);
   `_draw_icon(c, name, color, s, ox=, oy=, clear=)` vẽ doc/mic/gear/moon/sun/stop bằng nét.
   Chế độ gọn ẩn nhãn, rê chuột hiện `_tooltip`. Model/Ngôn ngữ: `_model_menu()` (tk.Menu
   radiobutton gắn `model_name` / `lang_label`) ở chân thanh; Cài đặt vẫn có (V-14 ở B5).
 - Thanh công cụ 60 px: `_toolbar(parent, title)`. Màn Luyện: chế độ dạng nút ghép
-  (`_seg_items`, `_draw_seg`), `cb_prac` style `Toolbar.TCombobox`, `p_pos` "Bài k / n",
+  (`_mk_seg` dùng chung, `locked=` khi đang thu/chấm), `cb_prac` style `Toolbar.TCombobox`, `p_pos` "Bài k / n",
   `_step_lesson(±1)`. Đang thu/chấm: khóa đổi bài/chế độ (trong `_set_prac_state`).
 - Sân khấu: `p_words` xếp từ bằng `place` (`_layout_words`, chạy **sau idle** — đo ngay thì
   mọi từ rộng 1 px; không gọi `update_idletasks` trong vòng đo: gọi lồng làm hủy widget
@@ -235,5 +252,6 @@ subs, embed, sub_lang, mic, geometry
 | `TclError: ... is not managed` khi đổi bài | pack/`before=` vào Text có thanh cuộn thay vì `.holder` |
 | App không thoát | thread không daemon hoặc `after` loop không dừng |
 | Widget mới giữ màu cũ khi đổi theme | tạo `tk.*` mà không qua `_tw`/`_frame`/`_lbl` hoặc chưa thêm hàm vẽ vào `_redraws` |
-| Cột trái màn Văn bản rộng 0 | vách `Panedwindow` đặt khi màn hình chưa hiện — `_fix_sash` đặt lại khi có kích thước |
+| Nhãn hàng Cài đặt bị cắt ở cửa sổ hẹp | điều khiển rộng đặt bên phải — với hàng có ≥ 2 nút, dùng `vertical=True` và xếp nút dưới chữ |
+| Glyph thành ô vuông (vd "⬇") | Be Vietnam Pro thiếu ký tự — chỉ dùng ▶ ■ ● ✓ ✕ (đã thử) hoặc bỏ ký hiệu |
 | Thanh cuộn panel không hiện | pack thanh cuộn sau Canvas đã `expand` — phải `before=cv` |

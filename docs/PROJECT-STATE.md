@@ -1,6 +1,6 @@
 # PROJECT STATE — Oriole
 
-- **Cập nhật lần cuối:** 2026-10-23 (xong B4b: biểu đồ ngữ điệu có nhãn từ, trọng âm + tốc độ, đường tiến bộ)
+- **Cập nhật lần cuối:** 2026-10-23 (xong B5: màn Văn bản + Cài đặt mới; panel kết quả rộng theo thử nghiệm thật)
 - **Phiên bản code:** 2.3 (`VERSION` trong `app.py`)
 - **Trạng thái:** chạy được trên máy hiện tại; git repo `main` (D-33); chưa có test tự động đầy đủ.
 - **Nguồn sự thật:** code + `docs/context-map.json`. Tài liệu này chỉ tóm tắt.
@@ -10,10 +10,10 @@
 > Cập nhật mục này ở **cuối mỗi phiên**. Tối đa 3 việc.
 
 - [ ] **P2 — Đại tu giao diện theo `docs/UI-PLAN.md`**: GATE A (D-27), font + app-style (D-28),
-  GATE B (D-29…D-32) đã duyệt. **B1–B4b xong** (§5.1–5.5). **Kế tiếp: B5** — màn Chuyển
-  thành văn bản theo thiết kế (S-8: trạng thái trống, nhật ký thu gọn, chữ ≤ 90 ký tự/dòng),
-  Cài đặt lưu ngay khi đổi, bỏ Model/Ngôn ngữ trùng (V-14), T-04, rà tương phản lần cuối.
-  Rồi Phase 4 (kiểm thử tay với mic thật, scaling 100/150 %).
+  GATE B (D-29…D-32) đã duyệt. **B1–B5 xong** (§5.1–5.6). **Kế tiếp: Phase 4** (UI-PLAN §7)
+  — người dùng thử tay: file thật, YouTube thật, ghi âm 15 phút, luyện VI + EN, Esc giữa
+  chừng, đổi bài, tối, cửa sổ nhỏ; scaling 100/150 % nếu có máy khác. Rồi Phase 5 (đóng
+  gói tài liệu) và quyết định GOP vs câu trên sân khấu (xem rủi ro bên dưới).
 - [ ] **P3 — Thanh điệu tiếng Việt bằng F0:** phân loại 6 thanh từ contour, so với mẫu
   cùng âm tiết; hiện "bạn đọc thanh sắc, mẫu là thanh huyền".
 - [ ] **P4 — Hiệu chuẩn điểm:** thu bản ghi người thật, so với giáo viên, chỉnh ngưỡng
@@ -53,7 +53,7 @@ Ký hiệu: ✅ chạy ổn · 🟡 chạy nhưng có giới hạn · ⛔ chưa 
 | Mic: chọn, kiểm tra, tự dò mic có tín hiệu | 🟡 | lọc WDM-KS, ưu tiên DirectSound, sàn 0,8% + gain +24 dB (D-20/D-21), thu bằng callback + queue (D-23) |
 | Mic ngoài (USB/bluetooth): Quét lại, cảnh báo Hands-Free | 🟡 | `rescan_audio_devices`, `headset_mic_missing` (D-22); AirPods đã lên thiết bị thu (WASAPI) nhưng bản ghi thử chưa nhận dạng được — xem mục 3 |
 | Context + skills cho AI | ✅ | `AGENTS.md`, `docs/`, 11 skill; `context_check` 40 OK |
-| Test tự động | 🟡 | 62 test khói + `context_check` + `tools/ui_shots.py` (chụp UI, xem bằng mắt); chưa có test ASR/mic |
+| Test tự động | 🟡 | 63 test khói + `context_check` + `tools/ui_shots.py` (chụp UI, xem bằng mắt); chưa có test ASR/mic |
 | Đóng gói `.exe` | ⛔ | chỉ có `run.bat` + Conda Python |
 | Git / CI | 🟡 | git `main` + GitHub riêng tư (D-33); chưa có CI |
 
@@ -65,7 +65,7 @@ Ký hiệu: ✅ chạy ổn · 🟡 chạy nhưng có giới hạn · ⛔ chưa 
 | Cao | Chưa có test UI/ASR/mic; `smoke_test` chỉ phủ hàm thuần | sửa UI/luồng có thể phá mà không báo | mở rộng dần; ghi rõ "chưa kiểm chứng" |
 | TB | Skill/tài liệu có thể lệch code nếu sửa mà không cập nhật | model sau làm sai chỗ | luôn chạy `context_check` + sửa tài liệu cùng phiên |
 | Cao | Chưa hiệu chuẩn thang điểm với giáo viên | người học không biết tin điểm đến đâu | thu ~100 bản ghi, 2 giáo viên chấm, Spearman |
-| TB | UI còn lại sau B4b: màn Văn bản và Cài đặt mới chỉ được đặt vào khung mới (chưa theo thiết kế); Model/Ngôn ngữ còn lặp ở Cài đặt (V-14) | trông chưa đồng bộ giữa các màn | B5 theo `docs/UI-PLAN.md` |
+| TB | Câu trên sân khấu theo chữ Whisper nghe ("Think ✓") nhưng CẦN SỬA (GOP) có thể báo âm /θ/ trong chính từ đó lệch rõ — người dùng thấy ở lần thử thật | hai tín hiệu trái nhau trên cùng màn | cần quyết định: gạch chân cam (không trừ điểm, I4) cho từ GOP báo lệch rõ? |
 | TB | Trọng âm từ dựa trên cường độ + cao độ, chưa thử với bản thu người thật; mốc từ Whisper có thể lệch ±50 ms | đánh dấu nhầm từ được nhấn | chỉ mô tả (D-34); hiệu chuẩn cùng P4 |
 | Thấp | Chưa thử UI ở Windows scaling 100 %/150 % (máy này 250 %) | chữ/nút có thể lệch | thử trên máy khác hoặc đổi scaling rồi chạy `tools/ui_shots.py` |
 | TB | `enhance_audio` high-pass là vòng lặp Python từng mẫu, chạy trên main thread | bản ghi 15 phút làm UI đứng vài giây | vector hóa (numpy) hoặc đưa vào worker |

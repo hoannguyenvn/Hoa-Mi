@@ -11,9 +11,9 @@ và skill nào cần nạp. Dùng file này thay vì grep toàn repo.
 | F1.2 | Nhận dạng file | bấm Bắt đầu → tiến trình → text + SRT | `_run`, `_w_file`, `load_model` | `app-transcription` | đọc 1 file ngắn, so text |
 | F1.3 | Ghi âm 15 phút | nút thu → tự dừng → chuyển text | `Recorder`, `_rec_start`, `save_frames_wav` | `app-recording` | nói 3 s, im lặng 1,5 s → tự dừng |
 | F1.4 | Hủy tác vụ | nút Hủy / `Esc` | `_cancel`, `_YtCancelled` | `app-transcription` | hủy giữa lúc nhận dạng, UI về idle |
-| F1.5 | Xem trước Văn bản/SRT | 2 tab trong panel phải | `_render_preview`, `_on_result` | `app-transcription` | bật/tắt mốc thời gian |
+| F1.5 | Xem trước Văn bản/SRT | nút ghép Văn bản \| Phụ đề SRT, chữ ≤ ~90 ký tự/dòng | `_render_preview`, `_stt_res_view`, `_on_result` | `app-transcription` | bật/tắt mốc thời gian |
 | F1.6 | Xuất file | Copy / Lưu .txt / .srt / mở thư mục | `_copy`, `_save_txt`, `_save_srt`, `_open_folder` | `app-transcription` | lưu ra file, mở lại đúng UTF-8 |
-| F1.7 | Nhật ký & tiến trình | log từng bước + progressbar | `_log`, `_pbar`, `_poll` | `app-transcription` | thấy bước tải model/nhận dạng |
+| F1.7 | Nhật ký & tiến trình | tiến trình dưới ô nguồn; nhật ký thu gọn ở đáy cột phải (bấm để mở) | `_log`, `_pbar`, `_toggle_log`, `_poll` | `app-transcription` | thấy bước tải model/nhận dạng |
 | F1.8 | Phím tắt | Ctrl+O/Ctrl+Enter/Ctrl+S/Esc | `__init__` binds | `app-ui` | thử từng phím |
 
 ## 2. YouTube (trong Tab 1)
@@ -51,12 +51,12 @@ và skill nào cần nạp. Dùng file này thay vì grep toàn repo.
 
 | # | Tính năng | Hành vi | Code | Skill | Kiểm chứng |
 |---|---|---|---|---|---|
-| F4.1 | Model/ngôn ngữ dùng chung | chân thanh điều hướng (menu) + màn Cài đặt | `self.model_name`, `self.lang`, `App._model_menu` | `app-ui` | đổi → áp cho cả 2 màn hình |
+| F4.1 | Model/ngôn ngữ dùng chung | **chỉ** ở chân thanh điều hướng (menu có mô tả model, V-14) | `self.model_name`, `self.lang`, `App._model_menu`, `MODEL_DESC` | `app-ui` | đổi → áp cho cả 2 màn hình |
 | F4.2 | Thư mục lưu | chọn, mặc định `downloads/` | `out_dir`, `_pick_out_dir` | `app-ui` | lưu video đúng chỗ |
 | F4.3 | Theme sáng/tối | đổi ngay, nhớ khi mở lại | `THEMES`, `_apply_theme` | `app-ui` | khởi động lại vẫn đúng |
 | F4.4 | DPI scaling | 100–250% không bóp chữ | `self.S`, `px()` | `app-ui` | đổi scaling Windows 150% |
-| F4.5 | Lưu/mặc định | `config.json` | `_cfg_from_vars`, `_save_cfg`, `_reset_cfg` | `app-ui` | sửa → lưu → mở lại |
-| F4.6 | Thông tin phiên bản/thư viện | tab 3 | `_fill_info` | `app-qa-release` | hiện đúng có/không |
+| F4.5 | Lưu/mặc định | lưu ngay khi đổi (`_autosave`, 0,4 s) + "Khôi phục mặc định" | `_cfg_from_vars`, `_save_cfg`, `_autosave`, `_reset_cfg` | `app-ui` | đổi công tắc → đóng/mở app vẫn giữ |
+| F4.6 | Thông tin phiên bản/thư viện | Cài đặt › Giới thiệu | `_fill_info` | `app-qa-release` | hiện đúng có/không |
 | F4.7 | Kích thước cửa sổ | nhớ geometry | `_on_close`, `geometry` | `app-ui` | mở lại đúng kích thước |
 
 ## 5. Nội dung & dữ liệu

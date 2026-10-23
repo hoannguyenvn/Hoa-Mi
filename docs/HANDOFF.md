@@ -818,3 +818,36 @@ khoảng cách panel 18 → 14, biểu đồ 132 → 118 px. `ui_shots.py` thêm
 **Đã kiểm chứng:** smoke 62/62, context_check, ảnh sáng/tối thiểu, script chạy App thật.
 **Quan sát từ ảnh người dùng (chưa sửa, cần quyết định):** câu trên sân khấu ghi "Think ✓"
 (Whisper nghe đúng chữ) trong khi CẦN SỬA (GOP) báo /θ/ và /k/ trong "Think" lệch rõ.
+
+## 2026-10-23 (tiếp 5) — Claude Opus 5.5 — B5: màn Chuyển thành văn bản + Cài đặt mới
+
+**Mục tiêu phiên:** B5 theo UI-PLAN (S-8, V-06, V-14, T-04, Cài đặt lưu ngay).
+
+**Đã làm (`app.py`):**
+- Thành phần dùng chung: `_mk_seg` (nút ghép; màn Luyện dùng luôn), `_mk_switch` (công tắc),
+  `_link_state`; hàm thuần `stt_view`, `short_duration`.
+- Màn Văn bản viết lại: `_build_text_screen`, `_build_src_file/_yt/_rec` (mới),
+  `_build_stt_doc`, `_build_stt_side`, `_stt_view`, `_stt_res_view`, `_toggle_log`,
+  `_doc_margin`; `_set_stt_state`, `_on_result`, `_on_error`, `_render_preview`, `_rec_tick`,
+  `_log`, `_src_changed`, `_yt_subs_changed` sửa theo khung mới. Text role `"doc"`.
+- Cài đặt viết lại: `_build_settings_screen`, `_set_group`, `_set_row`, `_fill_info` (nhãn),
+  `_autosave` / `_do_autosave` (trace biến cấu hình, bật sau khi dựng), queue `mic_test`.
+  Bỏ nút "Lưu cài đặt" và Model/Ngôn ngữ trong Cài đặt (V-14); menu Model có `MODEL_DESC`.
+- Bỏ: `_build_text_tab`, `_build_result`, `_mk_mic_row`, `_init_sash`, `_fix_sash`, `_sash`,
+  `pw_text`, `self.stats`, `MODEL_HINT`, `_draw_seg`, ký hiệu "⬇" (font thiếu).
+- `tools/smoke_test.py` 63; `tools/ui_shots.py` 21 trạng thái (thêm Văn bản trống/đang xử
+  lý/nhật ký mở/đang ghi, Văn bản + Cài đặt ở cửa sổ tối thiểu).
+- Tài liệu: UI-PLAN §5.5b/§5.6, PROJECT-STATE, README §2/§3/§5, FEATURES F1.5/F1.7/F4.x,
+  skill `app-ui`, `app-transcription`, `app-qa-release`, `context-map.json`.
+
+**Quyết định mới:** không (thực hiện §4.1 "save on change" đã duyệt ở GATE B).
+
+**Đã kiểm chứng:** smoke 63/63, context_check 44 OK, py_compile; ảnh sáng/tối/tối thiểu đã
+xem; script chạy App thật (khóa đổi nguồn khi bận, xem Văn bản/SRT, chữ có mốc = cues_to_txt,
+nhật ký, thanh mức âm, tự lưu, kết quả thử mic, khôi phục mặc định) — 0 lỗi callback.
+**Chưa kiểm chứng:** chạy file/YouTube/ghi âm thật qua màn mới bằng tay; scaling 100/150 %.
+
+**Việc tiếp theo:** Phase 4 (người dùng thử tay theo UI-PLAN §7). Câu hỏi mở: GOP báo lệch
+rõ trong từ mà câu trên sân khấu ghi ✓ (PROJECT-STATE §3).
+**Cảnh báo:** `config.json` giờ được ghi khi đổi bất kỳ cài đặt nào (kể cả nguồn YouTube,
+chọn mic) — `ui_shots.py`/script thử phải chặn `save_config`.

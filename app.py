@@ -55,7 +55,8 @@ YT_HINT = ("Dán link YouTube (dạng youtu.be/... hoặc watch?v=...). Tải v�
            "chọn “Chỉ audio MP3” để nạp thẳng vào tab 1 (chuyển audio → text).")
 
 MODELS = ["tiny", "base", "small", "medium"]
-MODEL_HINT = "tiny: nhanh nhất  •  base: nhanh  •  small: chuẩn (khuyên dùng cho tiếng Việt)  •  medium: chuẩn nhất, chậm nhất"
+MODEL_DESC = {"tiny": "nhanh nhất", "base": "nhanh",
+              "small": "chuẩn — khuyên dùng cho tiếng Việt", "medium": "chuẩn nhất, chậm nhất"}
 LANGS = ["auto", "vi", "en", "zh", "ja", "ko", "fr", "de"]
 # Tên hiển thị cho ô Ngôn ngữ (V-13); biến self.lang vẫn giữ mã ("auto", "vi"…).
 LANG_LABELS = [("auto", "Tự động"), ("vi", "Tiếng Việt"), ("en", "Tiếng Anh"),
@@ -192,6 +193,14 @@ def clock_time(sec):
     h, rem = divmod(sec, 3600)
     m, s = divmod(rem, 60)
     return f"{h:02d}:{m:02d}:{s:02d}"
+
+
+def short_duration(sec):
+    """0:18 · 12:05 · 1:02:03 — thời lượng gọn cho thẻ thống kê."""
+    sec = max(0, int(round(sec or 0)))
+    h, rem = divmod(sec, 3600)
+    m, s = divmod(rem, 60)
+    return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
 
 
 def srt_time(sec):
@@ -1190,6 +1199,17 @@ def stt_controls(state, idle_label):
     }
 
 
+def stt_view(state, has_result):
+    """Màn Văn bản (S-8): (vùng chữ, panel phải) theo trạng thái + đã có kết quả. Hàm thuần.
+
+    Kết quả cũ vẫn hiện khi lỗi/hủy lần sau; chỉ "đang thu"/"đang xử lý" thay chỗ nó.
+    """
+    if state in ("processing", "recording"):
+        return state, state
+    doc = "result" if has_result else "empty"
+    return doc, ("error" if state == "error" else doc)
+
+
 def prac_controls(state, has_replay):
     """Nút/thanh tiến trình của tab Luyện theo trạng thái (D-31). Hàm thuần.
 
@@ -2106,7 +2126,7 @@ class App(tk.Tk):
         self.out_dir = tk.StringVar(value=self.cfg.get("out_dir") or YT_DIR_DEFAULT)
         self.theme_name = tk.StringVar(value=self.cfg.get("theme", "light"))
         self.status = tk.StringVar(value="Sẵn sàng — chọn nguồn rồi bấm Bắt đầu.")
-        self.stats = tk.StringVar(value="")
+        self.mic_test_msg = tk.StringVar(value="Nói “a…” trong 2 giây để đo mức tín hiệu.")
 
         # ----- nguồn -----
         self.src = tk.StringVar(value="file")
@@ -2173,8 +2193,12 @@ class App(tk.Tk):
         self._render_preview()
         self._set_icon()
         self.update_idletasks()
-        self._init_sash()
-        self.after_idle(self._init_sash)
+        self._stt_view()
+        # Cài đặt lưu ngay khi đổi (B5) — bật sau khi dựng xong để không ghi lúc khởi động
+        for v in (self.out_dir, self.y_subs, self.y_embed, self.yt_sub_lang, self.yt_kind,
+                  self.yt_quality, self.mic_var, self.model_name, self.lang):
+            v.trace_add("write", self._autosave)
+        self._autosave_on = True
 
         self.bind("<Control-o>", lambda e: self._pick_file())
         self.bind("<Control-s>", lambda e: self._save_txt())
@@ -2388,8 +2412,10 @@ class App(tk.Tk):
         bg = P["card"] if role == "out" else (P["log_bg"] if role == "log" else P["card"])
         w.configure(background=bg, foreground=P["fg"], insertbackground=P["fg"],
                     selectbackground=P["sel"], highlightbackground=P["border"],
-                    highlightcolor=P["accent"], highlightthickness=self.px(1), borderwidth=0,
+                    highlightcolor=P["accent"],
+                    highlightthickness=0 if role == "doc" else self.px(1), borderwidth=0,
                     relief="flat")
+        w.tag_configure("time", foreground=P["muted"])
         w.tag_configure("ok", background=P["ok_bg"], foreground=P["ok_fg"])
         w.tag_configure("bad", background=P["bad_bg"], foreground=P["bad_fg"])
         w.tag_configure("warn", background=P["warn_bg"])
@@ -2471,30 +2497,6 @@ class App(tk.Tk):
                 anchor="w", pady=(self.px(0), self.px(8)))
         return outer
 
-    def _mk_mic_row(self, parent, style="CardInner.TFrame"):
-        fr = ttk.Frame(parent, style=style)
-        fr.pack(fill="x", pady=(self.px(10), self.px(0)))
-        ttk.Label(fr, text="Micro", style="Card.TLabel").pack(anchor="w")
-        cb = ttk.Combobox(fr, textvariable=self.mic_var, width=1, state="readonly")
-        cb.pack(fill="x", pady=(self.px(4), self.px(0)))
-        btns = ttk.Frame(fr, style=style)
-        btns.pack(fill="x", pady=(self.px(6), self.px(0)))
-        ttk.Button(btns, text="Quét lại", style="Ghost.TButton",
-                   command=lambda: self._refresh_mics(rescan=True)).pack(side="left")
-        ttk.Button(btns, text="Kiểm tra", style="Ghost.TButton",
-                   command=self._test_mic).pack(side="left", padx=(self.px(8), self.px(0)))
-        ttk.Button(btns, text="Âm thanh Windows", style="Ghost.TButton",
-                   command=self._open_sound_settings).pack(side="left",
-                                                           padx=(self.px(8), self.px(0)))
-        hint = ttk.Label(fr, text="", style="Card.Hint.TLabel",
-                         wraplength=self.px(430), justify="left")
-        hint.pack(anchor="w", pady=(self.px(6), self.px(0)))
-        self._mic_hints.append(hint)
-        self._mic_combos.append(cb)
-        self._tooltip(cb, self.mic_var.get)   # tên mic dài bị cắt trong ô (V-15)
-        return cb
-
-    # ---------- widget tk thuần theo theme (B4a) ----------
     def _tw(self, w, **tokens):
         """Gán màu token (vd bg="side", fg="muted") cho widget tk thuần và nhớ để đổi theme."""
         self._themed.append((w, tokens))
@@ -2722,8 +2724,8 @@ class App(tk.Tk):
         m = tk.Menu(self, tearoff=0, font=(self.F, 10))
         m.add_command(label="Model nhận dạng", state="disabled")
         for name in MODELS:
-            m.add_radiobutton(label=name, value=name, variable=self.model_name,
-                              command=self._save_cfg)
+            m.add_radiobutton(label="%s — %s" % (name, MODEL_DESC[name]), value=name,
+                              variable=self.model_name, command=self._save_cfg)
         m.add_separator()
         m.add_command(label="Ngôn ngữ", state="disabled")
         for name in LANG_NAMES:
@@ -2787,191 +2789,448 @@ class App(tk.Tk):
         self._tw(lb, bg="card", fg="muted").pack(fill="x", padx=self.px(28), pady=self.px(6))
         return bar
 
+    # ---------- thành phần dùng chung: nút ghép, công tắc ----------
+    def _mk_seg(self, parent, items, var, command, locked=lambda: False):
+        """Nút ghép (segmented control) gắn StringVar; khóa được khi đang bận."""
+        box = self._frame(parent, bg="card2")
+        labels = {}
+
+        def click(code):
+            if locked() or code == var.get():
+                return
+            var.set(code)
+            command()
+
+        for code, text in items:
+            lb = tk.Label(box, text=text, font=(self.F, 10), bd=0, cursor="hand2",
+                          padx=self.px(12), pady=self.px(4), highlightthickness=1)
+            lb.pack(side="left", padx=self.px(3), pady=self.px(3))
+            lb.bind("<Button-1>", lambda e, c=code: click(c))
+            labels[code] = lb
+
+        def draw():
+            P, cur, lk = self.P, var.get(), locked()
+            for code, lb in labels.items():
+                sel = code == cur
+                lb.configure(bg=P["card"] if sel else P["card2"],
+                             fg=P["fg"] if sel else (P["disabled_fg"] if lk else P["muted"]),
+                             font=(self.F, 10, "bold" if sel else "normal"),
+                             highlightbackground=P["border"] if sel else P["card2"],
+                             highlightcolor=P["border"] if sel else P["card2"],
+                             cursor="" if lk else "hand2")
+            box.configure(bg=P["card2"])
+
+        box._draw = draw
+        var.trace_add("write", lambda *_: draw())
+        self._redraws.append(draw)
+        draw()
+        return box
+
+    def _mk_switch(self, parent, var, command=None, bg="card"):
+        """Công tắc bật/tắt (Canvas) gắn BooleanVar — thay checkbox ở màn mới (D-28)."""
+        w, h = self.px(34), self.px(18)
+        cv = self._tw(tk.Canvas(parent, width=w, height=h, bd=0, highlightthickness=0,
+                                cursor="hand2"), bg=bg)
+        cv._enabled = True
+
+        def draw():
+            P, on = self.P, bool(var.get())
+            cv.delete("all")
+            fill = (P["accent"] if cv._enabled else P["disabled_fg"]) if on else P["track"]
+            self._round_rect(cv, 1, 1, w - 1, h - 1, h // 2, fill=fill,
+                             outline=fill if on else P["border"])
+            r = h // 2 - self.px(3)
+            cx = w - h // 2 if on else h // 2
+            cv.create_oval(cx - r, h / 2.0 - r, cx + r, h / 2.0 + r,
+                           fill="#FFFFFF" if (on or cv._enabled) else P["card2"],
+                           outline="" if on else P["border"])
+            cv.configure(cursor="hand2" if cv._enabled else "")
+
+        def click(_e):
+            if cv._enabled:
+                var.set(not bool(var.get()))
+                if command:
+                    command()
+
+        cv.bind("<Button-1>", click)
+        var.trace_add("write", lambda *_: draw())
+        cv._draw = draw
+        self._redraws.append(draw)
+        draw()
+        return cv
+
+    def _switch_state(self, sw, enabled):
+        sw._enabled = bool(enabled)
+        sw._draw()
+
+    def _link_state(self, lb, enabled):
+        """Link chữ: bật = màu accent + bấm được; tắt = chữ mờ, không con trỏ tay."""
+        lb._enabled = bool(enabled)
+        lb.configure(fg=self.P["accent_fg"] if enabled else self.P["disabled_fg"],
+                     cursor="hand2" if enabled else "")
+
+    # ================= màn Chuyển thành văn bản (S-8, B5) =================
     def _build_text_screen(self, parent):
-        """Màn hình Chuyển thành văn bản: B4a chỉ đặt vào khung mới (B5 làm lại theo S-8)."""
-        self._toolbar(parent, "Chuyển thành văn bản")
-        self._status_bar(parent)
-        body = ttk.Frame(parent, style="App.TFrame", padding=(self.px(20), self.px(16)))
-        body.pack(fill="both", expand=True)
-        self._build_text_tab(body)
+        bar = self._toolbar(parent, "Chuyển thành văn bản")
+        self._stt_seg = self._mk_seg(bar, (("file", "File máy tính"), ("yt", "Link YouTube"),
+                                           ("rec", "Ghi âm")), self.src, self._src_changed,
+                                     locked=lambda: self.busy or self.recording)
+        self._stt_seg.pack(side="left", padx=(self.px(20), 0))
 
-    def _build_settings_screen(self, parent):
-        bar = self._toolbar(parent, "Cài đặt")
-        self._lbl(bar, "Ctrl+O chọn file · Ctrl+Enter bắt đầu / dừng thu · Esc hủy",
-                  fg="muted", size=9).pack(side="right", padx=(0, self.px(28)))
-        self._status_bar(parent)
-        body = ttk.Frame(parent, style="App.TFrame", padding=(self.px(20), self.px(16)))
-        body.pack(fill="both", expand=True)
-        self._build_settings_tab(body)
-
-    # ================= tab 1: chuyển thành văn bản =================
-    def _build_text_tab(self, parent):
-        pw = ttk.Panedwindow(parent, orient="horizontal")
-        pw.pack(fill="both", expand=True)
-        left = ttk.Frame(pw, style="App.TFrame")
-        right = ttk.Frame(pw, style="App.TFrame")
-        pw.add(left, weight=0)
-        pw.add(right, weight=1)
-        self.pw_text = pw
-        # màn hình có thể chưa hiện lúc dựng (khung B4a) → đặt vách khi khung có kích thước
-        pw.bind("<Configure>", lambda e: e.width > self.px(600) and self._fix_sash(pw, 470),
-                add="+")
-
-        # --- thẻ nguồn ---
-        card = self._card(left, "Nguồn")
-        row = ttk.Frame(card, style="CardInner.TFrame")
-        row.pack(fill="x")
-        for code, text in (("file", "File máy tính"), ("yt", "Link YouTube"),
-                           ("rec", "Ghi âm trực tiếp")):
-            ttk.Radiobutton(row, text=text, value=code, variable=self.src,
-                            style="Card.TRadiobutton",
-                            command=self._src_changed).pack(side="left", padx=(self.px(0), self.px(16)))
-
-        self.src_box = ttk.Frame(card, style="CardInner.TFrame")
-        self.src_box.pack(fill="x", pady=(self.px(12), self.px(0)))
+        # thanh nguồn: ô nhập theo nguồn (trái) + nút chạy/hủy (phải) + tiến trình
+        src = self._frame(parent, bg="card")
+        src.pack(fill="x")
+        inner = self._frame(src, bg="card")
+        inner.pack(fill="x", padx=self.px(28), pady=self.px(14))
+        self._hline(parent)
+        top = self._frame(inner, bg="card")
+        top.pack(fill="x")
+        acts = self._frame(top, bg="card")
+        acts.pack(side="right", anchor="n")
+        self.btn_run = ttk.Button(acts, text="▶  Bắt đầu", style="Accent.TButton",
+                                  command=self._primary)
+        self.btn_run.pack(side="right", padx=(self.px(10), 0))
+        self.btn_cancel = ttk.Button(acts, text="Hủy (Esc)", style="Ghost.TButton",
+                                     command=self._cancel)
+        self.src_box = self._frame(top, bg="card")
+        self.src_box.pack(side="left", fill="x", expand=True)
         self._build_src_file(self.src_box)
         self._build_src_yt(self.src_box)
         self._build_src_rec(self.src_box)
+        # tiến trình: chỉ hiện khi đang xử lý (V-11, D-31)
+        self.stt_prog = self._frame(inner, bg="card")
+        self.pbar = ttk.Progressbar(self.stt_prog, mode="determinate", maximum=100)
+        self.pbar.pack(fill="x", pady=(self.px(12), self.px(4)))
+        self._tw(tk.Label(self.stt_prog, textvariable=self.status, font=(self.F, 9), bd=0,
+                          anchor="w"), bg="card", fg="muted").pack(fill="x")
 
-        act = ttk.Frame(card, style="CardInner.TFrame")
-        act.pack(fill="x", pady=(self.px(16), self.px(0)))
-        self.btn_run = ttk.Button(act, text="▶  Bắt đầu", style="Accent.TButton",
-                                  command=self._primary)
-        self.btn_run.pack(side="left")
-        self.btn_cancel = ttk.Button(act, text="Hủy", style="Ghost.TButton",
-                                     command=self._cancel, state="disabled")
-        self.btn_cancel.pack(side="left", padx=(self.px(10), self.px(0)))
-        # chỉ hiện ở trạng thái "processing" (_set_stt_state) — thanh đầy xanh lúc rảnh
-        # gây hiểu nhầm (V-11)
-        self.pbar = ttk.Progressbar(card, mode="determinate", maximum=100)
-        self._pbar_pack = {"fill": "x", "pady": (self.px(14), self.px(2))}
-
-        # --- nhật ký ---
-        card2 = self._card(left, "Nhật ký", expand=True, pady=(self.px(0), self.px(0)))
-        self.log_txt = self._mk_text(card2, role="log", scroll=True, height=7, state="disabled")
-        self.log_txt.holder.pack(fill="both", expand=True)
-
-        # --- kết quả ---
-        self._build_result(right)
-
-    def _init_sash(self):
-        """Đặt vách ngăn hai tab ngay khi cửa sổ có kích thước — trước đây chờ 60 ms
-        nên cột trái có lúc hiện bề rộng 0 (V-10)."""
-        for pw, pos in ((getattr(self, "pw_text", None), 470),):
-            if pw is not None:
-                self._sash(pw, self.px(pos))
+        body = self._frame(parent, bg="card")
+        body.pack(fill="both", expand=True)
+        side = self._frame(body, bg="side", width=self.px(320))
+        side.pack(side="right", fill="y")
+        side.pack_propagate(False)
+        self._tw(tk.Frame(body, width=1, bd=0, highlightthickness=0), bg="border").pack(
+            side="right", fill="y")
+        doc = self._frame(body, bg="card")
+        doc.pack(side="left", fill="both", expand=True)
+        self._build_stt_doc(doc)
+        self._build_stt_side(side)
 
     def _build_src_file(self, box):
-        f = ttk.Frame(box, style="CardInner.TFrame")
-        ttk.Label(f, text="File cần chuyển", style="Card.Hint.TLabel").pack(anchor="w")
-        row = ttk.Frame(f, style="CardInner.TFrame")
-        row.pack(fill="x", pady=(self.px(4), self.px(0)))
-        ttk.Entry(row, textvariable=self.file_path).pack(side="left", fill="x", expand=True)
-        ttk.Button(row, text="Chọn…", style="Ghost.TButton",
-                   command=self._pick_file).pack(side="left", padx=(self.px(8), self.px(0)))
-        ttk.Label(f, text="mp3 · wav · m4a · flac · ogg · mp4 · mov · mkv · webm "
-                          "— hoặc dán đường dẫn vào ô trên",
-                  style="Card.Hint.TLabel", wraplength=self.px(430)).pack(anchor="w", pady=(self.px(6), self.px(0)))
+        f = self._frame(box, bg="card")
+        row = self._frame(f, bg="card")
+        row.pack(fill="x")
+        ttk.Entry(row, textvariable=self.file_path, font=(self.F, 11)).pack(
+            side="left", fill="x", expand=True)
+        ttk.Button(row, text="Chọn file…", style="Ghost.TButton",
+                   command=self._pick_file).pack(side="left", padx=(self.px(10), 0))
+        self._lbl(f, "mp3 · wav · m4a · flac · ogg · mp4 · mov · mkv · webm — hoặc dán đường "
+                     "dẫn vào ô trên", fg="muted", size=9, anchor="w").pack(
+            fill="x", pady=(self.px(6), 0))
         self.f_src_file = f
 
     def _build_src_yt(self, box):
-        f = ttk.Frame(box, style="CardInner.TFrame")
-        row = ttk.Frame(f, style="CardInner.TFrame")
+        f = self._frame(box, bg="card")
+        row = self._frame(f, bg="card")
         row.pack(fill="x")
-        ttk.Entry(row, textvariable=self.yt_url).pack(side="left", fill="x", expand=True)
+        ttk.Entry(row, textvariable=self.yt_url, font=(self.F, 11)).pack(
+            side="left", fill="x", expand=True)
         ttk.Button(row, text="Dán", style="Ghost.TButton",
-                   command=self._paste_url).pack(side="left", padx=(self.px(8), self.px(0)))
-
-        g = ttk.Frame(f, style="CardInner.TFrame")
-        g.pack(fill="x", pady=(self.px(12), self.px(0)))
-        ttk.Label(g, text="Lấy", style="Card.TLabel").grid(row=0, column=0, sticky="w")
-        ttk.Combobox(g, textvariable=self.yt_kind, values=YT_KIND_NAMES, width=25,
-                     state="readonly").grid(row=0, column=1, sticky="w", padx=(self.px(8), self.px(16)))
-        ttk.Label(g, text="Chất lượng", style="Card.TLabel").grid(row=0, column=2, sticky="w")
+                   command=self._paste_url).pack(side="left", padx=(self.px(10), 0))
+        g = self._frame(f, bg="card")
+        g.pack(fill="x", pady=(self.px(10), 0))
+        self._lbl(g, "Lấy", fg="muted", size=9).pack(side="left")
+        ttk.Combobox(g, textvariable=self.yt_kind, values=YT_KIND_NAMES, width=24,
+                     state="readonly").pack(side="left", padx=(self.px(6), self.px(16)))
+        self._lbl(g, "Chất lượng", fg="muted", size=9).pack(side="left")
         self.cb_quality = ttk.Combobox(g, textvariable=self.yt_quality,
                                        values=[n for _, n in YT_QUALITIES], width=13,
                                        state="readonly")
-        self.cb_quality.grid(row=0, column=3, sticky="w", padx=(self.px(8), self.px(0)))
-
-        s = ttk.Frame(f, style="CardInner.TFrame")
-        s.pack(fill="x", pady=(self.px(12), self.px(0)))
-        ttk.Checkbutton(s, text="Kèm phụ đề (.srt + .txt)", variable=self.y_subs,
-                        style="Card.TCheckbutton",
-                        command=self._yt_subs_changed).pack(side="left")
-        ttk.Label(s, text="Ngôn ngữ", style="Card.TLabel").pack(side="left", padx=(self.px(16), self.px(6)))
+        self.cb_quality.pack(side="left", padx=(self.px(6), 0))
+        s = self._frame(f, bg="card")
+        s.pack(fill="x", pady=(self.px(8), 0))
+        self._mk_switch(s, self.y_subs, self._yt_subs_changed).pack(side="left")
+        self._lbl(s, "Kèm phụ đề", size=9).pack(side="left", padx=(self.px(6), self.px(10)))
         self.cb_sublang = ttk.Combobox(s, textvariable=self.yt_sub_lang,
-                                       values=YT_SUB_LANG_NAMES, width=23, state="readonly")
-        self.cb_sublang.pack(side="left")
-
-        s2 = ttk.Frame(f, style="CardInner.TFrame")
-        s2.pack(fill="x", pady=(self.px(6), self.px(0)))
-        self.cb_embed = ttk.Checkbutton(s2, text="Nhúng phụ đề vào video (MP4)",
-                                        variable=self.y_embed, style="Card.TCheckbutton")
+                                       values=YT_SUB_LANG_NAMES, width=24, state="readonly")
+        self.cb_sublang.pack(side="left", padx=(0, self.px(16)))
+        self.cb_embed = self._mk_switch(s, self.y_embed)
         self.cb_embed.pack(side="left")
-
-        d = ttk.Frame(f, style="CardInner.TFrame")
-        d.pack(fill="x", pady=(self.px(12), self.px(0)))
-        ttk.Label(d, text="Lưu vào", style="Card.TLabel").pack(side="left")
-        ttk.Entry(d, textvariable=self.out_dir).pack(side="left", fill="x", expand=True,
-                                                     padx=(self.px(8), self.px(0)))
-        ttk.Button(d, text="Đổi…", style="Ghost.TButton",
-                   command=self._pick_out_dir).pack(side="left", padx=(self.px(8), self.px(0)))
-        ttk.Label(f, text="Ưu tiên phụ đề có sẵn của video; nếu không có thì tự tạo bằng "
-                          "Whisper (model ở trên). “Chỉ transcript” không tải video.",
-                  style="Card.Hint.TLabel", wraplength=self.px(430)).pack(anchor="w", pady=(self.px(8), self.px(0)))
+        self._lbl(s, "Nhúng phụ đề vào video", size=9).pack(side="left", padx=(self.px(6), 0))
+        d = self._frame(f, bg="card")
+        d.pack(fill="x", pady=(self.px(8), 0))
+        self._lbl(d, "Lưu vào", fg="muted", size=9).pack(side="left")
+        tk.Label(d, textvariable=self.out_dir, font=(self.F, 9), bd=0).pack(
+            side="left", padx=(self.px(6), self.px(6)))
+        self._tw(d.winfo_children()[-1], bg="card", fg="muted")
+        self._link_lbl(d, "Đổi", self._pick_out_dir, size=9).pack(side="left")
         self.f_src_yt = f
 
     def _build_src_rec(self, box):
-        f = ttk.Frame(box, style="CardInner.TFrame")
-        ttk.Label(f, text="Bấm “Bắt đầu thu âm”, đọc trong 15 phút, rồi bấm "
-                          "“Dừng & chuyển thành văn bản”.",
-                  style="Card.Hint.TLabel", wraplength=self.px(430)).pack(anchor="w")
-        self.lbl_rec_level = ttk.Label(f, text="", style="Card.Mono.TLabel")
-        self.lbl_rec_level.pack(anchor="w", pady=(self.px(8), self.px(0)))
-        self._mk_mic_row(f)
+        f = self._frame(box, bg="card")
+        self._lbl(f, "Bấm “Bắt đầu thu âm” rồi nói, tối đa 15 phút; xong thì bấm "
+                     "“Dừng & chuyển thành văn bản”.", size=10, anchor="w",
+                  justify="left").pack(fill="x")
+        mic = self._frame(f, bg="card")
+        mic.pack(fill="x", pady=(self.px(6), 0))
+        self.stt_mic_lbl = self._lbl(mic, "", fg="muted", size=9)
+        self.stt_mic_lbl.pack(side="left")
+        self._link_lbl(mic, "Đổi", lambda: self._show_screen("set"), size=9).pack(
+            side="left", padx=(self.px(6), 0))
+        # T-04: thanh mức âm vẽ bằng Canvas thay chuỗi "[####····]"
+        self.stt_meter_row = self._frame(f, bg="card")
+        self.stt_meter = self._tw(tk.Canvas(self.stt_meter_row, width=self.px(260),
+                                            height=self.px(10), bd=0, highlightthickness=0),
+                                  bg="card")
+        self.stt_meter.pack(side="left")
+        self.lbl_rec_level = self._lbl(self.stt_meter_row, "", fg="rec", size=9, weight="bold")
+        self.lbl_rec_level.pack(side="left", padx=(self.px(12), 0))
+        self.mic_var.trace_add("write", lambda *_: self.stt_mic_lbl.configure(
+            text="Micro: %s  ·" % short_mic_name(self.mic_var.get())))
         self.f_src_rec = f
 
-    def _build_result(self, parent):
-        card = self._card(parent, None, expand=True, pady=(self.px(0), self.px(0)))
-        head = ttk.Frame(card, style="CardInner.TFrame")
-        head.pack(fill="x")
-        ttk.Label(head, text="Kết quả", style="Card.Title.TLabel").pack(side="left")
-        ttk.Label(head, textvariable=self.stats, style="Card.Hint.TLabel").pack(side="right")
+    # ----- vùng chữ: trống / đang thu / đang xử lý / kết quả -----
+    def _build_stt_doc(self, doc):
+        pad = (self.px(28), self.px(20))
+        self.sd_empty = self._frame(doc, bg="card")
+        mid = self._frame(self.sd_empty, bg="card")
+        mid.place(relx=0.5, rely=0.45, anchor="center")
+        self.sd_icon = self._tw(tk.Canvas(mid, width=self.px(56), height=self.px(56), bd=0,
+                                          highlightthickness=0), bg="card")
+        self.sd_icon.pack()
+        self.sd_title = self._lbl(mid, "", size=17, weight="bold")
+        self.sd_title.pack(pady=(self.px(12), self.px(6)))
+        self.sd_body = self._lbl(mid, "", fg="muted", size=10, justify="center",
+                                 wraplength=self.px(520))
+        self.sd_body.pack()
+        self._redraws.append(self._draw_sd_icon)
 
-        self.res_nb = ttk.Notebook(card, style="Card.TNotebook")
-        self.res_nb.pack(fill="both", expand=True, pady=(self.px(10), self.px(10)))
-        t_text = ttk.Frame(self.res_nb, style="CardInner.TFrame", padding=(self.px(0), self.px(8), self.px(0), self.px(0)))
-        t_srt = ttk.Frame(self.res_nb, style="CardInner.TFrame", padding=(self.px(0), self.px(8), self.px(0), self.px(0)))
-        self.res_nb.add(t_text, text="Văn bản")
-        self.res_nb.add(t_srt, text="SRT")
-        bar = ttk.Frame(t_text, style="CardInner.TFrame")
-        bar.pack(fill="x", pady=(self.px(0), self.px(6)))
-        ttk.Checkbutton(bar, text="Kèm mốc thời gian", variable=self.show_time,
-                        style="Card.TCheckbutton",
-                        command=self._render_preview).pack(side="right")
-        self.txt_out = self._mk_text(t_text, role="out", scroll=True)
-        self.txt_out.holder.pack(fill="both", expand=True)
-        self.txt_srt = self._mk_text(t_srt, role="out", scroll=True, font=("Consolas", 10),
-                                     state="disabled")
-        self.txt_srt.holder.pack(fill="both", expand=True)
+        self.sd_proc = self._frame(doc, bg="card")
+        self._lbl(self.sd_proc, "Văn bản sẽ hiện ở đây khi nhận dạng xong.", fg="muted",
+                  size=10, anchor="w").pack(fill="x", padx=pad[0], pady=(pad[1], self.px(8)))
+        for frac in (0.92, 0.84, 0.88, 0.60, 0.90, 0.72):
+            holder = self._frame(self.sd_proc, bg="card", height=self.px(12))
+            holder.pack(fill="x", padx=pad[0], pady=(self.px(8), 0))
+            self._frame(holder, bg="card2").place(x=0, y=0, relwidth=frac * 0.7,
+                                                  relheight=1.0)
 
-        act = ttk.Frame(card, style="CardInner.TFrame")
-        act.pack(fill="x")
-        self.btn_copy = ttk.Button(act, text="Sao chép", style="Ghost.TButton",
-                                   command=self._copy, state="disabled")
-        self.btn_copy.pack(side="left")
-        self.btn_txt = ttk.Button(act, text="Lưu .txt", style="Ghost.TButton",
-                                  command=self._save_txt, state="disabled")
-        self.btn_txt.pack(side="left", padx=(self.px(8), self.px(0)))
-        self.btn_srt = ttk.Button(act, text="Lưu .srt", style="Ghost.TButton",
-                                  command=self._save_srt, state="disabled")
-        self.btn_srt.pack(side="left", padx=(self.px(8), self.px(0)))
-        self.btn_folder = ttk.Button(act, text="Mở thư mục", style="Ghost.TButton",
-                                     command=self._open_folder, state="disabled")
-        self.btn_folder.pack(side="left", padx=(self.px(8), self.px(0)))
-        self.btn_open = ttk.Button(act, text="Mở file gốc", style="Ghost.TButton",
-                                   command=self._open_file, state="disabled")
-        self.btn_open.pack(side="left", padx=(self.px(8), self.px(0)))
+        self.sd_res = self._frame(doc, bg="card")
+        head = self._frame(self.sd_res, bg="card")
+        head.pack(fill="x", padx=pad[0], pady=(self.px(16), self.px(10)))
+        self.res_view = tk.StringVar(value="text")
+        self._mk_seg(head, (("text", "Văn bản"), ("srt", "Phụ đề SRT")), self.res_view,
+                     self._stt_res_view).pack(side="left")
+        self.sd_time = self._frame(head, bg="card")
+        self._lbl(self.sd_time, "Kèm mốc thời gian", size=9).pack(side="right")
+        self._mk_switch(self.sd_time, self.show_time, self._render_preview).pack(
+            side="right", padx=(0, self.px(8)))
+        self.sd_time.pack(side="right")
+        self.txt_out = self._mk_text(self.sd_res, role="doc", scroll=True,
+                                     font=(self.F, 12), padx=self.px(4), pady=self.px(4),
+                                     spacing1=self.px(3), spacing2=self.px(3),
+                                     spacing3=self.px(5))
+        self.txt_out.bind("<Configure>", self._doc_margin, add="+")
+        self.txt_srt = self._mk_text(self.sd_res, role="doc", scroll=True,
+                                     font=("Consolas", 10), state="disabled")
+        self._stt_res_view()
+
+    def _doc_margin(self, e):
+        # S-8 / T-03: dòng chữ ≤ ~720 px (≈ 90 ký tự) cho dễ đọc
+        self.txt_out.tag_configure("doc", rmargin=max(0, e.width - self.px(760)))
+
+    def _stt_res_view(self):
+        srt = self.res_view.get() == "srt"
+        for w, on in ((self.txt_out.holder, not srt), (self.txt_srt.holder, srt)):
+            if on and not w.winfo_manager():
+                w.pack(fill="both", expand=True, padx=(self.px(24), self.px(8)),
+                       pady=(0, self.px(12)))
+            elif not on and w.winfo_manager():
+                w.pack_forget()
+        if srt and self.sd_time.winfo_manager():
+            self.sd_time.pack_forget()
+        elif not srt and not self.sd_time.winfo_manager():
+            self.sd_time.pack(side="right")
+
+    def _draw_sd_icon(self):
+        c, P = self.sd_icon, self.P
+        c.configure(bg=P["card"])
+        rec = getattr(self, "_sd_mode", "empty") == "recording"
+        self._draw_icon(c, "mic" if rec else "doc", P["rec"] if rec else P["muted"],
+                        self.px(56), bg=P["card"])
+
+    # ----- panel phải: mẹo / đang xử lý / kết quả + xuất file / lỗi; nhật ký thu gọn -----
+    def _build_stt_side(self, side):
+        pad = self.px(22)
+        # đáy: nhật ký thu gọn (T-02) — bấm để mở
+        self.log_box = self._frame(side, bg="side", height=self.px(240))
+        self.log_box.pack_propagate(False)
+        self.log_txt = self._mk_text(self.log_box, role="log", scroll=True, state="disabled",
+                                     font=(self.F, 9))
+        self.log_txt.holder.pack(fill="both", expand=True)
+        logbar = self._frame(side, bg="card2", cursor="hand2")
+        logbar.pack(side="bottom", fill="x", padx=pad, pady=(self.px(6), pad))
+        self.log_toggle = self._lbl(logbar, "Nhật ký ▸", bg="card2", fg="accent_fg", size=9,
+                                    cursor="hand2")
+        self.log_toggle.pack(side="left", padx=(self.px(10), self.px(8)), pady=self.px(6))
+        self.log_last = self._lbl(logbar, "", bg="card2", size=9, anchor="w", cursor="hand2")
+        self.log_last.pack(side="left", fill="x", expand=True, padx=(0, self.px(8)))
+        for w in (logbar, self.log_toggle, self.log_last):
+            w.bind("<Button-1>", lambda e: self._toggle_log())
+        self._log_logbar = logbar
+        self._log_open = False
+        self.stt_status = self._wrap_stt(self._lbl(side, "", bg="side", fg="muted", size=9,
+                                                   justify="left", anchor="w"))
+        self.stt_status.configure(textvariable=self.status)
+        self.stt_status.pack(side="bottom", fill="x", padx=pad)
+
+        body = self._frame(side, bg="side")
+        body.pack(fill="both", expand=True, padx=pad, pady=(pad, 0))
+        self._stt_body = body
+        # mẹo khi chưa có kết quả
+        self.ss_empty = self._frame(body, bg="side")
+        self._caps(self.ss_empty, "MẸO").pack(fill="x", pady=(0, self.px(8)))
+        self.ss_tips = self._frame(self.ss_empty, bg="side")
+        self.ss_tips.pack(fill="x")
+        self._lbl(self.ss_empty, "Ctrl+O chọn file · Ctrl+Enter bắt đầu · Esc hủy", bg="side",
+                  fg="muted", size=9, anchor="w").pack(fill="x", pady=(self.px(14), 0))
+        # đang xử lý / đang thu / lỗi
+        self.ss_busy = self._frame(body, bg="side")
+        self.ss_busy_t = self._lbl(self.ss_busy, "", bg="side", size=15, weight="bold",
+                                   anchor="w")
+        self.ss_busy_t.pack(fill="x")
+        self.ss_busy_s = self._wrap_stt(self._lbl(self.ss_busy, "", bg="side", fg="muted",
+                                                  size=10, justify="left", anchor="w"))
+        self.ss_busy_s.pack(fill="x", pady=(self.px(6), 0))
+        # kết quả: thống kê + xuất file
+        self.ss_res = self._frame(body, bg="side")
+        self._lbl(self.ss_res, "Xong", bg="side", size=15, weight="bold", anchor="w").pack(
+            fill="x")
+        self.ss_note = self._wrap_stt(self._lbl(self.ss_res, "", bg="side", fg="muted", size=9,
+                                                justify="left", anchor="w"))
+        self.ss_note.pack(fill="x", pady=(self.px(2), self.px(12)))
+        grid = self._frame(self.ss_res, bg="side")
+        grid.pack(fill="x")
+        self.st_vals = {}
+        for i, (key, cap) in enumerate((("lines", "dòng"), ("words", "từ"),
+                                        ("dur", "thời lượng"))):
+            cell = self._frame(grid, bg="side")
+            cell.grid(row=0, column=i, sticky="w")
+            grid.grid_columnconfigure(i, weight=1)
+            self.st_vals[key] = self._lbl(cell, "", bg="side", size=15, weight="bold",
+                                          anchor="w")
+            self.st_vals[key].pack(anchor="w")
+            self._lbl(cell, cap, bg="side", fg="muted", size=9, anchor="w").pack(anchor="w")
+        self.btn_copy = ttk.Button(self.ss_res, text="Sao chép văn bản", style="Accent.TButton",
+                                   command=self._copy)
+        self.btn_copy.pack(fill="x", pady=(self.px(16), self.px(8)))
+        two = self._frame(self.ss_res, bg="side")
+        two.pack(fill="x")
+        two.grid_columnconfigure(0, weight=1, uniform="x")
+        two.grid_columnconfigure(1, weight=1, uniform="x")
+        self.btn_txt = ttk.Button(two, text="Lưu .txt", style="Ghost.TButton",
+                                  command=self._save_txt)
+        self.btn_txt.grid(row=0, column=0, sticky="ew", padx=(0, self.px(4)))
+        self.btn_srt = ttk.Button(two, text="Lưu .srt", style="Ghost.TButton",
+                                  command=self._save_srt)
+        self.btn_srt.grid(row=0, column=1, sticky="ew", padx=(self.px(4), 0))
+        links = self._frame(self.ss_res, bg="side")
+        links.pack(fill="x", pady=(self.px(10), 0))
+        self.btn_folder = self._link_lbl(links, "Mở thư mục",
+                                         lambda: self.btn_folder._enabled and self._open_folder(),
+                                         bg="side", size=10)
+        self.btn_folder.pack(side="left")
+        self.btn_open = self._link_lbl(links, "Mở file gốc",
+                                       lambda: self.btn_open._enabled and self._open_file(),
+                                       bg="side", size=10)
+        self.btn_open.pack(side="left", padx=(self.px(16), 0))
+        self._link_state(self.btn_folder, False)
+        self._link_state(self.btn_open, False)
+        body.bind("<Configure>", lambda e: self._stt_wrap_all(e.width))
+
+    def _wrap_stt(self, lb):
+        self._stt_side_wraps = getattr(self, "_stt_side_wraps", [])
+        self._stt_side_wraps.append(lb)
+        return lb
+
+    def _stt_wrap_all(self, width):
+        if width <= 1:
+            return
+        alive = []
+        for lb in getattr(self, "_stt_side_wraps", []):
+            try:
+                lb.configure(wraplength=max(self.px(80), width))
+                alive.append(lb)
+            except tk.TclError:
+                pass          # nhãn mẹo đã hủy khi đổi trạng thái
+        self._stt_side_wraps = alive
+
+    def _toggle_log(self):
+        self._log_open = not self._log_open
+        self.log_toggle.configure(text="Nhật ký ▾" if self._log_open else "Nhật ký ▸")
+        if self._log_open:
+            self.log_box.pack(side="bottom", fill="x", padx=self.px(22),
+                              before=self._log_logbar)
+            self.log_txt.see("end")
+        else:
+            self.log_box.pack_forget()
+
+    def _stt_view(self):
+        """Vẽ màn Văn bản theo trạng thái (D-31) + có kết quả hay chưa (S-8)."""
+        has = bool(self.last_cues or (self.last_payload or {}).get("text"))
+        doc, side = stt_view(getattr(self, "stt_state", "idle"), has)
+        self._sd_mode = doc
+        yt = self.src.get() == "yt"
+        for name, w in (("empty", self.sd_empty), ("recording", self.sd_empty),
+                        ("processing", self.sd_proc), ("result", self.sd_res)):
+            if name != doc and w.winfo_manager() and not (w is self.sd_empty and
+                                                           doc in ("empty", "recording")):
+                w.pack_forget()
+        target = {"empty": self.sd_empty, "recording": self.sd_empty,
+                  "processing": self.sd_proc, "result": self.sd_res}[doc]
+        if not target.winfo_manager():
+            target.pack(fill="both", expand=True)
+        if doc == "recording":
+            self.sd_title.configure(text="Đang thu âm…")
+            self.sd_body.configure(text="Nói tự nhiên, rõ ràng. Bấm “Dừng & chuyển thành văn "
+                                        "bản” khi xong — tối đa 15 phút.")
+        elif yt:
+            self.sd_title.configure(text="Tải video, audio hoặc chỉ lấy phụ đề")
+            self.sd_body.configure(text="Dán link ở trên rồi bấm nút tải. Oriole dùng phụ đề có "
+                                        "sẵn của video; nếu không có, sẽ tự tạo bằng Whisper "
+                                        "ngay trên máy bạn.")
+        else:
+            self.sd_title.configure(text="Biến âm thanh thành chữ và phụ đề")
+            self.sd_body.configure(text="Chọn một file ở trên, dán link YouTube hoặc ghi âm trực "
+                                        "tiếp. Mọi thứ chạy ngay trên máy bạn, không cần mạng.")
+        self._draw_sd_icon()
+        for w in (self.ss_empty, self.ss_busy, self.ss_res):
+            if w.winfo_manager():
+                w.pack_forget()
+        if side == "empty":
+            for ch in self.ss_tips.winfo_children():
+                ch.destroy()
+            tips = (("Chọn “Chỉ transcript” nếu chỉ cần chữ — không tải video.",
+                     "Phụ đề dịch máy của YouTube sẽ được ghi rõ trong Nhật ký.",
+                     "Model “small” cho tiếng Việt chính xác hơn “base”.") if yt else
+                    ("Tiếng Việt: chọn Model “small” ở góc dưới bên trái.",
+                     "File dài 1 giờ mất vài phút với model small.",
+                     "Ghi âm tối đa 15 phút; bấm Dừng khi nói xong."))
+            for t in tips:
+                self._wrap_stt(self._lbl(self.ss_tips, t, bg="side", size=10, justify="left",
+                                         anchor="w")).pack(fill="x", pady=(0, self.px(8)))
+            self.ss_empty.pack(fill="x")
+        elif side == "result":
+            self.ss_res.pack(fill="x")
+        else:
+            t, s = {"processing": ("Đang xử lý…", "Có thể bấm Hủy (Esc) bất cứ lúc nào. "
+                                   "Tiến trình hiện ngay dưới ô nguồn."),
+                    "recording": ("Đang thu âm…", "Thời gian và mức âm hiện dưới ô nguồn."),
+                    "error": ("Chưa xong — có lỗi", "Xem chi tiết trong Nhật ký bên dưới, sửa "
+                              "rồi thử lại.")}[side]
+            self.ss_busy_t.configure(text=t)
+            self.ss_busy_s.configure(text=s)
+            self.ss_busy.pack(fill="x")
+        self._stt_wrap_all(self._stt_body.winfo_width())
 
     # ----- đổi nguồn / tham số -----
     def _src_changed(self):
@@ -2983,6 +3242,8 @@ class App(tk.Tk):
         target = {"file": self.f_src_file, "yt": self.f_src_yt, "rec": self.f_src_rec}[src]
         target.pack(fill="x")
         self._update_primary()
+        if hasattr(self, "sd_empty"):
+            self._stt_view()
 
     def _src_label(self):
         """Nhãn nút chính khi rảnh, theo nguồn đang chọn."""
@@ -2990,7 +3251,7 @@ class App(tk.Tk):
             return "●  Bắt đầu thu âm"
         if self.src.get() == "yt":
             kind = YT_KIND_BY_NAME.get(self.yt_kind.get(), "video")
-            return {"video": "⬇  Tải video", "audio": "⬇  Tải audio"}.get(
+            return {"video": "Tải video", "audio": "Tải audio"}.get(
                 kind, "▶  Lấy transcript")
         return "▶  Bắt đầu"
 
@@ -3005,7 +3266,7 @@ class App(tk.Tk):
             self._update_primary()
         try:
             self.cb_sublang.state(["!disabled"] if on else ["disabled"])
-            self.cb_embed.state(["!disabled"] if (on and kind == "video") else ["disabled"])
+            self._switch_state(self.cb_embed, on and kind == "video")
             self.cb_quality.state(["disabled"] if kind == "subs" else ["!disabled"])
         except Exception:
             pass
@@ -3043,6 +3304,9 @@ class App(tk.Tk):
         t.insert("end", str(msg).strip() + "\n", {"err": "err"}.get(level, ""))
         t.see("end")
         t.configure(state="disabled")
+        last = "%s · %s" % (stamp, " ".join(str(msg).split()))
+        self.log_last.configure(text=last if len(last) <= 46 else last[:45] + "…",
+                                fg=self.P["bad_fg"] if level == "err" else self.P["fg"])
 
     def _pbar(self, value):
         if value is None:
@@ -3070,14 +3334,26 @@ class App(tk.Tk):
         c = stt_controls(state, self._src_label())
         self.btn_run.state(["!disabled"] if c["run_enabled"] else ["disabled"])
         self.btn_run.configure(text=c["run_text"])
-        self.btn_cancel.state(["!disabled"] if c["cancel_enabled"] else ["disabled"])
-        if c["show_pbar"] and not self.pbar.winfo_manager():
-            self.pbar.pack(**self._pbar_pack)
-        elif not c["show_pbar"] and self.pbar.winfo_manager():
+        # "Hủy (Esc)" chỉ hiện khi có việc để hủy (thiết kế S-8)
+        if c["cancel_enabled"] and not self.btn_cancel.winfo_manager():
+            self.btn_cancel.pack(side="right")
+        elif not c["cancel_enabled"] and self.btn_cancel.winfo_manager():
+            self.btn_cancel.pack_forget()
+        if c["show_pbar"] and not self.stt_prog.winfo_manager():
+            self.stt_prog.pack(fill="x")
+        elif not c["show_pbar"] and self.stt_prog.winfo_manager():
             self.pbar.stop()
-            self.pbar.pack_forget()
-        if state != "recording":
+            self.stt_prog.pack_forget()
+        rec = state == "recording"
+        if rec and not self.stt_meter_row.winfo_manager():
+            self.stt_meter_row.pack(fill="x", pady=(self.px(10), 0))
+            self._draw_meter(0.0, self.stt_meter)
+        elif not rec and self.stt_meter_row.winfo_manager():
+            self.stt_meter_row.pack_forget()
+        if not rec:
             self.lbl_rec_level.configure(text="")
+        self._stt_seg._draw()
+        self._stt_view()
 
     def _set_prac_state(self, state):
         """Màn hình Luyện: idle | recording | scoring | result | unsure | error."""
@@ -3110,7 +3386,7 @@ class App(tk.Tk):
         locked = state in ("recording", "scoring")
         for w in (self.cb_prac, self.btn_pprev, self.btn_pnext):
             w.state(["disabled"] if locked else ["!disabled"])
-        self._draw_seg()
+        self._seg._draw()
         if state in ("idle", "recording", "scoring", "error"):
             self._panel_state(state)
 
@@ -3232,6 +3508,8 @@ class App(tk.Tk):
                     messagebox.showerror("Lỗi thu âm", payload)
                 elif kind == "prac_status":
                     self.p_status.set(payload)
+                elif kind == "mic_test":
+                    self.mic_test_msg.set(payload)
                 elif kind == "prac_autostop":
                     self._prac_stop_and_score(payload)
                 elif kind == "prac_done":
@@ -3573,9 +3851,14 @@ class App(tk.Tk):
         w = self.txt_out
         w.configure(state="normal")
         w.delete("1.0", "end")
-        w.insert("1.0", text if text else "")
-        if not text:
-            w.insert("1.0", "Kết quả sẽ hiện ở đây sau khi bạn bấm Bắt đầu.", "note")
+        # chữ giống hệt cues_to_txt (để Lưu .txt / Sao chép không đổi); mốc thời gian tô mờ
+        for line in (text or "").splitlines():
+            m = re.match(r"(\[\d{2}:\d{2}:\d{2}\] )(.*)", line)
+            if m:
+                w.insert("end", m.group(1), ("doc", "time"))
+                w.insert("end", m.group(2) + "\n", "doc")
+            else:
+                w.insert("end", line + "\n", "doc")
 
     def _on_result(self, p):
         self._set_stt_state("result")
@@ -3594,22 +3877,26 @@ class App(tk.Tk):
         self.txt_srt.configure(state="disabled")
         words = sum(len(c[2].split()) for c in cues)
         dur = cues[-1][1] if cues else 0
-        self.stats.set(f"{len(cues)} dòng · {words:,} từ · {clock_time(dur)}"
-                       if cues else "không có nội dung")
+        self.st_vals["lines"].configure(text=str(len(cues)))
+        self.st_vals["words"].configure(text=f"{words:,}".replace(",", "."))
+        self.st_vals["dur"].configure(text=short_duration(dur))
         on = bool(cues)
         for b in (self.btn_copy, self.btn_txt):
             b.state(["!disabled"] if on else ["disabled"])
         self.btn_srt.state(["!disabled"] if cues else ["disabled"])
-        self.btn_folder.state(["!disabled"] if (self.last_srt or self.last_media) else ["disabled"])
-        self.btn_open.state(["!disabled"] if (self.last_media and os.path.exists(self.last_media))
-                            else ["disabled"])
+        self._link_state(self.btn_folder, bool(self.last_srt or self.last_media))
+        self._link_state(self.btn_open, bool(self.last_media and os.path.exists(self.last_media)))
         note = p.get("note") or "Xong."
+        src = os.path.basename(self.last_media) if self.last_media else (p.get("base") or "")
+        self.ss_note.configure(text=" · ".join(x for x in (src, note) if x))
         self.status.set(note)
         self._log(note)
+        self._stt_view()
 
     def _on_error(self, err):
         self._set_stt_state("idle" if err == "__cancelled__" else "error")
         self.pbar.configure(mode="determinate", value=0)
+        self._stt_view()
         if err == "__cancelled__":
             self.status.set("Đã hủy.")
             self._log("Đã hủy tác vụ.", "err")
@@ -3704,9 +3991,10 @@ class App(tk.Tk):
         if not self.recording:
             return
         el = int(time.time() - self.recorder.t0)
-        self.lbl_rec_level.configure(
-            text=f"● {el}s / {REC_LONG_SEC}s   {self.recorder.level_bar()}")
-        self.after(200, self._rec_tick)
+        self.lbl_rec_level.configure(text="● Đang thu · %d:%02d / %d:00"
+                                     % (el // 60, el % 60, REC_LONG_SEC // 60))
+        self._draw_meter(self.recorder.level, self.stt_meter)
+        self.after(120, self._rec_tick)
 
     def _rec_stop_and_transcribe(self):
         if not self.recording or self.rec_owner != "stt":
@@ -3734,19 +4022,6 @@ class App(tk.Tk):
                                True, base), daemon=True).start()
 
     # ================= tab 2: luyện phát âm =================
-    def _fix_sash(self, pw, pos):
-        try:
-            if pw.sashpos(0) < self.px(120):
-                self._sash(pw, self.px(pos))
-        except tk.TclError:
-            pass
-
-    def _sash(self, pw, pos):
-        try:
-            pw.sashpos(0, pos)
-        except Exception:
-            pass
-
     # ================= màn hình Luyện phát âm (app-style, D-28 / B4a) =================
     def _build_practice_tab(self, parent):
         self._p_target = ""
@@ -3762,16 +4037,10 @@ class App(tk.Tk):
 
         # ---- thanh công cụ: chế độ · bài · vị trí · bài trước/sau ----
         bar = self._toolbar(parent)
-        self._seg = self._frame(bar, bg="card2")
+        self._seg = self._mk_seg(bar, (("set", "Luyện câu"), ("guide", "Học âm")),
+                                 self.prac_mode, self._prac_mode_changed,
+                                 locked=lambda: self.p_working or self.recording)
         self._seg.pack(side="left", padx=(self.px(28), self.px(16)))
-        self._seg_items = {}
-        for code, text in (("set", "Luyện câu"), ("guide", "Học âm")):
-            lb = tk.Label(self._seg, text=text, font=(self.F, 10), bd=0, cursor="hand2",
-                          padx=self.px(12), pady=self.px(4), highlightthickness=1)
-            lb.pack(side="left", padx=self.px(3), pady=self.px(3))
-            lb.bind("<Button-1>", lambda e, c=code: self._set_prac_mode(c))
-            self._seg_items[code] = lb
-        self._redraws.append(self._draw_seg)
         self.cb_prac = ttk.Combobox(bar, textvariable=self.prac_pick, width=30,
                                     state="readonly", style="Toolbar.TCombobox",
                                     font=(self.F, 12, "bold"))
@@ -4052,8 +4321,8 @@ class App(tk.Tk):
                         ox=(d - s) // 2, oy=(d - s) // 2, clear=False)
         c.configure(cursor="hand2" if on else "")
 
-    def _draw_meter(self, level=0.0):
-        c, P = self.p_meter, self.P
+    def _draw_meter(self, level=0.0, c=None):
+        c, P = c or self.p_meter, self.P
         c.delete("all")
         W, H, n = self.px(260), self.px(10), 20
         gap = max(1, self.px(3))
@@ -4072,20 +4341,6 @@ class App(tk.Tk):
             self.p_mic_lbl.configure(text="Micro: %s  ·" % short_mic_name(name))
 
     # ----- thanh công cụ: chế độ, bài trước/sau -----
-    def _draw_seg(self):
-        P = self.P
-        cur = self.prac_mode.get()
-        locked = self.p_working or self.recording
-        for code, lb in self._seg_items.items():
-            sel = code == cur
-            lb.configure(bg=P["card"] if sel else P["card2"],
-                         fg=P["fg"] if sel else (P["disabled_fg"] if locked else P["muted"]),
-                         font=(self.F, 10, "bold" if sel else "normal"),
-                         highlightbackground=P["border"] if sel else P["card2"],
-                         highlightcolor=P["border"] if sel else P["card2"],
-                         cursor="" if locked else "hand2")
-        self._seg.configure(bg=P["card2"])
-
     def _set_prac_mode(self, code):
         if self.p_working or self.recording or code == self.prac_mode.get():
             return
@@ -4384,7 +4639,7 @@ class App(tk.Tk):
         self.p_how.configure(text=tip)
         self._stage_repack(custom, ipa, hint, tip)
         self._fill_samples(samples)
-        self._draw_seg()
+        self._seg._draw()
         self._update_prog(sid)
 
     def _fill_samples(self, samples):
@@ -5212,6 +5467,7 @@ class App(tk.Tk):
         if dev is None:
             return
         self.status.set(f"Đang kiểm tra mic ({mic}) — nói “a…” to trong 2 giây…")
+        self.mic_test_msg.set("Đang nghe… nói “a…” to trong 2 giây.")
 
         def job():
             try:
@@ -5256,118 +5512,193 @@ class App(tk.Tk):
                 else:
                     msg = f"Mic tốt ({meas})."
                 self._queue.put(("status", "Kiểm tra mic: " + msg))
+                self._queue.put(("mic_test", msg))
                 self._queue.put(("prac_status", "Kiểm tra mic: " + msg))
             except Exception as e:
                 self._queue.put(("error", f"Lỗi kiểm tra mic: {e}"))
 
         threading.Thread(target=job, daemon=True).start()
 
-    # ================= tab 3: cài đặt =================
-    def _build_settings_tab(self, parent):
-        wrap = ttk.Frame(parent, style="App.TFrame")
-        wrap.pack(fill="both", expand=True)
-        left = ttk.Frame(wrap, style="App.TFrame")
-        left.pack(side="left", fill="both", expand=True, padx=(self.px(0), self.px(12)))
-        right = ttk.Frame(wrap, style="App.TFrame")
-        right.pack(side="left", fill="both", expand=True)
+    # ================= màn Cài đặt (B5): nhóm hàng kiểu Windows 11, lưu ngay khi đổi =================
+    def _build_settings_screen(self, parent):
+        bar = self._toolbar(parent, "Cài đặt")
+        right = self._frame(bar, bg="card")
+        right.pack(side="right", padx=(0, self.px(28)))
+        self.set_saved = self._lbl(right, "Thay đổi được lưu ngay", fg="muted", size=9)
+        self.set_saved.pack(side="left")
+        self._lbl(right, "  ·  ", fg="muted", size=9).pack(side="left")
+        self._link_lbl(right, "Khôi phục mặc định", self._reset_cfg, size=9).pack(side="left")
+        outer, inner = self._scroll_area(parent, "card")
+        outer.pack(fill="both", expand=True)
+        wrap = self._frame(inner, bg="card")
+        wrap.pack(fill="x", padx=self.px(28), pady=self.px(24))
+        cols = self._frame(wrap, bg="card")
+        cols.pack(fill="x")
+        cols.grid_columnconfigure(0, weight=1, uniform="c")
+        cols.grid_columnconfigure(1, weight=1, uniform="c")
+        left = self._frame(cols, bg="card")
+        left.grid(row=0, column=0, sticky="new", padx=(0, self.px(12)))
+        right = self._frame(cols, bg="card")
+        right.grid(row=0, column=1, sticky="new", padx=(self.px(12), 0))
+        self._set_wraps = []
+        inner.bind("<Configure>", lambda e: self._set_wrap_all(
+            (e.width - 2 * self.px(28)) // 2 - self.px(60)), add="+")
 
-        c = self._card(left, "Nhận dạng")
-        g = ttk.Frame(c, style="CardInner.TFrame")
-        g.pack(fill="x")
-        ttk.Label(g, text="Model", style="Card.TLabel").grid(row=0, column=0, sticky="w")
-        ttk.Combobox(g, textvariable=self.model_name, values=MODELS, width=10,
-                     state="readonly").grid(row=1, column=0, padx=(self.px(0), self.px(16)))
-        ttk.Label(g, text="Ngôn ngữ", style="Card.TLabel").grid(row=0, column=1, sticky="w")
-        ttk.Combobox(g, textvariable=self.lang_label, values=LANG_NAMES, width=12,
-                     state="readonly").grid(row=1, column=1)
-        ttk.Label(c, text=MODEL_HINT, style="Card.Hint.TLabel",
-                  wraplength=self.px(520)).pack(anchor="w", pady=(self.px(10), self.px(0)))
-        self._mk_mic_row(c)
+        # --- Micro ---
+        g = self._set_group(left, "Micro")
+        row = self._set_row(g, "Thiết bị thu âm", vertical=True)
+        cb = ttk.Combobox(row, textvariable=self.mic_var, width=1, state="readonly")
+        cb.pack(fill="x", pady=(self.px(6), 0))
+        self._mic_combos.append(cb)
+        self._tooltip(cb, self.mic_var.get)   # tên mic dài bị cắt trong ô (V-15)
+        row, r = self._set_row(g, "Kiểm tra micro", sub_var=self.mic_test_msg)
+        ttk.Button(r, text="Thử 2 giây", style="Accent.TButton",
+                   command=self._test_mic).pack(side="right")
+        # hai nút xếp DƯỚI chữ: cột hẹp (cửa sổ tối thiểu) không cắt mất nhãn
+        row = self._set_row(g, "Không thấy micro mới cắm?", vertical=True, last=True)
+        sub = self._lbl(row, "Tai nghe bluetooth cần bật chế độ Hands-Free", fg="muted",
+                        size=9, anchor="w", justify="left")
+        sub.pack(fill="x", pady=(self.px(2), 0))
+        self._set_wraps.append(sub)
+        r = self._frame(row, bg="card")
+        r.pack(fill="x", pady=(self.px(8), 0))
+        ttk.Button(r, text="Quét lại", style="Ghost.TButton",
+                   command=lambda: self._refresh_mics(rescan=True)).pack(side="left")
+        self._link_lbl(r, "Âm thanh Windows", self._open_sound_settings, size=10).pack(
+            side="left", padx=(self.px(14), 0))
+        hint = self._lbl(left, "", fg="muted", size=9, justify="left", anchor="w")
+        hint.pack(fill="x", pady=(self.px(6), 0))
+        self._set_wraps.append(hint)
+        self._mic_hints.append(hint)
 
-        c2 = self._card(left, "Lưu file & giao diện")
-        g2 = ttk.Frame(c2, style="CardInner.TFrame")
-        g2.pack(fill="x")
-        ttk.Label(g2, text="Thư mục lưu mặc định", style="Card.TLabel").pack(side="left")
-        ttk.Entry(g2, textvariable=self.out_dir).pack(side="left", fill="x", expand=True,
-                                                      padx=(self.px(8), self.px(0)))
-        ttk.Button(g2, text="Đổi…", style="Ghost.TButton",
-                   command=self._pick_out_dir).pack(side="left", padx=(self.px(8), self.px(0)))
-        g3 = ttk.Frame(c2, style="CardInner.TFrame")
-        g3.pack(fill="x", pady=(self.px(12), self.px(0)))
-        ttk.Label(g3, text="Giao diện", style="Card.TLabel").pack(side="left", padx=(self.px(0), self.px(10)))
-        ttk.Radiobutton(g3, text="Sáng", value="light", variable=self.theme_name,
-                        style="Card.TRadiobutton",
-                        command=self._toggle_theme).pack(side="left", padx=(self.px(0), self.px(14)))
-        ttk.Radiobutton(g3, text="Tối", value="dark", variable=self.theme_name,
-                        style="Card.TRadiobutton",
-                        command=self._toggle_theme).pack(side="left")
-        g4 = ttk.Frame(c2, style="CardInner.TFrame")
-        g4.pack(fill="x", pady=(self.px(14), self.px(0)))
-        ttk.Button(g4, text="Lưu cài đặt", style="Accent.TButton",
-                   command=lambda: (self._save_cfg(), self.status.set("Đã lưu cài đặt."))
-                   ).pack(side="left")
-        ttk.Button(g4, text="Mặc định", style="Ghost.TButton",
-                   command=self._reset_cfg).pack(side="left", padx=(self.px(8), self.px(0)))
+        # --- Giao diện và lưu file ---
+        g = self._set_group(left, "Giao diện và lưu file")
+        row, r = self._set_row(g, "Giao diện")
+        self._mk_seg(r, (("light", "Sáng"), ("dark", "Tối")), self.theme_name,
+                     self._toggle_theme).pack(side="right")
+        row = self._set_row(g, "Thư mục lưu video và phụ đề", vertical=True, last=True)
+        d = self._frame(row, bg="card")
+        d.pack(fill="x", pady=(self.px(6), 0))
+        ttk.Entry(d, textvariable=self.out_dir).pack(side="left", fill="x", expand=True)
+        ttk.Button(d, text="Đổi…", style="Ghost.TButton",
+                   command=self._pick_out_dir).pack(side="left", padx=(self.px(8), 0))
 
-        c5 = self._card(left, "Phím tắt", expand=True, pady=(self.px(0), self.px(0)))
-        for key, desc in (("Ctrl+O", "chọn file audio/video"),
-                          ("Ctrl+Enter", "bắt đầu chuyển / bắt đầu thu"),
-                          ("Ctrl+S", "lưu kết quả .txt"),
-                          ("Esc", "hủy tác vụ đang chạy")):
-            rowk = ttk.Frame(c5, style="CardInner.TFrame")
-            rowk.pack(fill="x", pady=(self.px(2), self.px(0)))
-            ttk.Label(rowk, text=key, style="Card.Mono.TLabel", width=12).pack(side="left")
-            ttk.Label(rowk, text=desc, style="Card.Hint.TLabel").pack(side="left")
+        # --- Phụ đề YouTube mặc định ---
+        g = self._set_group(right, "Phụ đề YouTube mặc định")
+        row, r = self._set_row(g, "Kèm phụ đề", "Lưu .srt và .txt cạnh video")
+        self._mk_switch(r, self.y_subs, self._yt_subs_changed).pack(side="right")
+        row, r = self._set_row(g, "Ngôn ngữ phụ đề")
+        ttk.Combobox(r, textvariable=self.yt_sub_lang, values=YT_SUB_LANG_NAMES, width=24,
+                     state="readonly").pack(side="right")
+        row, r = self._set_row(g, "Nhúng phụ đề vào video",
+                               "Bật/tắt được trong trình xem video", last=True)
+        self._mk_switch(r, self.y_embed).pack(side="right")
 
-        c3 = self._card(right, "Phụ đề mặc định")
-        g5 = ttk.Frame(c3, style="CardInner.TFrame")
-        g5.pack(fill="x")
-        ttk.Checkbutton(g5, text="Kèm phụ đề (.srt + .txt)", variable=self.y_subs,
-                        style="Card.TCheckbutton",
-                        command=self._yt_subs_changed).pack(side="left")
-        ttk.Label(g5, text="Ngôn ngữ", style="Card.TLabel").pack(side="left", padx=(self.px(14), self.px(6)))
-        ttk.Combobox(g5, textvariable=self.yt_sub_lang, values=YT_SUB_LANG_NAMES,
-                     width=22, state="readonly").pack(side="left")
-        ttk.Checkbutton(c3, text="Nhúng phụ đề vào video MP4", variable=self.y_embed,
-                        style="Card.TCheckbutton").pack(anchor="w", pady=(self.px(10), self.px(0)))
-        ttk.Label(c3, text="Phụ đề lấy từ video nếu có; nếu không có thì tạo bằng Whisper.",
-                  style="Card.Hint.TLabel", wraplength=self.px(520)).pack(anchor="w", pady=(self.px(8), self.px(0)))
+        # --- Phím tắt ---
+        g = self._set_group(right, "Phím tắt")
+        for i, (key, desc) in enumerate((("Ctrl+O", "Chọn file âm thanh / video"),
+                                         ("Ctrl+Enter", "Bắt đầu, hoặc bắt đầu / dừng thu"),
+                                         ("Ctrl+S", "Lưu văn bản (.txt)"),
+                                         ("Esc", "Hủy việc đang chạy hoặc dừng thu"))):
+            row, r = self._set_row(g, desc, last=i == 3, compact=True)
+            self._lbl(r, " %s " % key, bg="card2", size=9).pack(side="right")
 
-        c4 = self._card(right, "Thông tin", expand=True, pady=(self.px(0), self.px(0)))
-        self.info_txt = self._mk_text(c4, role="out", scroll=True, height=9, state="disabled",
-                                      wrap="char")
-        self.info_txt.holder.pack(fill="both", expand=True)
-        g6 = ttk.Frame(c4, style="CardInner.TFrame")
-        g6.pack(fill="x", pady=(self.px(10), self.px(0)))
-        ttk.Button(g6, text="Mở thư mục app", style="Ghost.TButton",
-                   command=lambda: os.startfile(BASE_DIR)).pack(side="left")
-        ttk.Button(g6, text="Mở README", style="Ghost.TButton",
-                   command=self._open_readme).pack(side="left", padx=(self.px(8), self.px(0)))
+        # --- Giới thiệu ---
+        g = self._set_group(right, "Giới thiệu")
+        box = self._frame(g, bg="card")
+        box.pack(fill="x", padx=self.px(16), pady=self.px(12))
+        self.info_lines = []
+        for _ in range(3):
+            lb = self._lbl(box, "", size=10, justify="left", anchor="w")
+            lb.pack(fill="x", pady=(0, self.px(4)))
+            self._set_wraps.append(lb)
+            self.info_lines.append(lb)
+        links = self._frame(box, bg="card")
+        links.pack(fill="x", pady=(self.px(4), 0))
+        self._link_lbl(links, "Mở thư mục app", lambda: os.startfile(BASE_DIR)).pack(side="left")
+        self._link_lbl(links, "Mở hướng dẫn (README)", self._open_readme).pack(
+            side="left", padx=(self.px(16), 0))
         self._fill_info()
+        self._redraws.append(self._fill_info)   # màu ✓/✗ theo theme
+
+    def _set_group(self, parent, title):
+        self._lbl(parent, title, size=11, weight="bold", anchor="w").pack(
+            fill="x", pady=(self.px(4) if not parent.winfo_children() else self.px(22),
+                            self.px(8)))
+        g = self._tw(tk.Frame(parent, bd=0, highlightthickness=1), bg="card",
+                     highlightbackground="border", highlightcolor="border")
+        g.pack(fill="x")
+        return g
+
+    def _set_row(self, g, label, sub=None, sub_var=None, last=False, vertical=False,
+                 compact=False):
+        """Một hàng cài đặt: nhãn (+ dòng phụ) bên trái, điều khiển bên phải."""
+        row = self._frame(g, bg="card")
+        row.pack(fill="x")
+        body = self._frame(row, bg="card")
+        body.pack(fill="x", padx=self.px(16), pady=self.px(8 if compact else 12))
+        if not last:
+            self._hline(row)
+        if vertical:
+            self._lbl(body, label, size=10, anchor="w").pack(fill="x")
+            return body
+        r = self._frame(body, bg="card")
+        r.pack(side="right", anchor="center")
+        txt = self._frame(body, bg="card")
+        txt.pack(side="left", fill="x", expand=True)
+        self._lbl(txt, label, size=10, anchor="w", justify="left").pack(fill="x")
+        if sub or sub_var is not None:
+            lb = self._lbl(txt, sub or "", fg="muted", size=9, anchor="w", justify="left")
+            if sub_var is not None:
+                lb.configure(textvariable=sub_var)
+            lb.pack(fill="x", pady=(self.px(2), 0))
+            self._set_wraps.append(lb)
+        return row, r
+
+    def _set_wrap_all(self, width):
+        alive = []
+        for lb in getattr(self, "_set_wraps", []):
+            try:
+                lb.configure(wraplength=max(self.px(120), width))
+                alive.append(lb)
+            except tk.TclError:
+                pass
+        self._set_wraps = alive
 
     def _fill_info(self):
         import importlib.util
-        rows = [f"Phiên bản: {APP_TITLE} v{VERSION}",
-                f"Python: {sys.version.split()[0]}",
-                f"Thư mục app: {BASE_DIR}",
-                f"Model đang chọn: {self.model_name.get()} · ngôn ngữ {self.lang_label.get()}",
-                "", "Thư viện:"]
-        for mod, label in (("faster_whisper", "faster-whisper (nhận dạng)"),
-                           ("yt_dlp", "yt-dlp (tải YouTube)"),
-                           ("imageio_ffmpeg", "ffmpeg (ghép / nhúng phụ đề)"),
-                           ("sounddevice", "sounddevice (thu âm)"),
-                           ("numpy", "numpy")):
+        ok = {}
+        for mod in ("faster_whisper", "yt_dlp", "imageio_ffmpeg", "sounddevice", "numpy"):
             try:
-                ok = importlib.util.find_spec(mod) is not None
+                ok[mod] = importlib.util.find_spec(mod) is not None
             except Exception:
-                ok = False
-            rows.append(f"  {'✓' if ok else '✗'}  {label}")
-        rows += ["", f"ffmpeg: {yt_ffmpeg_location() or '(chưa có)'}"]
-        t = self.info_txt
-        t.configure(state="normal")
-        t.delete("1.0", "end")
-        t.insert("1.0", "\n".join(rows))
-        t.configure(state="disabled")
+                ok[mod] = False
+        core = all(ok.values())
+        gop_ok = gop.available()
+        self.info_lines[0].configure(text="%s %s · chạy hoàn toàn trên máy · Python %s"
+                                     % (APP_TITLE, VERSION, sys.version.split()[0]))
+        self.info_lines[1].configure(
+            text="Nhận dạng, tải YouTube, phụ đề, thu âm: %s · Chấm âm vị chuyên sâu: %s"
+            % ("✓ sẵn sàng" if core else "✗ thiếu " + ", ".join(m for m, v in ok.items()
+                                                                if not v),
+               "✓" if gop_ok else "chưa cài (tùy chọn)"),
+            fg=self.P["ok_fg"] if core else self.P["bad_fg"])
+        self.info_lines[2].configure(text="ffmpeg: %s" % (yt_ffmpeg_location() or "(chưa có)"),
+                                     fg=self.P["muted"])
+
+    # ----- lưu ngay khi đổi (thay nút "Lưu cài đặt") -----
+    def _autosave(self, *_):
+        if not getattr(self, "_autosave_on", False):
+            return
+        if getattr(self, "_autosave_job", None):
+            self.after_cancel(self._autosave_job)
+        self._autosave_job = self.after(400, self._do_autosave)
+
+    def _do_autosave(self):
+        self._autosave_job = None
+        self._save_cfg()
+        self.set_saved.configure(text="✓ Đã lưu")
+        self.after(1600, lambda: self.set_saved.configure(text="Thay đổi được lưu ngay"))
 
     def _open_readme(self):
         p = os.path.join(BASE_DIR, "README.md")
@@ -5419,7 +5750,10 @@ class App(tk.Tk):
                                                                 YT_SUB_LANG_NAMES[0]))
         self._apply_theme()
         self._fill_info()
+        self._save_cfg()
         self.status.set("Đã khôi phục cài đặt mặc định.")
+        self.set_saved.configure(text="✓ Đã khôi phục mặc định")
+        self.after(1600, lambda: self.set_saved.configure(text="Thay đổi được lưu ngay"))
 
     def _on_close(self):
         try:

@@ -936,6 +936,19 @@ def progress_summary_lines():
     assert app.progress_summary(None)["line1"] == "Chưa luyện bài này."
 
 
+@case
+def transcription_screen_states():
+    # S-8: vùng chữ + panel theo trạng thái; kết quả cũ không mất khi lần sau lỗi
+    v = app.stt_view
+    assert v("idle", False) == ("empty", "empty")
+    assert v("processing", True) == ("processing", "processing")
+    assert v("recording", False) == ("recording", "recording")
+    assert v("result", True) == ("result", "result")
+    assert v("error", True) == ("result", "error") and v("error", False) == ("empty", "error")
+    assert [app.short_duration(x) for x in (18, 75, 3723, 0)] == ["0:18", "1:15", "1:02:03",
+                                                                   "0:00"]
+
+
 def main() -> int:
     if hasattr(sys.stdout, "reconfigure"):
         try:

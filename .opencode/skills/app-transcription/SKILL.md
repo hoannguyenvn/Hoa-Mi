@@ -21,7 +21,8 @@ riêng (`app-youtube`).
 | Worker | `App._w_file`, `App._w_whisper_cues` |
 | Model | `load_model`, `ensure_av_patched` |
 | Cue | `_fix_cues`, `split_long_cues`, `cues_to_srt`, `cues_to_txt` |
-| Kết quả | `App._on_result`, `App._on_error`, `App._render_preview` |
+| Kết quả | `App._on_result`, `App._on_error`, `App._render_preview` (chữ = `cues_to_txt`, tag `time` mờ) |
+| Màn hình (B5) | `stt_view`, `App._stt_view`, `App._stt_res_view`, `App._toggle_log`, `short_duration` — xem skill `app-ui` "Màn Văn bản + Cài đặt" |
 | Xuất | `App._copy`, `App._save_txt`, `App._save_srt`, `App._open_folder` |
 | Hằng số | `MODELS`, `LANGS`, `REC_LONG_SEC` (900 s, ghi âm Tab 1) |
 
