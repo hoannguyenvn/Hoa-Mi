@@ -290,6 +290,16 @@ theme cho mọi `tk.Text`, icon cửa sổ. Tương phản chữ ≥ 4,5 : 1 ở
 **Vì sao:** người dùng duyệt GATE B; một bộ token chung tránh lệch màu giữa các màn hình.
 **Hệ quả:** thêm màu mới phải thêm cả hai theme; widget mới dùng token, không mã màu rời.
 
+### D-33 — Git + GitHub riêng tư (2026-10-23)
+**Quyết định:** thư mục dự án là git repo, nhánh `main`, đẩy lên repo GitHub **riêng tư**
+`hoannguyenvn/oriole`. `.gitignore` loại `downloads/`, `__pycache__/`, `config.json`,
+`practice_history.json`; `.gitattributes` giữ LF (`.bat` CRLF), WAV/TTF nhị phân. Danh tính
+commit cục bộ dùng địa chỉ no-reply GitHub. Mỗi bước (B3, B4…) kết thúc bằng một commit.
+**Vì sao:** phiên B3 dừng giữa chừng mà không có cách xem/hoàn tác thay đổi; dự án chỉ
+nằm trên một ổ đĩa; cần thử ở máy khác (scaling 100/150 %).
+**Hệ quả:** không commit file tải về, model, dữ liệu cá nhân (AGENTS §8, I16); đổi sang
+công khai cần quyết định giấy phép trước.
+
 ## B. Những cách làm đã bị loại (đừng lặp lại)
 
 Nguồn: `PHASE2-DANH-GIA-DU-AN-CU.md` §2.2 và §6.

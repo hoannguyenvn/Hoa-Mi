@@ -2,9 +2,9 @@
 
 > Status: **GATE A passed 2026-10-22** — user approved the spec and accepted the default
 > answers for Q-01…Q-07 (§6). **GATE B passed 2026-10-22** (D-29…D-32). **Phase 3 build
-> in progress: B1, B2 done 2026-10-22 (§5.1–5.2), next B3.** Design
+> in progress: B1, B2 done 2026-10-22 (§5.1–5.2); B3 partly coded, not yet tested (§5.3).** Design
 > — canvas: https://claude.ai/artifact/L1oNuJ2Wq89LK7b8dFfRhK (private to the user).
-> No code is written until GATE B passes. Source of the issues: visual audits on
+> Source of the issues: visual audits on
 > 2026-10-22 (`docs/HANDOFF.md` entries "tiếp 10" and "tiếp 11").
 > UI copy stays Vietnamese (D-18); this plan is in English for review.
 
@@ -352,9 +352,9 @@ user checks in the real app. Increments are ordered so each one is useful alone.
 |---|---|---|---|
 | B1 Quick fixes ✅ | V-01…V-05, V-07, V-08, V-10, V-11, V-13, P-01, P-05, P-08 + font (D-28) | 13 issues, no layout change | done |
 | B2 Foundations ✅ | S-1 state model, S-2 `build_result_view` + tests, keep word timings (S-5 data), history `tries` (S-7 data) | A-01, A-02, H-02 (+ H-03 data side) | done |
-| B3 Trust and feedback | S-3 evidence gate, S-4 Vietnamese wording + `rhyme`, chips + cards drawn from view-model | P-02, P-03, P-04, P-06, P-07, P-09, P-10 | 1,5 d |
-| B4 Layout and chart | S-6 practice layout, S-5 chart, S-7 progress UI, V-09, V-12, V-15 | P-11…P-13, C-01…C-04, H-01, H-03, V-09, V-12, V-15 | 1,5–2 d |
-| B5 Tab 1 and polish | S-8, V-06, V-14, T-04, final contrast pass | T-01…T-04, V-06, V-14 | 0,5–1 d |
+| B3 Trust and feedback 🟡 | S-3 evidence gate, S-4 Vietnamese wording + `rhyme`, chips + cards drawn from view-model | P-02, P-03, P-04, P-06, P-07, P-09, P-10 | 1,5 d |
+| B4 Layout and chart | app-style layout (§4.1, D-28; replaces S-6 columns), S-5 chart, S-7 progress UI, V-09, V-12, V-15 | P-11…P-13, C-01…C-04, H-01, H-03, V-09, V-12, V-15 | 1,5–2 d |
+| B5 Tab 1 and polish | S-8, V-06, V-14, T-04, settings save-on-change (§4.1), final contrast pass | T-01…T-04, V-06, V-14 | 0,5–1 d |
 
 ### 5.1 B1 result (2026-10-22)
 
@@ -381,6 +381,18 @@ user checks in the real app. Increments are ordered so each one is useful alone.
   "Âm yếu nhất" per lesson language via `hist_weakest` — visible change: Vietnamese
   lessons no longer show English phoneme counts recorded under misdetection.
 - Tests: 46/46 (8 new). Not verified: real mic recording through the new states.
+
+### 5.3 B3 status (2026-10-23, in progress)
+
+- Coded (HANDOFF "tiếp 18"): `evidence_gate` + `HALLUCINATION_PHRASES` (view `state="unsure"`),
+  `rhyme` state + `strip_marks_vi`, Vietnamese cards with `vi_spell`, score ring `_draw_ring`,
+  chips `_mk_chip`, cards `_mk_card`, details/heard toggles, ▶ learner segment
+  (`play_wav_segment`, `wav_segment_bounds`). Existing 46 tests pass.
+- To finish: tests for the new pure functions (incl. hallucination fixtures, AirPods case);
+  `tools/ui_shots.py b3_after` vs `b3_before` (check card width before the Text is sized,
+  chip colours in dark); skills + `context-map.json`; commit.
+- Keep B3 renderer thin: B4 replaces the layout (underlined sentence + details panel).
+- Known nit: phrase match is substring-based, so "subscribe" also matches "subscribers".
 
 Not in this plan: C-05 (needs real Vietnamese sample recordings — content work, Q-07).
 

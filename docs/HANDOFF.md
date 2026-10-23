@@ -679,3 +679,24 @@ và gọi chuyển trạng thái (scoring/processing/result) → nút đúng; �
 `wav_segment_bounds`; chạy `tools/ui_shots.py b3_after` + so với `b3_before` (đã chụp);
 cập nhật skill/UI-PLAN §5.3/PROJECT-STATE/context-map (symbol mới); `context_check`.
 **Rủi ro cần xem khi chụp:** độ rộng thẻ khi Text chưa có kích thước; màu chip ở theme tối.
+
+## 2026-10-23 — Claude Opus 5.5 — Git + GitHub riêng tư; ghi nhận B3 đang dở
+
+**Mục tiêu phiên:** xem lại `UI-PLAN` trước khi làm tiếp; đưa dự án vào git trước khi đụng B3.
+
+**Đã làm:**
+- `git init` (`main`), `.gitignore` (bỏ `downloads/`, `__pycache__/`, `config.json`,
+  `practice_history.json`), `.gitattributes` (LF, `.bat` CRLF, WAV/TTF nhị phân),
+  `core.autocrlf=false` cục bộ, danh tính commit = no-reply GitHub. Commit gốc `031a159`
+  chụp nguyên trạng thái B3 đang dở.
+- Sửa lệch tài liệu: `PROJECT-STATE` (B3 đang dở, lịch sử `tries`, git, số dòng `app.py`),
+  `UI-PLAN` (đầu trang, B3 🟡, B4 = app-style thay S-6, B5 thêm lưu-khi-đổi, §5.3), `AGENTS` §0.
+- Không sửa code.
+
+**Quyết định mới:** D-33 (git + GitHub riêng tư).
+
+**Đã kiểm chứng:** `context_check`, `smoke_test` 46/46, `py_compile` (xem dưới).
+**Chưa kiểm chứng:** mọi thứ của B3 (xem HANDOFF "tiếp 18", UI-PLAN §5.3).
+
+**Việc tiếp theo:** hoàn tất B3 theo UI-PLAN §5.3, rồi commit.
+**Cảnh báo:** đừng `git add -A` khi `downloads/` hay file cá nhân bị đổi tên ra ngoài `.gitignore`.

@@ -11,7 +11,8 @@
   `yt-dlp`, `sounddevice`, `numpy`. Tùy chọn: `torch` + `transformers` cho GOP.
 - Kiến trúc: gần như **một file** `app.py` (UI + pipeline), 3 module thuật toán
   (`pron_en.py`, `gop.py`, `prosody.py`), dữ liệu (`lessons_en.json`, `mau/`).
-- Chưa có git repo, chưa có test suite chính thức. `tools/smoke_test.py` là lưới an toàn tối thiểu.
+- Git repo (nhánh `main`, remote GitHub riêng tư — D-33); chưa có test suite chính thức.
+  `tools/smoke_test.py` là lưới an toàn tối thiểu. Commit sau mỗi bước xong (B1, B2…).
 - Ngôn ngữ sản phẩm: **tiếng Việt**. Code/identifier: tiếng Anh.
 
 ## 1. Thứ tự đọc bắt buộc

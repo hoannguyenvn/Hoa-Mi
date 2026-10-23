@@ -1,8 +1,8 @@
 # PROJECT STATE — Oriole
 
-- **Cập nhật lần cuối:** 2026-10-22 (xong B2: state model màn hình, `build_result_view`, mốc từng từ, lịch sử `tries`)
+- **Cập nhật lần cuối:** 2026-10-23 (git + GitHub riêng tư D-33; ghi nhận B3 đang dở)
 - **Phiên bản code:** 2.3 (`VERSION` trong `app.py`)
-- **Trạng thái:** chạy được trên máy hiện tại; chưa có git repo, chưa có test tự động đầy đủ.
+- **Trạng thái:** chạy được trên máy hiện tại; git repo `main` (D-33); chưa có test tự động đầy đủ.
 - **Nguồn sự thật:** code + `docs/context-map.json`. Tài liệu này chỉ tóm tắt.
 
 ## 1. Đang làm / làm tiếp
@@ -10,9 +10,10 @@
 > Cập nhật mục này ở **cuối mỗi phiên**. Tối đa 3 việc.
 
 - [ ] **P2 — Đại tu giao diện theo `docs/UI-PLAN.md`**: GATE A (D-27), font + app-style (D-28),
-  GATE B (D-29…D-32) đã duyệt. **B1, B2 xong** (§5.1–5.2). **Kế tiếp: B3** — cổng bằng chứng
-  D-29 (trạng thái "Máy chưa nghe rõ"), lời nhắc tiếng Việt + trạng thái `rhyme`, chip/thẻ lỗi
-  vẽ từ view.
+  GATE B (D-29…D-32) đã duyệt. **B1, B2 xong** (§5.1–5.2). **B3 ĐANG DỞ** (code đã có, xem
+  HANDOFF "tiếp 18" + UI-PLAN §5.3): còn thiếu test cho `evidence_gate`/`rhyme`/`vi_spell`/
+  `has_ipa`/`wav_segment_bounds`, chụp `b3_after` so `b3_before`, cập nhật skill + context-map.
+  Nên giữ renderer B3 mỏng — B4 dựng lại bố cục app-style (D-28).
 - [ ] **P3 — Thanh điệu tiếng Việt bằng F0:** phân loại 6 thanh từ contour, so với mẫu
   cùng âm tiết; hiện "bạn đọc thanh sắc, mẫu là thanh huyền".
 - [ ] **P4 — Hiệu chuẩn điểm:** thu bản ghi người thật, so với giáo viên, chỉnh ngưỡng
@@ -47,19 +48,19 @@ Ký hiệu: ✅ chạy ổn · 🟡 chạy nhưng có giới hạn · ⛔ chưa 
 | Phân tích âm vị tiếng Anh (CMUdict) | 🟡 | phụ âm đáng tin; nguyên âm có thể bỏ sót |
 | GOP acoustic (wav2vec2 CTC) | 🟡 | tùy chọn, cần torch; chưa hiệu chuẩn với giáo viên |
 | Biểu đồ ngữ điệu (F0, bán cung) | ✅ | chỉ mô tả, **không chấm điểm** |
-| Lịch sử tiến bộ | 🟡 | đếm lần/best/last + đếm âm yếu; chưa lưu từng lần |
+| Lịch sử tiến bộ | 🟡 | lưu từng lần (`tries` ≤ 30, D-30), âm yếu theo ngôn ngữ; chưa có biểu đồ (B4) |
 | Mic: chọn, kiểm tra, tự dò mic có tín hiệu | 🟡 | lọc WDM-KS, ưu tiên DirectSound, sàn 0,8% + gain +24 dB (D-20/D-21), thu bằng callback + queue (D-23) |
 | Mic ngoài (USB/bluetooth): Quét lại, cảnh báo Hands-Free | 🟡 | `rescan_audio_devices`, `headset_mic_missing` (D-22); AirPods đã lên thiết bị thu (WASAPI) nhưng bản ghi thử chưa nhận dạng được — xem mục 3 |
 | Context + skills cho AI | ✅ | `AGENTS.md`, `docs/`, 11 skill; `context_check` 40 OK |
 | Test tự động | 🟡 | 46 test khói + `context_check` + `tools/ui_shots.py` (chụp UI, xem bằng mắt); chưa có test ASR/mic |
 | Đóng gói `.exe` | ⛔ | chỉ có `run.bat` + Conda Python |
-| Git / CI | ⛔ | thư mục chưa phải git repo |
+| Git / CI | 🟡 | git `main` + GitHub riêng tư (D-33); chưa có CI |
 
 ## 3. Nợ kỹ thuật & rủi ro đã biết
 
 | Mức | Vấn đề | Ảnh hưởng | Hướng xử lý |
 |---|---|---|---|
-| Cao | `app.py` ~3.300 dòng, UI + pipeline + scoring chung một file | khó review, dễ tạo circular change | tách dần theo skill; không tái cấu trúc big-bang |
+| Cao | `app.py` ~4.500 dòng, UI + pipeline + scoring chung một file | khó review, dễ tạo circular change | tách dần theo skill; không tái cấu trúc big-bang |
 | Cao | Chưa có test UI/ASR/mic; `smoke_test` chỉ phủ hàm thuần | sửa UI/luồng có thể phá mà không báo | mở rộng dần; ghi rõ "chưa kiểm chứng" |
 | TB | Skill/tài liệu có thể lệch code nếu sửa mà không cập nhật | model sau làm sai chỗ | luôn chạy `context_check` + sửa tài liệu cùng phiên |
 | Cao | Chưa hiệu chuẩn thang điểm với giáo viên | người học không biết tin điểm đến đâu | thu ~100 bản ghi, 2 giáo viên chấm, Spearman |
