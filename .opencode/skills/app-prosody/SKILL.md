@@ -94,7 +94,9 @@ Bất kỳ lỗi/thiếu dữ liệu → `None`; UI ẩn thẻ.
 - Hệ quả: **Học âm** (guide, `sid=None`) và 3 bài Việt `vi1`–`vi3` (không có
   `samples`) **không bao giờ** có biểu đồ — chỉ 14 bài tiếng Anh có.
 - `_prac_done` gọi `_show_intonation(res.get("inton"))`.
-- `_show_intonation`: `None` → `pack_forget()` thẻ; có dữ liệu → pack **dưới** `p_txt`.
+- `_show_intonation(d)`: lưu `self._inton` rồi vẽ lại panel; mục NGỮ ĐIỆU chỉ hiện khi kết
+  quả là `result` (không khi `unsure`). Canvas `p_int` cao 110 px trong panel phải (B4a);
+  nhãn từ, trọng âm, tốc độ là B4b (UI-PLAN S-5/S-5b, D-34).
 - `_inton_text`: 2–4 câu tiếng Việt (thời lượng, cuối câu, khoảng cao độ, độ lệch).
 - `_draw_intonation`:
   - trục dọc giới hạn `lim = max(6, min(18, ceil(max|st|/3)*3))`;

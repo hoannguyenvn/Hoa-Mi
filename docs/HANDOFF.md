@@ -731,3 +731,41 @@ bản thu thật; Windows scaling 100/150 %.
 **Việc tiếp theo:** B4 (UI-PLAN §5) — đề xuất tách B4a khung app-style / B4b biểu đồ + tiến bộ.
 **Cảnh báo:** cửa sổ tối thiểu: ô kết quả còn ~1 dòng (V-09) — B4 phải xử lý; thêm câu bịa
 mới vào `HALLUCINATION_PHRASES` kèm case test.
+
+## 2026-10-23 (tiếp 2) — Claude Opus 5.5 — S-5b/D-34 vào kế hoạch; B4a khung app-style
+
+**Mục tiêu phiên:** xem dự án cũ `D:\PHANTICHTIENGANH-main` có gì dùng lại được; ghi trọng âm
++ tốc độ đọc vào B4b; tách B4 thành B4a/B4b; làm B4a.
+
+**Đã làm:**
+- Đánh giá dự án cũ (theo `PHASE2-DANH-GIA-DU-AN-CU.md` + đọc code): chỉ dùng lại (đã sửa)
+  cường độ + cao độ **theo từ** (trọng âm) và tốc độ đọc — **chỉ mô tả** (D-34, UI-PLAN S-5b).
+  Bỏ điểm tổng/"timbre"/formant-KMeans/lỗi rải theo ngưỡng. Nhắc người dùng xóa
+  `cookies.txt` trong thư mục dự án cũ (chưa mở file).
+- `app.py` B4a (UI-PLAN §5.4): `_build_ui` mới (thanh điều hướng + `_show_screen`),
+  `_build_text_screen`/`_build_settings_screen` (đặt nội dung cũ vào khung), màn Luyện viết
+  lại (`_build_practice_tab`, `_build_stage`, `_build_side`, `_render_result`, `_mk_fix`,
+  `_set_prac_state`, `_panel_state`…), hàm thuần `stage_words`, `nav_compact`,
+  `short_mic_name`, `meter_cells`; `prac_controls` trả `rec_label`/`rec_icon` thay `rec_text`.
+  Token D-32 đầy đủ trong `THEMES`. Bỏ `_mk_chip`, `_mk_card`, `p_txt`, `p_score`, nút header.
+- `tools/smoke_test.py` 56 case; `tools/ui_shots.py` 15 trạng thái (thêm idle, đang thu,
+  VI tối thiểu sáng/tối) và dùng `_show_screen`.
+- Tài liệu: UI-PLAN (S-5b, B4a/B4b, §5.4), DECISIONS D-34, skill `app-ui` (khung, registry
+  theme, cạm bẫy mới), `app-pronunciation`, `app-prosody`, `app-recording`, `app-qa-release`;
+  `context-map.json`; README §2/§4/§5/§7; FEATURES F4.1; PROJECT-STATE.
+
+**Quyết định mới:** D-34 (trọng âm/tốc độ chỉ mô tả).
+
+**Đã kiểm chứng:**
+- [x] `smoke_test` 56/56, `context_check` 44 OK, `py_compile`.
+- [x] Ảnh 15 trạng thái (sáng/tối, rộng/tối thiểu) đã xem; chạy `App` thật bằng script
+  (đổi màn, theme, bài trước/sau, Học âm, khóa khi đang thu, "chưa nghe rõ", gọn ↔ rộng,
+  model qua biến) — 0 lỗi callback.
+
+**Chưa kiểm chứng:** thu bằng mic thật qua nút tròn; menu Model/Ngôn ngữ bấm tay; Windows
+scaling 100/150 %; ▶ Bạn đọc với bản thu thật.
+
+**Việc tiếp theo:** B4b — S-5 (nhãn từ, câu nhận xét, chú thích), S-5b (trọng âm + tốc độ;
+mốc từ audio mẫu qua `build_lessons.py`), S-7 (sparkline + "âm hay sai").
+**Cảnh báo:** widget tk mới phải qua `_tw`/`_frame`/`_lbl` hoặc thêm hàm vẽ vào `_redraws`,
+nếu không sẽ giữ màu theme cũ; đo kích thước từ sau idle, không `update_idletasks` trong vòng đo.

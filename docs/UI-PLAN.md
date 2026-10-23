@@ -2,7 +2,7 @@
 
 > Status: **GATE A passed 2026-10-22** — user approved the spec and accepted the default
 > answers for Q-01…Q-07 (§6). **GATE B passed 2026-10-22** (D-29…D-32). **Phase 3 build
-> in progress: B1, B2 done 2026-10-22 (§5.1–5.2), B3 done 2026-10-23 (§5.3), next B4.** Design
+> in progress: B1, B2 done 2026-10-22 (§5.1–5.2), B3 done 2026-10-23 (§5.3), B4a done 2026-10-23 (§5.4), next B4b.** Design
 > — canvas: https://claude.ai/artifact/L1oNuJ2Wq89LK7b8dFfRhK (private to the user).
 > Source of the issues: visual audits on
 > 2026-10-22 (`docs/HANDOFF.md` entries "tiếp 10" and "tiếp 11").
@@ -213,6 +213,22 @@ in grey, never in red. History is **not** updated for unsure attempts.
   range < 50 % of sample → "Giọng bạn hơi đều — thử nhấn mạnh từ khoá hơn".
   Numbers (st, DTW) move to a "Chi tiết" toggle.
 
+**S-5b Word stress and speaking speed (added 2026-10-23, user-approved; descriptive only,
+never scored — D-10/D-34).** Reuses, in corrected form, the intensity curve and speech rate
+of the old project (`PHANTICHTIENGANH`, see `PHASE2-DANH-GIA-DU-AN-CU.md`):
+- Per word (from `words_t`): RMS loudness in dB and median F0 in semitones, each relative to
+  the **same speaker's** sentence median (I5). Prominence = z(loudness) + z(pitch); the top
+  word (and a second if within 0,5 of it) is "nhấn". Pure numpy in `prosody.py`.
+- Sample word timings: precomputed once per English lesson by `tools/build_lessons.py`
+  (Whisper on the sample clip) and stored next to the audio; no sample timings → learner
+  markers only, no comparison. Vietnamese has no sample audio yet (Q-07).
+- UI: a small dot above each stressed word label (dashed ring = Mẫu, filled = Bạn) and one
+  sentence: "Mẫu nhấn **think**, bạn nhấn **about**" or "Bạn nhấn đúng từ như mẫu ✓".
+- Speed: one line from `dur_ref`/`dur_usr` (speech span, trimmed): "Bạn đọc chậm hơn mẫu
+  ~30 % (1,6 s / 1,2 s)"; within ±15 % → "Tốc độ gần giống mẫu". Never a score; reading
+  slowly while practising is fine.
+- Shown only when the attempt is `result` (not `unsure`) and ≥ 3 words have timings.
+
 ### S-6 Practice layout (P-11…P-13, V-09) — depends on Q-06
 
 Option A (recommended, = roadmap Phase 2A): three columns
@@ -353,7 +369,8 @@ user checks in the real app. Increments are ordered so each one is useful alone.
 | B1 Quick fixes ✅ | V-01…V-05, V-07, V-08, V-10, V-11, V-13, P-01, P-05, P-08 + font (D-28) | 13 issues, no layout change | done |
 | B2 Foundations ✅ | S-1 state model, S-2 `build_result_view` + tests, keep word timings (S-5 data), history `tries` (S-7 data) | A-01, A-02, H-02 (+ H-03 data side) | done |
 | B3 Trust and feedback ✅ | S-3 evidence gate, S-4 Vietnamese wording + `rhyme`, chips + cards drawn from view-model | P-02, P-03, P-04, P-06, P-07, P-09, P-10 | done |
-| B4 Layout and chart | app-style layout (§4.1, D-28; replaces S-6 columns), S-5 chart, S-7 progress UI, V-09, V-12, V-15 | P-11…P-13, C-01…C-04, H-01, H-03, V-09, V-12, V-15 | 1,5–2 d |
+| B4a App shell ✅ | app-style layout (§4.1, D-28; replaces S-6 columns): nav rail (60 px icon-only at minimum size) replaces header + tabs; practice toolbar, stage (sentence shows the result), details panel, record button + meter, Thử lại / ▶ Mẫu / ▶ Bạn; mic block → Cài đặt › Micro; transcription + settings re-hosted unchanged (restyle in B5) | P-11…P-13, V-09, V-12, V-15 | done |
+| B4b Chart and progress | S-5 chart (word labels, plain caption, legend), S-5b stress markers + speed line, S-7 sparkline + per-language weakest sound | C-01…C-04, H-01, H-03 | 1 d |
 | B5 Tab 1 and polish | S-8, V-06, V-14, T-04, settings save-on-change (§4.1), final contrast pass | T-01…T-04, V-06, V-14 | 0,5–1 d |
 
 ### 5.1 B1 result (2026-10-22)
@@ -399,6 +416,33 @@ user checks in the real app. Increments are ordered so each one is useful alone.
   hidden (V-09) — B4's app-style layout replaces this area; must be checked there.
 - Not verified: real mic attempts through the gate (thresholds are guesses — P4 calibration),
   ▶ Bạn đọc with a real recording, 100/150 % scaling.
+
+### 5.4 B4a result (2026-10-23)
+
+- Shell: nav rail (`_build_rail`, 232 px; < 1240×S → 60 px icons + hover labels) replaces
+  header + `ttk.Notebook`; `_show_screen("stt"|"prac"|"set")`; Model · Ngôn ngữ in a rail
+  menu (`_model_menu`); theme item in the rail. Plain-tk widgets follow the theme through a
+  registry (`_tw`, `_redraws`). Tokens updated to the D-32 sheet (`side`, `nav_sel`, `rec`,
+  `rec_ring`, `warn_line`, `bad_line`, `band`, `disabled_fg`); dark accent `#2F6FD0`.
+- Practice: toolbar (segmented Luyện câu | Học âm, lesson picker, "Bài k / n", ◀ ▶);
+  stage — the sentence itself carries the result (`stage_words`: original casing and
+  punctuation, amber/red underline, "nghe ‘…’" / "(thiếu)" / ✓), pills (Nghe mẫu, Chậm,
+  keywords, Bản thu của bạn), tip box, round record button + 20-cell meter, mic line with
+  "Đổi"; details panel — ring + headline, CẦN SỬA rows (`_mk_fix`), unsure box, NGỮ ĐIỆU
+  (old chart, B4b redoes it), GOP details toggle, progress line, pinned primary action
+  (Thử lại / Bài tiếp theo → / Kiểm tra micro). Panel scrolls; lesson/mode locked while
+  recording or scoring.
+- Removed: `_mk_chip`, `_mk_card`, `p_txt`, `p_score`, header button.
+- Fixed while reviewing screenshots: words measured before Tk had sizes (deferred layout);
+  panel scrollbar packed after the expanded canvas (invisible); transcription left pane
+  collapsed to 0 (sash re-applied on first size); "Đọc thêm" showed hallucinated words in
+  the unsure state (now only for `result`).
+- Tests 56/56 (2 new + contrast pairs for side/bg/rec/accent); screenshot matrix 15 states
+  (idle, recording, EN/VI/perfect/unsure, dark, settings, minimum size light + dark);
+  scripted drive of the real `App` (screens, theme, lesson stepping, lock while recording,
+  unsure toggle, compact ↔ wide) with no callback errors.
+- Not verified: real microphone through the new button, the rail menu by hand,
+  100/150 % scaling, ▶ Bạn đọc with a real recording.
 
 Not in this plan: C-05 (needs real Vietnamese sample recordings — content work, Q-07).
 

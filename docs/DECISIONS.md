@@ -300,6 +300,17 @@ nằm trên một ổ đĩa; cần thử ở máy khác (scaling 100/150 %).
 **Hệ quả:** không commit file tải về, model, dữ liệu cá nhân (AGENTS §8, I16); đổi sang
 công khai cần quyết định giấy phép trước.
 
+### D-34 — Trọng âm từ và tốc độ đọc: chỉ mô tả (2026-10-23, UI-PLAN S-5b)
+**Quyết định:** dùng lại (đã sửa) hai phân tích của dự án cũ: cường độ + cao độ **theo từ**
+(mốc `words_t`) để đánh dấu từ được nhấn của mẫu và của người học, và một câu về tốc độ đọc
+(`dur_ref`/`dur_usr`). Cả hai **không có điểm**, không trừ điểm, không vào lịch sử; quy về
+trung vị của chính người nói (I5), numpy thuần (I8). Không dùng điểm tổng, "timbre",
+formant/KMeans, lỗi rải theo ngưỡng toàn cục của dự án cũ (R-01…R-08).
+**Vì sao:** trọng âm là lỗ hổng thật (README: "trọng âm chưa chấm"); số đo theo từ truy được
+về từ cụ thể, khác cách cũ gán một điểm toàn đoạn lên mọi từ. Chưa hiệu chuẩn ⇒ chỉ mô tả.
+**Hệ quả:** mốc từng từ của audio mẫu sinh sẵn bằng `tools/build_lessons.py`; thiếu mốc mẫu
+thì chỉ hiện đánh dấu của người học. Muốn chấm trọng âm phải có quyết định mới + hiệu chuẩn (P4).
+
 ## B. Những cách làm đã bị loại (đừng lặp lại)
 
 Nguồn: `PHASE2-DANH-GIA-DU-AN-CU.md` §2.2 và §6.

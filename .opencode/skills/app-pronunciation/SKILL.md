@@ -134,9 +134,11 @@ Lịch sử: `hist_add_try(hist, sid, view, ts)` thêm `tries` (≤ 30), bỏ qu
 - "Hoàn hảo" chỉ khi `correct == total` (không dùng `score >= 95`: câu 21 từ sai 1 vẫn
   95,2 %), không từ thừa, không ghi chú, không thẻ, không lỗi âm vị, không warns/tones —
   cho **mọi ngôn ngữ** (test `perfect_needs_every_word`).
-- "Từng từ": chip `_mk_chip` cho mỗi từ mẫu: ✓/!/✕ + từ mẫu + "→ nghe ‘…’" hoặc
-  "→ (thiếu)" (P-02); từ thừa: chip "+" viền đứt, tối đa 3 + "… +N từ thừa".
-- "Cần sửa": tối đa 4 thẻ `_mk_card` (cùng rộng nhờ thanh chống cao 0). EN: theo GOP
+- Câu trên sân khấu (B4a): `stage_words(target, view)` (hàm thuần) → mỗi từ GỐC (giữ hoa,
+  dấu câu) gạch chân cam/đỏ + "nghe ‘…’" / "(thiếu)" / ✓ bên dưới (P-02); `unsure` hoặc
+  chưa chấm → không tô màu. Từ thừa: dòng "Đọc thêm: …" trong panel, **chỉ** khi `result`
+  (khi `unsure` đó là chữ bịa — D-29).
+- "CẦN SỬA" trong panel: tối đa 4 dòng `_mk_fix`. EN: theo GOP
   (mức chữ "lệch rõ"/"hơi lệch") hoặc âm vị CMUdict. VI (`_vi_cards`): gom N/L theo chiều
   + mẹo `_VI_TIPS` + mẫu `vi_la.wav`/`vi_na.wav`; mỗi lỗi thanh/vần một thẻ với cách đọc
   tách `vi_spell`. Mỗi thẻ: ▶ Mẫu (nếu file tồn tại), ▶ Bạn đọc (`_play_heard` →

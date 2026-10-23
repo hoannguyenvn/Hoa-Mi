@@ -123,7 +123,7 @@ def main() -> int:
 
     # ---- Chuyển văn bản ----
     theme("light")
-    A.nb.select(A.tab_stt)
+    A._show_screen("stt")
     A.src.set("file")
     A._src_changed()
     A.file_path.set(r"D:\Bai giang\bai-giang-n-l.mp3")
@@ -145,8 +145,14 @@ def main() -> int:
     A._yt_subs_changed()
 
     # ---- Luyện phát âm ----
-    A.nb.select(A.tab_prac)
+    A._show_screen("prac")
     pick("en_th")
+    shot("03a_prac_idle_light")
+    A._set_prac_state("recording")
+    A.lbl_plevel.configure(text="● Đang thu · 00:04 · đã nghe giọng · đọc xong app tự dừng")
+    A._draw_meter(0.08)
+    shot("03b_prac_recording_light")
+    A._set_prac_state("idle")
     A._prac_done(result(en_t, en_bad, "en", inton=prosody.compare(ref, slow)))
     shot("03_prac_en_result_light")
     A.prac_mode.set("guide")
@@ -168,17 +174,22 @@ def main() -> int:
     shot("08_prac_en_result_dark")
 
     # ---- Cài đặt ----
-    A.nb.select(A.tab_set)
+    A._show_screen("set")
     shot("09_settings_dark")
     theme("light")
     shot("10_settings_light")
 
     # ---- cửa sổ tối thiểu ----
     A.geometry("%dx%d" % (int(980 * A.S), int(640 * A.S)))
-    A.nb.select(A.tab_prac)
+    A._show_screen("prac")
     pick("en_th")
     A._prac_done(result(en_t, en_bad, "en", inton=prosody.compare(ref, slow)))
     shot("11_prac_min_light")
+    pick("vi1")
+    A._prac_done(result(vi1, "nan lăm nay nên lớp nói năng lưu loát lám", "vi"))
+    shot("12_prac_vi_min_light")
+    theme("dark")
+    shot("13_prac_vi_min_dark")
     A.destroy()
     print("saved to", out)
     return 0

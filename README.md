@@ -13,7 +13,15 @@ C:\Users\ADMIN\miniforge3\python.exe app.py
 
 ## 2. Có gì mới
 
-**Đang làm mới giao diện (bước B1, xem `docs/UI-PLAN.md`)**
+**Đang làm mới giao diện (bước B1–B4a, xem `docs/UI-PLAN.md`)**
+
+- **Bố cục mới kiểu ứng dụng**: thanh điều hướng bên trái (Chuyển thành văn bản ·
+  Luyện phát âm; dưới cùng: Model · Ngôn ngữ, Giao diện tối/sáng, Cài đặt). Cửa sổ hẹp
+  thì thanh chỉ còn biểu tượng (rê chuột để xem tên).
+- **Luyện phát âm**: câu cần đọc nằm giữa màn hình; sau khi chấm, **chính câu đó** cho biết
+  kết quả — từ sai được gạch chân, bên dưới ghi máy nghe thành gì. Nút thu tròn màu đỏ có
+  thanh mức âm khi đang thu. Kết quả chi tiết, "Cần sửa" và ngữ điệu nằm ở cột bên phải;
+  nút **Thử lại** luôn ở đáy cột. Đổi bài bằng ô chọn bài hoặc **◀ Bài trước / Bài sau ▶**.
 
 - Font **Be Vietnam Pro** (đi kèm app trong `assets/fonts/`, không cần cài vào Windows);
   ký hiệu phiên âm IPA vẫn hiển thị bằng Segoe UI cho đủ ký tự.
@@ -87,7 +95,7 @@ C:\Users\ADMIN\miniforge3\python.exe app.py
 - **Hủy được** việc đang chạy, có **nhật ký từng bước**, thanh tiến trình thật.
 - Kết quả có **2 tab xem trước: Văn bản / SRT**, xuất `.txt` + `.srt` bằng một nút.
 
-## 3. Tab 1 — Chuyển thành văn bản
+## 3. Chuyển thành văn bản
 
 Chọn **Nguồn** ở đầu thẻ:
 
@@ -108,7 +116,10 @@ Sau khi bấm **Bắt đầu**:
 
 Phím tắt: `Ctrl+O` chọn file · `Ctrl+Enter` bắt đầu · `Ctrl+S` lưu .txt · `Esc` hủy.
 
-## 4. Tab 2 — Luyện phát âm
+## 4. Luyện phát âm
+
+Chọn chế độ ở góc trên (**Luyện câu** | **Học âm**), chọn bài ở ô bên cạnh hoặc bấm
+**◀ Bài trước / Bài sau ▶**. Trong lúc thu và chấm, không đổi được bài.
 
 Hai chế độ:
 
@@ -117,13 +128,14 @@ Hai chế độ:
   và nút nghe **âm mẫu** giọng bản ngữ (offline).
 
 Mỗi bài tiếng Anh có: câu mẫu, **IPA**, âm trọng tâm, cặp dễ lẫn (`think–tink`),
-nút nghe **Cả câu / Chậm / 2 từ khoá**, và thẻ gợi ý khẩu hình.
+nút nghe **Nghe mẫu / Chậm / 2 từ khoá**, và hộp gợi ý khẩu hình. Sau khi thu, có thêm
+nút **Bản thu của bạn** để nghe lại.
 
-Quy trình: chọn micro (nên dùng **DirectSound** hoặc WASAPI, cách miệng 10–20 cm) →
-`● Thu âm & chấm` → đọc → app **tự dừng sau ~1,3 giây im lặng** và chấm; hoặc bấm
-`■ Dừng & chấm` nếu muốn dừng ngay. Đồng hồ hiện thời gian, trạng thái ("đã nghe
-giọng" / "chưa nghe thấy giọng") và mức âm lượng dB + TỐT/NHỎ/TO. `Chấm file…` để
-nộp file có sẵn.
+Quy trình: bấm **nút tròn đỏ** (Thu âm) → đọc → app **tự dừng sau ~1,3 giây im lặng**
+và chấm; hoặc bấm lại nút (lúc này là ■ **Dừng & chấm**) để dừng ngay. Trong lúc thu có
+thanh mức âm, đồng hồ và trạng thái ("đã nghe giọng" / "chưa nghe thấy giọng"). Dưới
+nút là micro đang dùng và liên kết **Đổi** (sang Cài đặt › Micro; nên dùng
+**DirectSound** hoặc WASAPI, cách miệng 10–20 cm). **Chấm file có sẵn…** để nộp file.
 
 Nếu mic gần như im lặng (đỉnh < 0,8%), app **không chấm** — báo rõ và tự dò micro
 khác có tín hiệu. Nếu 7 giây đầu không có tiếng nói, app cũng dừng và nhắc kiểm tra
@@ -131,13 +143,14 @@ micro (Windows: Settings → System → Sound → Input — bỏ Mute, tăng Vol
 
 Kết quả gồm:
 
-1. **Đầu kết quả** — vòng điểm + "Đúng 2/4 từ" (hoặc "Hoàn hảo — đúng cả N từ" khi
-   đúng **mọi** từ) và lỗi chính.
-2. **Từng từ** — mỗi từ một ô: ✓ xanh = đúng, ! cam = lỗi quen thuộc/sai thanh,
-   ✕ đỏ = sai/thiếu/sai vần; ô sai ghi kèm **từ máy nghe được** ("think → nghe ‘tink’").
-3. **Cần sửa** — tối đa 4 thẻ: tiếng Việt gom lỗi N/L, sai dấu thanh, sai vần/dấu
+1. **Đầu kết quả** (cột phải) — vòng điểm + "Đúng 2/4 từ" (hoặc "Hoàn hảo — đúng cả
+   N từ" khi đúng **mọi** từ, kèm nút **Bài tiếp theo →**) và lỗi chính.
+2. **Từng từ** (ngay trên câu ở giữa màn hình) — từ đúng có ✓ bên dưới; từ cần sửa
+   gạch chân cam (lỗi quen thuộc/sai thanh) hoặc đỏ (sai/thiếu/sai vần), bên dưới ghi
+   **từ máy nghe được** ("Think" → nghe “tink”) hoặc "(thiếu)".
+3. **Cần sửa** — tối đa 4 mục: tiếng Việt gom lỗi N/L, sai dấu thanh, sai vần/dấu
    ("lắm" → "lám", kèm cách đọc tách "l + ăm + thanh sắc"); tiếng Anh theo âm vị.
-   Thẻ có ▶ Mẫu (nếu có file mẫu) và ▶ Bạn đọc (nghe lại đúng từ đó trong bản thu).
+   Mỗi mục có ▶ Mẫu (nếu có file mẫu) và ▶ Bạn đọc (nghe lại đúng từ đó trong bản thu).
 4. **Âm vị (GOP)** (tiếng Anh, khi đã cài model acoustic) — chấm từng âm vị bằng
    CTC trên chính bản đọc, so với bản mẫu cùng câu. Chỉ liệt kê âm **kém rõ rệt**
    so với bản mẫu, ghi bằng chữ "lệch rõ" / "hơi lệch"; số đo nằm trong
@@ -194,9 +207,9 @@ chuột phải thiết bị → *Properties* → *Services* → tích *Hands-Fre
 hiện gợi ý ngay dưới ô Micro nếu thấy tai nghe mà chưa thấy micro của nó. Nút
 **Âm thanh Windows** mở thẳng trang âm thanh của hệ điều hành.
 
-## 5. Tab 3 — Cài đặt
+## 5. Cài đặt
 
-- Model / Ngôn ngữ (trùng với thanh trên), **Micro** + `Quét lại` + `Kiểm tra` +
+- Model / Ngôn ngữ (cũng đổi được ở góc dưới thanh điều hướng), **Micro** + `Quét lại` + `Kiểm tra` +
   `Âm thanh Windows`.
 - Thư mục lưu mặc định, giao diện Sáng/Tối, `Lưu cài đặt`, `Mặc định`.
 - Phụ đề mặc định (kèm phụ đề / ngôn ngữ / nhúng vào MP4).
@@ -236,7 +249,7 @@ tải video YouTube vi phạm Điều khoản dịch vụ khi dùng cho nội du
 
 ## 7. File trong thư mục
 
-- `app.py` — giao diện 3 tab + xử lý audio/phụ đề + chấm điểm
+- `app.py` — giao diện (thanh điều hướng + 3 màn hình) + xử lý audio/phụ đề + chấm điểm
 - `pron_en.py` — engine âm vị tiếng Anh (CMUdict, căn chỉnh, gợi ý sửa)
 - `gop.py` — chấm âm vị bằng acoustic (wav2vec2 CTC, tùy chọn; cần torch)
 - `prosody.py` — đo cao độ F0 + so đường ngữ điệu (numpy, không cần librosa)

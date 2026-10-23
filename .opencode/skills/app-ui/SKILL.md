@@ -1,6 +1,6 @@
 ---
 name: App UI (Tkinter Shell)
-description: Sửa giao diện Tkinter của Oriole — theme sáng/tối, DPI scaling px(), bố cục 3 tab, queue/_poll 80 ms, config.json, phím tắt và đóng app. Dùng khi người dùng nhắc tới giao diện, cửa sổ, tab, màu, theme, DPI, phóng to, phím tắt, config, hoặc app.py phần App.
+description: Sửa giao diện Tkinter của Oriole — theme sáng/tối, DPI scaling px(), khung app-style (thanh điều hướng + 3 màn hình), queue/_poll 80 ms, config.json, phím tắt và đóng app. Dùng khi người dùng nhắc tới giao diện, cửa sổ, tab, màu, theme, DPI, phóng to, phím tắt, config, hoặc app.py phần App.
 ---
 
 # UI Shell (Tkinter)
@@ -17,16 +17,19 @@ I14 (không đưa debug kỹ thuật lên UI); `docs/DECISIONS.md` D-04, D-15, D
 App(tk.Tk)
 ├─ __init__: cfg, DPI self.S, geometry, StringVar, _queue, _texts
 ├─ _apply_theme()  → ttk.Style("clam") + màu cho tk.Text
-├─ _build_ui()     → header + Notebook 3 tab + status bar
-│   ├─ _build_text_tab()      (Tab 1: nguồn, nhật ký, kết quả)
-│   ├─ _build_practice_tab()  (Tab 2: bài, thu âm, kết quả, ngữ điệu)
-│   └─ _build_settings_tab()  (Tab 3: nhận dạng, lưu file, phím tắt, info)
+├─ _build_ui()     → thanh điều hướng `rail` + `content` chứa 3 màn hình (B4a, D-28)
+│   ├─ _build_rail()            (logo · 2 mục · chân: Model·Ngôn ngữ ▾, theme, Cài đặt)
+│   ├─ _build_text_screen()     → _toolbar + status bar + _build_text_tab() (B5 làm lại)
+│   ├─ _build_practice_tab()    → toolbar · sân khấu _build_stage · panel _build_side
+│   └─ _build_settings_screen() → _toolbar + status bar + _build_settings_tab()
+├─ _show_screen(key) → "stt" | "prac" | "set" (thay ttk.Notebook; vào "set" quét lại mic)
+├─ _on_root_resize   → nav_compact(): < 1240×S thì thanh 60 px chỉ biểu tượng
 ├─ _poll()         → vòng 80 ms đọc self._queue
 └─ _on_close()     → lưu geometry + config
 ```
 
-Widget dùng lại: `self.nb`, `self.tab_stt`, `self.tab_prac`, `self.tab_set`,
-`self.status`, `self.pbar`, `self.log_txt`, `self.p_txt`, `self.p_int`.
+Widget dùng lại: `self.screens` (`tab_stt`/`tab_prac`/`tab_set` là tên cũ của 3 màn hình),
+`self.status`, `self.pbar`, `self.log_txt`, `self.p_words`, `self.p_side`, `self.p_int`.
 
 ## 2. DPI — quy tắc tuyệt đối
 
@@ -45,8 +48,10 @@ def px(self, v): return int(round(float(v) * self.S))
 ## 3. Theme
 
 - `THEMES = {"light": {...}, "dark": {...}}`; mọi màu lấy từ `self.P[...]`.
-- Khóa màu đang dùng: `bg card card2 border fg muted accent accent2 field sel
-  ok_bg bad_bg warn_bg ok_fg bad_fg log_bg btn btn_hover disabled`.
+- Khóa màu (D-32): `bg card card2 side nav_sel border fg muted accent accent2 field sel
+  ok_bg bad_bg warn_bg ok_fg bad_fg warn_fg accent_fg info_bg log_bg btn btn_hover disabled
+  disabled_fg track ring_ok ring_warn ring_bad rec rec_ring warn_line bad_line band`.
+  Test `theme_text_contrast_ok` kiểm tra mọi cặp chữ/nền ≥ 4,5 : 1 ở cả hai theme.
   Thêm màu mới → thêm ở **cả hai** bảng, nếu không `KeyError` khi đổi theme.
 - `_apply_theme()` dựng lại `ttk.Style` (theme `clam`) và style:
   `App.TFrame`, `Card.TFrame`, `CardInner.TFrame`, `Card2.TFrame`, `Header.TFrame`,
@@ -64,7 +69,8 @@ def px(self, v): return int(round(float(v) * self.S))
 
 ### Hai đường đổi theme
 
-- Header: `btn_theme` → `_flip_theme()` → đảo `theme_name` → `_toggle_theme()`.
+- Thanh điều hướng: mục "Giao diện tối/sáng" → `_flip_theme()` → đảo `theme_name` →
+  `_toggle_theme()`.
 - Tab Cài đặt: radio đã set `theme_name` → gọi `_toggle_theme()` (không đảo lần nữa).
 
 Đừng gộp hai đường này: nếu `_toggle_theme` tự đảo, radio sẽ bị đảo ngược.
@@ -141,7 +147,8 @@ subs, embed, sub_lang, mic, geometry
   "đang thu ở tab …", không dừng/chấm hộ. `rec_autostop`/`prac_autostop`/`rec_error`/
   `prac_error` đều kiểm tra owner trước khi đụng recorder.
 - Mọi chỗ dừng thu đi qua `App._stop_recorder()`: dừng, xóa owner, reset UI đúng tab
-  (Tab 2: nút "● Thu âm & chấm" + `lbl_plevel`; Tab 1: `lbl_rec_level`). `Esc` dùng nó.
+  (Luyện: nút tròn "Thu âm" + `lbl_plevel` + thanh mức âm; Văn bản: `lbl_rec_level`).
+  `Esc` dùng nó.
   Test: `recording_belongs_to_one_tab`.
 - `self.busy` chỉ khóa Tab 1; `self.p_working` khóa Tab 2.
 
@@ -161,33 +168,49 @@ subs, embed, sub_lang, mic, geometry
 - `TCombobox`/`TEntry`: map `disabled` đứng **trước** `readonly`.
 - Tab notebook: map `padding` của `selected` bằng padding thường (clam làm tab chọn tụt chữ).
 - `_mk_text(..., scroll=True)` đặt Text trong khung có `ttk.Scrollbar`; nơi gọi pack
-  **`w.holder`** (vd `before=self.p_txt.holder`). `scroll=False` thì `w.holder is w`.
+  **`w.holder`** (vd `before=self.txt_out.holder`). `scroll=False` thì `w.holder is w`.
 - Thanh tiến trình: chỉ hiện ở trạng thái `processing` (tab Văn bản) / `scoring` (tab Luyện)
   — do `_set_stt_state` / `_set_prac_state` quyết (D-31), không pack/forget ở chỗ khác.
 - Ô Ngôn ngữ: combobox gắn `self.lang_label` (tên tiếng Việt, `LANG_LABELS`); `self.lang`
   vẫn giữ mã và là thứ được lưu/đọc — hai biến tự đồng bộ qua trace.
 - Icon cửa sổ: `_set_icon()` vẽ bằng `logo_rows` (không file ảnh).
-- Kiểm tra bằng mắt: `tools/ui_shots.py <nhãn>` chụp 11 trạng thái vào
+- Kiểm tra bằng mắt: `tools/ui_shots.py <nhãn>` chụp 15 trạng thái vào
   `%TEMP%\oriole_shots\<nhãn>\` mà không ghi config/lịch sử.
 
-### Thành phần kết quả luyện (B3)
+### Khung app-style (B4a, D-28) — widget tk thuần theo theme
 
-- Vòng điểm `_draw_ring` (Canvas 60 px × `S`), chip từ `_mk_chip` (Canvas đa giác bo góc,
-  đo chữ bằng `tkfont.Font.measure`), thẻ lỗi `_mk_card` (Frame viền 1 px) — nhúng vào
-  `p_txt` bằng `window_create` qua `_embed`; `_destroy_embeds` dọn khi vẽ lại.
-- Token màu B3 trong `THEMES` (cả sáng/tối): `ok_bg/ok_fg`, `warn_bg/warn_fg`,
-  `bad_bg/bad_fg`, `ring_ok/ring_warn/ring_bad`, `info_bg`, `track`.
-- Frame co theo nội dung: muốn các thẻ cùng rộng phải có **thanh chống** (Frame cao 0,
-  `width=`) bên trong; `f.configure(width=)` một mình không có tác dụng khi con được pack.
-- Đã biết (B4 phải sửa): ở cửa sổ tối thiểu 980×640, đầu kết quả (vòng điểm) đẩy ô
-  `p_txt` còn ~1 dòng → chip bị che (V-09). Bố cục app-style (D-28) thay hẳn phần này.
+- Phần mới dùng `tk.Frame/Label/Canvas` (không ttk) cho đúng màu thiết kế. Tạo qua
+  `_frame(parent, bg=token)`, `_lbl(parent, text, bg=, fg=, size=)`, `_link_lbl`, `_hline`;
+  hoặc `_tw(widget, bg="side", fg="muted")` — đăng ký vào `self._themed` để `_retheme_tk()`
+  tô lại khi đổi theme. Phần **vẽ Canvas** đăng ký hàm vào `self._redraws`
+  (`_draw_rail`, `_draw_seg`, `_draw_rec_btn`, `_redraw_words`, `_redraw_pills`,
+  `_draw_intonation`, vòng điểm). Widget tk không đăng ký sẽ **giữ màu theme cũ**.
+- Thanh điều hướng: `_rail_item` (vạch accent 3 px + biểu tượng + nhãn);
+  `_draw_icon(c, name, color, s, ox=, oy=, clear=)` vẽ doc/mic/gear/moon/sun/stop bằng nét.
+  Chế độ gọn ẩn nhãn, rê chuột hiện `_tooltip`. Model/Ngôn ngữ: `_model_menu()` (tk.Menu
+  radiobutton gắn `model_name` / `lang_label`) ở chân thanh; Cài đặt vẫn có (V-14 ở B5).
+- Thanh công cụ 60 px: `_toolbar(parent, title)`. Màn Luyện: chế độ dạng nút ghép
+  (`_seg_items`, `_draw_seg`), `cb_prac` style `Toolbar.TCombobox`, `p_pos` "Bài k / n",
+  `_step_lesson(±1)`. Đang thu/chấm: khóa đổi bài/chế độ (trong `_set_prac_state`).
+- Sân khấu: `p_words` xếp từ bằng `place` (`_layout_words`, chạy **sau idle** — đo ngay thì
+  mọi từ rộng 1 px; không gọi `update_idletasks` trong vòng đo: gọi lồng làm hủy widget
+  giữa chừng); viên thuốc nghe `_mk_pill`/`_pill_show`; hộp mẹo `p_tip`; nút thu tròn
+  `btn_prec` (`_draw_rec_btn`, token `rec*`) + `p_meter` (`meter_cells`) + `lbl_plevel`;
+  dòng micro `_update_mic_line` (`short_mic_name`) + "Đổi" → màn Cài đặt; dòng
+  `p_status` chỉ chiếm chỗ khi có chữ (`_sync_status_line`).
+- Panel phải `p_side` (400 px, gọn 320): `_scroll_area` (Canvas + Frame + thanh cuộn tự ẩn),
+  cuộn chuột qua `_on_wheel` (bind_all, chỉ panel dưới con trỏ). Mục theo thứ tự cố định
+  `_panel_show([...])`: wait · head · heard · unsure · fix · notes · inton · detail.
+  Đáy ghim: `p_prog` + `_show_actions(primary, cmd, secondary, cmd)`.
+  Chữ xuống dòng: `_wrap(label, margin)` → `_side_wrap` cập nhật `wraplength`.
 
 ## 10. Trạng thái màn hình (D-31)
 
 - Tab Văn bản: `STT_STATES` = idle/recording/processing/result/error →
   `App._set_stt_state(state)`; tab Luyện: `PRAC_STATES` = idle/recording/scoring/result/
   unsure/error → `App._set_prac_state(state)`.
-- Hai hàm này là nơi **duy nhất** bật/tắt nút chính, nút Hủy, Nghe lại, đổi nhãn nút thu,
+- Hai hàm này là nơi **duy nhất** bật/tắt nút chính, nút Hủy, viên "Bản thu của bạn",
+  nhãn + biểu tượng nút thu (`rec_label`/`rec_icon`), khóa đổi bài, nội dung panel chờ,
   hiện thanh tiến trình, xóa dòng mức âm; bảng quyết định là hàm thuần `stt_controls` /
   `prac_controls` (test `screen_states_drive_controls`).
 - `busy`, `p_working`, `recording`, `rec_owner` chỉ được gán trong hai hàm trên.
@@ -210,3 +233,6 @@ subs, embed, sub_lang, mic, geometry
 | Dải màu tràn hết chiều ngang trong kết quả | tag (`ok`/`warn`) phủ cả ký tự `\n` — chèn xuống dòng ngoài tag |
 | `TclError: ... is not managed` khi đổi bài | pack/`before=` vào Text có thanh cuộn thay vì `.holder` |
 | App không thoát | thread không daemon hoặc `after` loop không dừng |
+| Widget mới giữ màu cũ khi đổi theme | tạo `tk.*` mà không qua `_tw`/`_frame`/`_lbl` hoặc chưa thêm hàm vẽ vào `_redraws` |
+| Cột trái màn Văn bản rộng 0 | vách `Panedwindow` đặt khi màn hình chưa hiện — `_fix_sash` đặt lại khi có kích thước |
+| Thanh cuộn panel không hiện | pack thanh cuộn sau Canvas đã `expand` — phải `before=cv` |

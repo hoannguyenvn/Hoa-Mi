@@ -1,7 +1,7 @@
 # CONTEXT SNAPSHOT (sinh tự động)
 
 > File này do `tools/context_check.py --snapshot` sinh ra. **Không sửa tay.**
-> Thời điểm: 2026-10-23 09:24:14
+> Thời điểm: 2026-10-23 09:48:58
 > Phiên bản: 2.3
 > Kết quả: 0 FAIL · 0 WARN
 
@@ -10,17 +10,17 @@
 | File | Dòng | Byte | SHA256 (12) |
 |---|---:|---:|---|
 | `AGENTS.md` | 150 | 9250 | `cbd6abe5eb15` |
-| `README.md` | 292 | 19086 | `0100f47d0534` |
-| `app.py` | 4470 | 206902 | `ff89959ab245` |
+| `README.md` | 305 | 20420 | `af6d6444f99a` |
+| `app.py` | 5173 | 240688 | `3621383a1dbd` |
 | `pron_en.py` | 394 | 17896 | `5a42c16e0b1a` |
 | `gop.py` | 363 | 11699 | `37b1ad23cb8d` |
 | `prosody.py` | 240 | 7949 | `58f485d761f9` |
 | `lessons_en.json` | 548 | 11780 | `6564aaa4198b` |
 | `requirements.txt` | 14 | 456 | `2fff866b6f5f` |
-| `docs/context-map.json` | 262 | 5551 | `b2766c23d92d` |
-| `docs/PROJECT-STATE.md` | 109 | 10079 | `86b9dfef67d3` |
-| `docs/HANDOFF.md` | 733 | 48046 | `3ca798f33057` |
-| `docs/DECISIONS.md` | 333 | 25045 | `c17395042cb9` |
+| `docs/context-map.json` | 285 | 6110 | `990e94fd8c20` |
+| `docs/PROJECT-STATE.md` | 109 | 10212 | `50605bf2eb87` |
+| `docs/HANDOFF.md` | 771 | 50751 | `66123533973f` |
+| `docs/DECISIONS.md` | 344 | 26203 | `1717dcbd6ee9` |
 
 ## Dữ liệu
 
@@ -35,12 +35,12 @@
 |---|---:|
 | `app-lessons` | 137 |
 | `app-phonemes` | 141 |
-| `app-pronunciation` | 202 |
-| `app-prosody` | 130 |
-| `app-qa-release` | 164 |
+| `app-pronunciation` | 204 |
+| `app-prosody` | 132 |
+| `app-qa-release` | 165 |
 | `app-recording` | 178 |
 | `app-transcription` | 130 |
-| `app-ui` | 208 |
+| `app-ui` | 234 |
 | `app-youtube` | 161 |
 | `project-context` | 131 |
 | `skill-authoring` | 160 |

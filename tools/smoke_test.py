@@ -483,9 +483,11 @@ def recording_belongs_to_one_tab():
     frames, rate = app.App._stop_recorder(fake)
     assert frames == [] and rate == 16000
     assert states == [("prac", "idle")], states
-    # nút tab 2 trở lại "Thu âm & chấm" ở idle (trước đây Esc để kẹt "Dừng & chấm")
-    assert app.prac_controls("idle", False)["rec_text"] == "●  Thu âm & chấm"
-    assert app.prac_controls("recording", False)["rec_text"] == "■  Dừng & chấm"
+    # nút thu trở lại "Thu âm" ở idle (trước đây Esc để kẹt "Dừng & chấm"); B4a: nút tròn
+    idle, rec = app.prac_controls("idle", False), app.prac_controls("recording", False)
+    assert idle["rec_label"] == "Thu âm" and idle["rec_icon"] == "mic"
+    assert rec["rec_label"] == "Dừng & chấm" and rec["rec_icon"] == "stop"
+    assert app.prac_controls("result", True)["rec_label"] == "Thu lại"
 
 
 @case
@@ -768,12 +770,45 @@ def theme_text_contrast_ok():
         return 0.2126 * ch(r) + 0.7152 * ch(g) + 0.0722 * ch(b)
     pairs = [("ok_fg", "ok_bg"), ("warn_fg", "warn_bg"), ("bad_fg", "bad_bg"),
              ("fg", "info_bg"), ("accent_fg", "info_bg"), ("muted", "card"),
-             ("accent_fg", "card"), ("fg", "card")]
+             ("accent_fg", "card"), ("fg", "card"), ("muted", "side"), ("fg", "side"),
+             ("accent_fg", "side"), ("muted", "bg"), ("fg", "bg"), ("muted", "card2"),
+             ("white", "accent"), ("white", "rec"), ("warn_fg", "card"), ("bad_fg", "card"),
+             ("ok_fg", "card")]
     for name, P in app.THEMES.items():
+        P = dict(P, white="#FFFFFF")
         for a, b in pairs:
             hi, lo = sorted((lum(P[a]), lum(P[b])), reverse=True)
             ratio = (hi + 0.05) / (lo + 0.05)
             assert ratio >= 4.5, f"{name}: {a}/{b} = {ratio:.1f}"
+
+
+@case
+def stage_words_mark_each_original_word():
+    # B4a: câu trên sân khấu giữ chữ hoa/dấu câu gốc, gạch chân theo chip của view
+    v = _view_of("Think about this thing.", "tink about dis thing", "en")
+    w = app.stage_words("Think about this thing.", v)
+    assert [x["text"] for x in w] == ["Think", "about", "this", "thing."]
+    assert [x["kind"] for x in w] == ["warn", "ok", "warn", "ok"], w
+    assert w[0]["note"] == "nghe “tink”" and w[1]["note"] == "✓"
+    miss = _view_of("Lan năm nay lên", "lan năm nay", "vi")
+    assert app.stage_words("Lan năm nay lên", miss)[-1] == {
+        "text": "lên", "kind": "bad", "note": "(thiếu)"}
+    # chưa chấm / "chưa nghe rõ": không tô màu câu (D-29)
+    vi2 = app.PRACTICE_SETS["vi2"]["target"]
+    unsure = _view_of(vi2, "cảm ơn các bạn đã theo dõi", "vi")
+    assert all(x["kind"] == "plain" for x in app.stage_words(vi2, unsure))
+    assert all(x["kind"] == "plain" for x in app.stage_words(vi2, None))
+
+
+@case
+def shell_helpers():
+    # thanh điều hướng thu về 60 px khi cửa sổ hẹp (canvas: 980×640 là chế độ gọn)
+    assert app.nav_compact(980 * 2.5, 2.5) and not app.nav_compact(1480 * 2.5, 2.5)
+    assert app.short_mic_name("Microphone Array (Intel® Smart Sound Technology for Digital "
+                              "Microphones) [Windows DirectSound]").endswith("…")
+    assert app.short_mic_name("USB Mic [MME]") == "USB Mic"
+    assert app.meter_cells(0.0) == 0 and app.meter_cells(1.0) == 20
+    assert 0 < app.meter_cells(0.05) < 20
 
 
 def main() -> int:

@@ -152,7 +152,7 @@ $env:PYTHONIOENCODING='utf-8'
 
 Thủ công:
 1. Tab 1 → Ghi âm: nói 3 s rồi im → tự dừng, ra text.
-2. Tab 2 → Thu âm & chấm: nói 2 s → tự dừng sau ~1,3 s.
+2. Luyện phát âm → nút tròn đỏ (Thu âm): nói 2 s → tự dừng sau ~1,3 s.
 3. Bịt mic / mute → sau 7 s báo "không nghe thấy giọng", mở hướng dẫn, không chấm.
 4. Nói quá nhỏ (đỉnh < 0,8%) → không chấm, tự dò mic khác.
 5. Nói quá to/gần → cảnh báo VỠ nhưng vẫn xử lý.

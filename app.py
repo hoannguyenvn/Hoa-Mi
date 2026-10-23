@@ -1191,13 +1191,70 @@ def stt_controls(state, idle_label):
 
 
 def prac_controls(state, has_replay):
-    """Nút/thanh tiến trình của tab Luyện theo trạng thái (D-31). Hàm thuần."""
+    """Nút/thanh tiến trình của tab Luyện theo trạng thái (D-31). Hàm thuần.
+
+    Nút thu tròn (B4a): rec_icon "mic" | "stop"; nhãn dưới nút "Thu âm" lần đầu,
+    "Thu lại" sau một lần chấm, "Dừng & chấm" khi đang thu.
+    """
     return {
         "rec_enabled": state != "scoring",
-        "rec_text": "■  Dừng & chấm" if state == "recording" else "●  Thu âm & chấm",
+        "rec_icon": "stop" if state == "recording" else "mic",
+        "rec_label": {"recording": "Dừng & chấm", "scoring": "Đang chấm…",
+                      "result": "Thu lại", "unsure": "Thu lại",
+                      "error": "Thu lại"}.get(state, "Thu âm"),
         "replay_enabled": has_replay and state not in ("recording", "scoring"),
         "show_pbar": state == "scoring",
     }
+
+
+NAV_COMPACT_W = 1240   # cửa sổ hẹp hơn (px ở 100 %) → thanh điều hướng chỉ còn biểu tượng
+
+
+def nav_compact(width, scale):
+    """Thanh điều hướng 60 px chỉ biểu tượng khi cửa sổ hẹp (canvas: 980×640)."""
+    return width < NAV_COMPACT_W * scale
+
+
+def short_mic_name(name, limit=28):
+    """"Microphone Array (Intel® …) [Windows DirectSound]" → "Microphone Array (Intel®…"."""
+    base = (name or "").split(" [")[0].strip()
+    return base if len(base) <= limit else base[:limit - 1].rstrip() + "…"
+
+
+def meter_cells(level, n=20):
+    """Số ô sáng của thanh mức âm (cùng thang dB với Recorder.level_bar)."""
+    db = 20 * math.log10(max(float(level or 0.0), 1e-6))
+    return int(round(n * min(1.0, max(0.0, (db + 50) / 44.0))))
+
+
+def stage_words(target, view=None):
+    """Câu mẫu trên sân khấu: mỗi từ GỐC (giữ hoa/dấu câu) + kiểu gạch chân + ghi chú.
+
+    view None (chưa chấm / đang thu) hoặc "unsure" → không tô màu (D-29). Chip của view
+    theo thứ tự từ mẫu đã chuẩn hóa; một từ gốc có thể ứng với 0 hoặc nhiều từ chuẩn hóa.
+    kind: plain | ok | warn | bad. Hàm thuần.
+    """
+    tokens = (target or "").split()
+    chips = list((view or {}).get("chips") or [])
+    shown = bool(view) and view.get("state") == "result"
+    rank = {"plain": 0, "ok": 1, "warn": 2, "bad": 3}
+    out, ci = [], 0
+    for tok in tokens:
+        n = len(norm_words(tok))
+        mine, ci = chips[ci:ci + n], ci + n
+        if not shown or not mine:
+            out.append({"text": tok, "kind": "plain", "note": ""})
+            continue
+        kind, note = "ok", "✓"
+        for c in mine:
+            k = c["kind"]
+            k = "ok" if k == "ok" else ("warn" if k in ("warn", "tone") else "bad")
+            if rank[k] > rank[kind]:
+                kind = k
+                note = ("(thiếu)" if c["kind"] == "missing" or not c.get("heard")
+                        else "nghe “%s”" % c["heard"])
+        out.append({"text": tok, "kind": kind, "note": note})
+    return out
 
 
 def gop_level(score):
@@ -1374,28 +1431,38 @@ DEFAULT_CFG = {
 }
 
 THEMES = {
+    # D-32 (canvas thiết kế GATE B): bg = khung cửa sổ + thanh điều hướng, card = vùng nội
+    # dung, side = panel chi tiết bên phải, nav_sel = mục đang chọn (+ vạch accent 3 px)
     "light": {
-        "bg": "#EDF0F4", "card": "#FFFFFF", "card2": "#F5F7FA", "border": "#D8DEE6",
-        "fg": "#17212B", "muted": "#5D6B7A", "accent": "#0B6BCB", "accent2": "#0958A8",
+        "bg": "#F1F3F6", "card": "#FFFFFF", "card2": "#F5F7FA", "side": "#FAFBFC",
+        "nav_sel": "#FFFFFF", "border": "#E1E6EC",
+        "fg": "#17212B", "muted": "#56636F", "accent": "#0B6BCB", "accent2": "#0958A8",
         "field": "#FFFFFF", "sel": "#CFE3F7",
-        "ok_bg": "#DCF3DD", "bad_bg": "#FFDCDC", "warn_bg": "#FFE7B8",
+        "ok_bg": "#DFF3E3", "bad_bg": "#FDE2E2", "warn_bg": "#FFF0D1",
         "ok_fg": "#1B5E20", "bad_fg": "#A8001B", "log_bg": "#F7F9FB",
-        "btn": "#F2F5F8", "btn_hover": "#E3E9F0", "disabled": "#E7EBF0",
-        # token D-32 cho kết quả luyện (B3): chữ cảnh báo, vòng điểm, hộp thông tin
+        "btn": "#F2F5F8", "btn_hover": "#E3E9F0", "disabled": "#EEF1F5",
+        "disabled_fg": "#9AA5B1",
         "warn_fg": "#7A4B00", "accent_fg": "#0A5DB0", "info_bg": "#E7F0FB",
         "track": "#E3E8EE", "ring_ok": "#2E7D32", "ring_warn": "#C77700",
         "ring_bad": "#C62828",
+        # nút thu (cùng đỏ hai theme: chữ trắng 5,5 : 1), gạch chân từ, dải lỗi trên biểu đồ
+        "rec": "#C8282E", "rec_ring": "#FBE3E4", "warn_line": "#C77700",
+        "bad_line": "#C62828", "band": "#FFF6E3",
     },
     "dark": {
-        "bg": "#191B1F", "card": "#24272C", "card2": "#2B2F35", "border": "#3A4048",
-        "fg": "#E8EBEF", "muted": "#9BA5B0", "accent": "#3B82F6", "accent2": "#2F6FD0",
-        "field": "#1E2126", "sel": "#2F4A6B",
-        "ok_bg": "#1D3A25", "bad_bg": "#482025", "warn_bg": "#453A1C",
-        "ok_fg": "#9BE3A5", "bad_fg": "#FF9AA2", "log_bg": "#1E2126",
-        "btn": "#2E333A", "btn_hover": "#3A4048", "disabled": "#2A2E34",
+        "bg": "#141619", "card": "#1D2024", "card2": "#262A30", "side": "#202328",
+        "nav_sel": "#262A30", "border": "#33383F",
+        "fg": "#E8EBEF", "muted": "#A3ADB8", "accent": "#2F6FD0", "accent2": "#2A5FB5",
+        "field": "#1A1D21", "sel": "#2F4A6B",
+        "ok_bg": "#1D3A25", "bad_bg": "#4A2026", "warn_bg": "#45391A",
+        "ok_fg": "#9BE3A5", "bad_fg": "#FF9AA2", "log_bg": "#1A1D21",
+        "btn": "#2A2E34", "btn_hover": "#33383F", "disabled": "#262A30",
+        "disabled_fg": "#6B747E",
         "warn_fg": "#F5C76B", "accent_fg": "#8AB6FF", "info_bg": "#1E2F48",
         "track": "#33383F", "ring_ok": "#4CAF50", "ring_warn": "#E0A030",
         "ring_bad": "#E57373",
+        "rec": "#C8282E", "rec_ring": "#4A2026", "warn_line": "#E0A030",
+        "bad_line": "#E57373", "band": "#3A3220",
     },
 }
 
@@ -1924,7 +1991,6 @@ class App(tk.Tk):
         self.guide_id = tk.StringVar(value="n")
         self.custom_text = tk.StringVar(value="")
         self.p_status = tk.StringVar(value="Chọn bài (hoặc âm), bấm Thu âm rồi đọc to, rõ.")
-        self.p_score = tk.StringVar(value="")
         self.p_working = False     # = prac_state == "scoring" (đặt trong _set_prac_state)
         self.prac_state = "idle"   # D-31
         self.mic_var = tk.StringVar()
@@ -2020,10 +2086,6 @@ class App(tk.Tk):
         st.configure("Rec.TLabel", background=P["card"], foreground="#E5484D",
                      font=(F, 10, "bold"))
 
-        if hasattr(self, "p_int"):
-            self.p_int.configure(bg=P["card2"])
-            self._draw_intonation()
-
         st.configure("TButton", background=P["btn"], foreground=P["fg"],
                      bordercolor=P["border"], focuscolor=P["btn"], padding=(self.px(12), self.px(6)),
                      relief="flat")
@@ -2055,6 +2117,19 @@ class App(tk.Tk):
                foreground=[("disabled", P["muted"])],
                arrowcolor=[("disabled", P["border"])],
                bordercolor=[("focus", P["accent"])])
+        st.configure("Toolbar.TCombobox", fieldbackground=P["card"], background=P["card"],
+                     foreground=P["fg"], bordercolor=P["card"], lightcolor=P["card"],
+                     darkcolor=P["card"], arrowcolor=P["muted"], arrowsize=self.px(13),
+                     selectbackground=P["card"], selectforeground=P["fg"],
+                     padding=(self.px(6), self.px(4)))
+        st.map("Toolbar.TCombobox",
+               fieldbackground=[("disabled", P["card"]), ("readonly", P["card"])],
+               foreground=[("disabled", P["disabled_fg"])],
+               arrowcolor=[("disabled", P["border"])],
+               bordercolor=[("hover", P["border"]), ("focus", P["border"])],
+               selectbackground=[("readonly", P["card"])],
+               selectforeground=[("readonly", P["fg"])])
+        self.option_add("*TCombobox*Listbox.font", (self.F, 10))
         self.option_add("*TCombobox*Listbox.background", P["field"])
         self.option_add("*TCombobox*Listbox.foreground", P["fg"])
         self.option_add("*TCombobox*Listbox.selectBackground", P["accent"])
@@ -2122,10 +2197,9 @@ class App(tk.Tk):
                 self._style_text(w, role)
             except tk.TclError:
                 pass
-        if hasattr(self, "btn_theme"):
-            self.btn_theme.configure(text="Chế độ: Sáng" if self.theme_name.get() == "dark"
-                                     else "Chế độ: Tối")
-        # chip/thẻ nhúng trong ô kết quả vẽ bằng màu cũ → vẽ lại theo theme mới
+        # widget tk thuần (thanh điều hướng, sân khấu, panel) + phần vẽ Canvas theo theme mới
+        if hasattr(self, "_themed"):
+            self._retheme_tk()
         if getattr(self, "_last_view", None):
             self._render_result(self._last_view)
         self.after(200, self._set_titlebar)
@@ -2258,57 +2332,318 @@ class App(tk.Tk):
         hint.pack(anchor="w", pady=(self.px(6), self.px(0)))
         self._mic_hints.append(hint)
         self._mic_combos.append(cb)
+        self._tooltip(cb, self.mic_var.get)   # tên mic dài bị cắt trong ô (V-15)
         return cb
 
+    # ---------- widget tk thuần theo theme (B4a) ----------
+    def _tw(self, w, **tokens):
+        """Gán màu token (vd bg="side", fg="muted") cho widget tk thuần và nhớ để đổi theme."""
+        self._themed.append((w, tokens))
+        self._tw_apply(w, tokens)
+        return w
+
+    def _tw_apply(self, w, tokens):
+        opts = {k: self.P[v] for k, v in tokens.items()}
+        if "bg" in opts and isinstance(w, tk.Label):
+            opts.setdefault("activebackground", opts["bg"])
+        w.configure(**opts)
+
+    def _retheme_tk(self):
+        alive = []
+        for w, tokens in self._themed:
+            try:
+                self._tw_apply(w, tokens)
+                alive.append((w, tokens))
+            except tk.TclError:
+                pass          # widget đã hủy
+        self._themed = alive
+        for fn in list(self._redraws):
+            try:
+                fn()
+            except tk.TclError:
+                pass
+
+    def _lbl(self, parent, text="", bg="card", fg="fg", size=10, weight="normal",
+             font=None, **kw):
+        lb = tk.Label(parent, text=text, font=font or (self.F, size, weight), bd=0,
+                      padx=0, pady=0, **kw)
+        return self._tw(lb, bg=bg, fg=fg)
+
+    def _frame(self, parent, bg="card", **kw):
+        return self._tw(tk.Frame(parent, bd=0, highlightthickness=0, **kw), bg=bg)
+
+    def _hline(self, parent, side=None, **pack):
+        """Đường kẻ mảnh 1 px (màu border)."""
+        ln = self._frame(parent, bg="border", height=1, width=1)
+        ln.pack(fill="x" if side in (None, "top", "bottom") else "y", side=side or "top", **pack)
+        return ln
+
+    def _link_lbl(self, parent, text, command, bg="card", size=10):
+        lb = self._lbl(parent, text, bg=bg, fg="accent_fg", size=size, cursor="hand2")
+        lb.bind("<Button-1>", lambda e: command())
+        return lb
+
+    def _draw_icon(self, c, name, color, s, bg=None, ox=0, oy=0, clear=True):
+        """Biểu tượng nét mảnh vẽ bằng Canvas (không file ảnh): doc, mic, gear, moon, sun, stop."""
+        if clear:
+            c.delete("all")
+        w = max(1, int(round(s / 11.0)))
+        u = s / 24.0
+
+        def P(*xy):
+            return [v * u + (oy if i % 2 else ox) for i, v in enumerate(xy)]
+        if name == "doc":
+            c.create_line(*P(14, 3, 6, 3, 5, 4, 5, 20, 6, 21, 18, 21, 19, 20, 19, 8, 14, 3, 14, 8,
+                             19, 8), fill=color, width=w, joinstyle="round")
+            c.create_line(*P(9, 13, 15, 13), fill=color, width=w)
+            c.create_line(*P(9, 17, 13, 17), fill=color, width=w)
+        elif name == "mic":
+            c.create_line(*P(12, 6, 12, 11), fill=color, width=6 * u, capstyle="round")
+            c.create_arc(*P(5, 4, 19, 18), start=180, extent=180, style="arc", outline=color,
+                         width=w)
+            c.create_line(*P(12, 18, 12, 21), fill=color, width=w)
+        elif name == "gear":
+            c.create_oval(*P(9, 9, 15, 15), outline=color, width=w)
+            for x0, y0, x1, y1 in ((12, 2, 12, 5), (12, 19, 12, 22), (2, 12, 5, 12),
+                                   (19, 12, 22, 12), (4.9, 4.9, 7, 7), (17, 17, 19.1, 19.1),
+                                   (4.9, 19.1, 7, 17), (17, 7, 19.1, 4.9)):
+                c.create_line(*P(x0, y0, x1, y1), fill=color, width=w, capstyle="round")
+        elif name == "moon":
+            c.create_oval(*P(4, 4, 20, 20), fill=color, outline="")
+            c.create_oval(*P(9, 1, 24, 16), fill=bg or "", outline="")
+        elif name == "sun":
+            c.create_oval(*P(8, 8, 16, 16), outline=color, width=w)
+            for x0, y0, x1, y1 in ((12, 2, 12, 4.5), (12, 19.5, 12, 22), (2, 12, 4.5, 12),
+                                   (19.5, 12, 22, 12), (5, 5, 6.7, 6.7), (17.3, 17.3, 19, 19),
+                                   (5, 19, 6.7, 17.3), (17.3, 6.7, 19, 5)):
+                c.create_line(*P(x0, y0, x1, y1), fill=color, width=w, capstyle="round")
+        elif name == "stop":
+            c.create_rectangle(*P(6, 6, 18, 18), fill=color, outline="")
+
+    def _tooltip(self, w, text_fn, when=lambda: True):
+        """Chú thích khi rê chuột (tên mic đầy đủ, tên mục ở thanh điều hướng gọn)."""
+        tip = {"win": None, "job": None}
+
+        def show():
+            tip["job"] = None
+            text = text_fn()
+            if not text or not when() or tip["win"] is not None:
+                return
+            tw = tk.Toplevel(self)
+            tw.wm_overrideredirect(True)
+            tw.attributes("-topmost", True)
+            tk.Label(tw, text=text, font=(self.F, 9), bg=self.P["fg"], fg=self.P["card"],
+                     padx=self.px(8), pady=self.px(4), wraplength=self.px(420),
+                     justify="left").pack()
+            tw.wm_geometry("+%d+%d" % (w.winfo_rootx() + self.px(12),
+                                       w.winfo_rooty() + w.winfo_height() + self.px(4)))
+            tip["win"] = tw
+
+        def hide(_e=None):
+            if tip["job"]:
+                self.after_cancel(tip["job"])
+                tip["job"] = None
+            if tip["win"] is not None:
+                tip["win"].destroy()
+                tip["win"] = None
+
+        w.bind("<Enter>", lambda e: tip.update(job=self.after(450, show)), add="+")
+        w.bind("<Leave>", hide, add="+")
+        w.bind("<ButtonPress>", hide, add="+")
+
+    # ---------- khung app: thanh điều hướng + màn hình (D-28, B4a) ----------
     def _build_ui(self):
-        root = ttk.Frame(self, style="App.TFrame")
+        self._themed, self._redraws = [], []
+        self.screen = None
+        self._compact = None
+        root = self._frame(self, bg="bg")
         root.pack(fill="both", expand=True)
+        self._root_frame = root
+        self.rail = self._frame(root, bg="bg")
+        self.rail.configure(width=self.px(232))
+        self.rail.pack(side="left", fill="y")
+        self.rail.pack_propagate(False)
+        self._tw(tk.Frame(root, width=1, bd=0, highlightthickness=0), bg="border").pack(
+            side="left", fill="y")
+        self.content = self._frame(root, bg="card")
+        self.content.pack(side="left", fill="both", expand=True)
 
-        # dải màu nhấn trên cùng
-        strip = tk.Frame(self, bg=self.P["accent"], height=self.px(3))
-        strip.place(x=0, y=0, relwidth=1)
-
-        head = ttk.Frame(root, style="Header.TFrame", padding=(self.px(20), self.px(14)))
-        head.pack(fill="x", pady=(self.px(3), self.px(0)))
-        left = ttk.Frame(head, style="Header.TFrame")
-        left.pack(side="left")
-        ttk.Label(left, text="Oriole", style="H1.TLabel").pack(anchor="w")
-        ttk.Label(left, text=f"v{VERSION}  ·  audio/video → văn bản & phụ đề  ·  luyện phát âm",
-                  style="Sub.TLabel").pack(anchor="w")
-
-        right = ttk.Frame(head, style="Header.TFrame")
-        right.pack(side="right")
-        ttk.Label(right, text="Model", style="Sub.TLabel").grid(row=0, column=0, sticky="w")
-        ttk.Combobox(right, textvariable=self.model_name, values=MODELS, width=8,
-                     state="readonly").grid(row=1, column=0, padx=(self.px(0), self.px(12)))
-        ttk.Label(right, text="Ngôn ngữ", style="Sub.TLabel").grid(row=0, column=1, sticky="w")
-        ttk.Combobox(right, textvariable=self.lang_label, values=LANG_NAMES, width=11,
-                     state="readonly").grid(row=1, column=1, padx=(self.px(0), self.px(12)))
-        self.btn_theme = ttk.Button(right, text="Chế độ: Tối", style="Ghost.TButton", width=12,
-                                    command=self._flip_theme)
-        self.btn_theme.grid(row=1, column=2, padx=(self.px(0), self.px(0)))
-        ttk.Button(right, text="Cài đặt", style="Ghost.TButton",
-                   command=lambda: self.nb.select(self.tab_set)).grid(row=1, column=3, padx=(self.px(8), self.px(0)))
-
-        ttk.Separator(root).pack(fill="x")
-        self.nb = ttk.Notebook(root)
-        self.nb.pack(fill="both", expand=True, padx=self.px(18), pady=(self.px(10), self.px(0)))
-        self.tab_stt = ttk.Frame(self.nb, style="App.TFrame", padding=(self.px(0), self.px(10), self.px(0), self.px(0)))
-        self.tab_prac = ttk.Frame(self.nb, style="App.TFrame", padding=(self.px(0), self.px(10), self.px(0), self.px(0)))
-        self.tab_set = ttk.Frame(self.nb, style="App.TFrame", padding=(self.px(0), self.px(10), self.px(0), self.px(0)))
-        self.nb.add(self.tab_stt, text="Chuyển thành văn bản")
-        self.nb.add(self.tab_prac, text="Luyện phát âm")
-        self.nb.add(self.tab_set, text="Cài đặt")
-        self._build_text_tab(self.tab_stt)
+        self.screens = {}
+        for key in ("stt", "prac", "set"):
+            self.screens[key] = self._frame(self.content, bg="card")
+        # tên cũ (tab_*) giữ cho công cụ/hàm khác: mỗi "tab" giờ là một màn hình
+        self.tab_stt, self.tab_prac, self.tab_set = (self.screens[k] for k in ("stt", "prac", "set"))
+        self._build_rail()
+        self._build_text_screen(self.tab_stt)
         self._build_practice_tab(self.tab_prac)
-        self._build_settings_tab(self.tab_set)
-        self.nb.bind("<<NotebookTabChanged>>", self._on_tab_changed)
+        self._build_settings_screen(self.tab_set)
+        self._show_screen("stt")
+        root.bind("<Configure>", self._on_root_resize)
 
-        bar = ttk.Frame(root, style="App.TFrame", padding=(self.px(20), self.px(6)))
+    def _build_rail(self):
+        r = self.rail
+        top = self._frame(r, bg="bg")
+        top.pack(fill="x", pady=(self.px(18), self.px(14)))
+        n = max(16, self.px(30))
+        self._rail_logo_img = rows_to_photo(tk.PhotoImage(master=self, width=n, height=n),
+                                            logo_rows(n))
+        self._rail_logo = self._tw(tk.Label(top, image=self._rail_logo_img, bd=0), bg="bg")
+        self._rail_logo.pack(side="left", padx=(self.px(22), self.px(10)))
+        self._rail_title = self._lbl(top, "Oriole", bg="bg", size=16, weight="bold")
+        self._rail_title.pack(side="left")
+        self.nav = {}
+        for key, icon, text in (("stt", "doc", "Chuyển thành văn bản"),
+                                ("prac", "mic", "Luyện phát âm")):
+            self.nav[key] = self._rail_item(r, key, icon, text, lambda k=key: self._show_screen(k))
+        # chân thanh: model/ngôn ngữ (một chỗ duy nhất trên màn hình chính), theme, cài đặt
+        foot = self._frame(r, bg="bg")
+        foot.pack(side="bottom", fill="x", pady=(0, self.px(14)))
+        self.nav["set"] = self._rail_item(foot, "set", "gear", "Cài đặt",
+                                          lambda: self._show_screen("set"), side="bottom")
+        self.nav["theme"] = self._rail_item(foot, "theme", "moon", "", self._flip_theme,
+                                            side="bottom")
+        self._rail_model = self._frame(foot, bg="bg", cursor="hand2")
+        self._rail_model.pack(side="bottom", fill="x", padx=(self.px(12), self.px(12)),
+                              pady=(0, self.px(4)))
+        self._rail_model_a = self._lbl(self._rail_model, "Nhận dạng giọng nói", bg="bg",
+                                       fg="muted", size=9)
+        self._rail_model_a.pack(anchor="w", padx=(self.px(12), 0), pady=(self.px(6), 0))
+        self._rail_model_b = self._lbl(self._rail_model, "", bg="bg", size=10)
+        self._rail_model_b.pack(anchor="w", padx=(self.px(12), 0), pady=(0, self.px(6)))
+        for w in (self._rail_model, self._rail_model_a, self._rail_model_b):
+            w.bind("<Button-1>", self._model_menu)
+        self.model_name.trace_add("write", lambda *_: self._update_rail_model())
+        self.lang.trace_add("write", lambda *_: self._update_rail_model())
+        self._update_rail_model()
+        self._redraws.append(self._draw_rail)
+
+    def _rail_item(self, parent, key, icon, text, command, side="top"):
+        f = self._frame(parent, bg="bg", cursor="hand2")
+        f.pack(side=side, fill="x", padx=(self.px(12), self.px(12)), pady=(self.px(2), 0))
+        bar = tk.Frame(f, width=self.px(3), bd=0, highlightthickness=0)
+        bar.pack(side="left", fill="y")
+        s = self.px(18)
+        cv = tk.Canvas(f, width=s, height=s, bd=0, highlightthickness=0)
+        cv.pack(side="left", padx=(self.px(12), self.px(12)), pady=(self.px(10), self.px(10)))
+        lb = tk.Label(f, text=text, font=(self.F, 10), bd=0, anchor="w")
+        lb.pack(side="left", fill="x", expand=True)
+        item = {"frame": f, "bar": bar, "icon": cv, "label": lb, "name": icon}
+        for w in (f, bar, cv, lb):
+            w.bind("<Button-1>", lambda e: command())
+        self._tooltip(f, lambda: lb.cget("text"), when=lambda: bool(self._compact))
+        return item
+
+    def _draw_rail(self):
+        P = self.P
+        dark = self.theme_name.get() == "dark"
+        self.nav["theme"]["name"] = "sun" if dark else "moon"
+        self.nav["theme"]["label"].configure(
+            text="Giao diện sáng" if dark else "Giao diện tối")
+        compact = bool(self._compact)
+        for key, it in self.nav.items():
+            sel = key == self.screen
+            bg = P["nav_sel"] if sel else P["bg"]
+            for w in (it["frame"], it["icon"], it["label"]):
+                w.configure(bg=bg)
+            it["bar"].configure(bg=P["accent"] if sel else bg)
+            it["label"].configure(fg=P["fg"], font=(self.F, 10, "bold" if sel else "normal"))
+            self._draw_icon(it["icon"], it["name"], P["fg"], self.px(18), bg=bg)
+            if compact and it["label"].winfo_manager():
+                it["label"].pack_forget()
+            elif not compact and not it["label"].winfo_manager():
+                it["label"].pack(side="left", fill="x", expand=True)
+
+    def _update_rail_model(self):
+        self._rail_model_b.configure(
+            text="Model %s · %s ▾" % (self.model_name.get(),
+                                      LANG_NAME.get(self.lang.get(), "Tự động")))
+
+    def _model_menu(self, _e=None):
+        """Model + ngôn ngữ nhận dạng: menu bật từ chân thanh điều hướng (Q-04/D-28)."""
+        m = tk.Menu(self, tearoff=0, font=(self.F, 10))
+        m.add_command(label="Model nhận dạng", state="disabled")
+        for name in MODELS:
+            m.add_radiobutton(label=name, value=name, variable=self.model_name,
+                              command=self._save_cfg)
+        m.add_separator()
+        m.add_command(label="Ngôn ngữ", state="disabled")
+        for name in LANG_NAMES:
+            m.add_radiobutton(label=name, value=name, variable=self.lang_label,
+                              command=self._save_cfg)
+        w = self._rail_model
+        m.tk_popup(w.winfo_rootx(), w.winfo_rooty() - self.px(8) - m.winfo_reqheight())
+
+    def _show_screen(self, key):
+        if key == self.screen:
+            return
+        for k, fr in self.screens.items():
+            if k != key and fr.winfo_manager():
+                fr.pack_forget()
+        self.screens[key].pack(fill="both", expand=True)
+        self.screen = key
+        self._draw_rail()
+        if key == "set":
+            self._on_tab_changed()
+
+    def _on_root_resize(self, e):
+        if e.widget is not self._root_frame:
+            return
+        compact = nav_compact(e.width, self.S)
+        if compact == self._compact:
+            return
+        self._compact = compact
+        self.rail.configure(width=self.px(60 if compact else 232))
+        for w in (self._rail_title, self._rail_model):
+            if compact and w.winfo_manager():
+                w.pack_forget()
+        if not compact:
+            if not self._rail_title.winfo_manager():
+                self._rail_title.pack(side="left")
+            if not self._rail_model.winfo_manager():
+                self._rail_model.pack(side="bottom", fill="x", padx=(self.px(12), self.px(12)),
+                                      pady=(0, self.px(4)), after=self.nav["theme"]["frame"])
+        self._rail_logo.pack_configure(padx=(self.px(15 if compact else 22),
+                                             self.px(0 if compact else 10)))
+        pad = self.px(4 if compact else 12)
+        for it in self.nav.values():
+            it["frame"].pack_configure(padx=(pad, pad))
+        self._draw_rail()
+        self._prac_compact(compact)
+
+    def _toolbar(self, parent, title=None):
+        """Thanh công cụ 60 px đầu mỗi màn hình (tiêu đề trái, nút phải) + đường kẻ dưới."""
+        bar = self._frame(parent, bg="card", height=self.px(60))
         bar.pack(fill="x")
-        ttk.Label(bar, textvariable=self.status, style="Muted.TLabel").pack(side="left")
-        ttk.Label(bar, text="Ctrl+O chọn file  ·  Ctrl+Enter bắt đầu  ·  Esc hủy",
-                  style="Muted.TLabel").pack(side="right")
+        bar.pack_propagate(False)
+        if title:
+            self._lbl(bar, title, size=12, weight="bold").pack(side="left", padx=(self.px(28), 0))
+        self._hline(parent)
+        return bar
+
+    def _status_bar(self, parent):
+        bar = self._frame(parent, bg="card")
+        bar.pack(side="bottom", fill="x")
+        self._hline(bar)
+        lb = tk.Label(bar, textvariable=self.status, font=(self.F, 9), bd=0, anchor="w")
+        self._tw(lb, bg="card", fg="muted").pack(fill="x", padx=self.px(28), pady=self.px(6))
+        return bar
+
+    def _build_text_screen(self, parent):
+        """Màn hình Chuyển thành văn bản: B4a chỉ đặt vào khung mới (B5 làm lại theo S-8)."""
+        self._toolbar(parent, "Chuyển thành văn bản")
+        self._status_bar(parent)
+        body = ttk.Frame(parent, style="App.TFrame", padding=(self.px(20), self.px(16)))
+        body.pack(fill="both", expand=True)
+        self._build_text_tab(body)
+
+    def _build_settings_screen(self, parent):
+        bar = self._toolbar(parent, "Cài đặt")
+        self._lbl(bar, "Ctrl+O chọn file · Ctrl+Enter bắt đầu / dừng thu · Esc hủy",
+                  fg="muted", size=9).pack(side="right", padx=(0, self.px(28)))
+        self._status_bar(parent)
+        body = ttk.Frame(parent, style="App.TFrame", padding=(self.px(20), self.px(16)))
+        body.pack(fill="both", expand=True)
+        self._build_settings_tab(body)
 
     # ================= tab 1: chuyển thành văn bản =================
     def _build_text_tab(self, parent):
@@ -2319,6 +2654,9 @@ class App(tk.Tk):
         pw.add(left, weight=0)
         pw.add(right, weight=1)
         self.pw_text = pw
+        # màn hình có thể chưa hiện lúc dựng (khung B4a) → đặt vách khi khung có kích thước
+        pw.bind("<Configure>", lambda e: e.width > self.px(600) and self._fix_sash(pw, 470),
+                add="+")
 
         # --- thẻ nguồn ---
         card = self._card(left, "Nguồn")
@@ -2360,8 +2698,7 @@ class App(tk.Tk):
     def _init_sash(self):
         """Đặt vách ngăn hai tab ngay khi cửa sổ có kích thước — trước đây chờ 60 ms
         nên cột trái có lúc hiện bề rộng 0 (V-10)."""
-        for pw, pos in ((getattr(self, "pw_text", None), 470),
-                        (getattr(self, "pw_prac", None), 540)):
+        for pw, pos in ((getattr(self, "pw_text", None), 470),):
             if pw is not None:
                 self._sash(pw, self.px(pos))
 
@@ -2584,7 +2921,7 @@ class App(tk.Tk):
             self.lbl_rec_level.configure(text="")
 
     def _set_prac_state(self, state):
-        """Tab Luyện: idle | recording | scoring | result | unsure | error."""
+        """Màn hình Luyện: idle | recording | scoring | result | unsure | error."""
         assert state in PRAC_STATES, state
         prev = getattr(self, "prac_state", "idle")
         self.prac_state = state
@@ -2594,20 +2931,29 @@ class App(tk.Tk):
         elif prev == "recording" and self.rec_owner == "prac":
             self.recording, self.rec_owner = False, None
         c = prac_controls(state, bool(self.last_wav))
-        self.btn_prec.state(["!disabled"] if c["rec_enabled"] else ["disabled"])
-        self.btn_prec.configure(text=c["rec_text"])
-        self.btn_preplay.state(["!disabled"] if c["replay_enabled"] else ["disabled"])
-        if c["show_pbar"]:
-            if not self.pbar_p.winfo_manager():
-                self.pbar_p.pack(**self._pbar_p_pack)
-            self.pbar_p.configure(mode="indeterminate")
-            self.pbar_p.start(12)
-        elif self.pbar_p.winfo_manager():
-            self.pbar_p.stop()
-            self.pbar_p.configure(mode="determinate", value=0)
-            self.pbar_p.pack_forget()
-        if state != "recording":
+        self._rec_ctl = c
+        self._draw_rec_btn()
+        self.p_rec_label.configure(text=c["rec_label"])
+        if getattr(self, "btn_preplay", None) is not None:
+            self._pill_show(self.btn_preplay, c["replay_enabled"])
+        # đang thu: thanh mức âm + dòng đồng hồ thay cho dòng micro
+        rec = state == "recording"
+        for w in (self.p_meter, self.lbl_plevel):
+            if rec and not w.winfo_manager():
+                w.pack(pady=(self.px(8), 0), before=self.p_micline)
+            elif not rec and w.winfo_manager():
+                w.pack_forget()
+        if rec:
+            self._draw_meter(0.0)
+        else:
             self.lbl_plevel.configure(text="")
+        # đổi bài/chế độ bị khóa khi đang thu hoặc đang chấm (câu chấm = câu đang đọc)
+        locked = state in ("recording", "scoring")
+        for w in (self.cb_prac, self.btn_pprev, self.btn_pnext):
+            w.state(["disabled"] if locked else ["!disabled"])
+        self._draw_seg()
+        if state in ("idle", "recording", "scoring", "error"):
+            self._panel_state(state)
 
     # ----- chạy / hủy -----
     def _primary(self):
@@ -3229,142 +3575,573 @@ class App(tk.Tk):
                                True, base), daemon=True).start()
 
     # ================= tab 2: luyện phát âm =================
+    def _fix_sash(self, pw, pos):
+        try:
+            if pw.sashpos(0) < self.px(120):
+                self._sash(pw, self.px(pos))
+        except tk.TclError:
+            pass
+
     def _sash(self, pw, pos):
         try:
             pw.sashpos(0, pos)
         except Exception:
             pass
 
+    # ================= màn hình Luyện phát âm (app-style, D-28 / B4a) =================
     def _build_practice_tab(self, parent):
-        pw = ttk.Panedwindow(parent, orient="horizontal")
-        pw.pack(fill="both", expand=True)
-        left = ttk.Frame(pw, style="App.TFrame")
-        right = ttk.Frame(pw, style="App.TFrame")
-        pw.add(left, weight=0)
-        pw.add(right, weight=1)
-        self.pw_prac = pw
-
-        card = self._card(left, "Bài luyện", expand=True, pady=(self.px(0), self.px(0)))
-        row = ttk.Frame(card, style="CardInner.TFrame")
-        row.pack(fill="x")
-        for code, text in (("set", "Luyện câu"), ("guide", "Học âm")):
-            ttk.Radiobutton(row, text=text, value=code, variable=self.prac_mode,
-                            style="Card.TRadiobutton",
-                            command=self._prac_mode_changed).pack(side="left", padx=(self.px(0), self.px(16)))
-        self.cb_prac = ttk.Combobox(card, textvariable=self.prac_pick, width=36,
-                                    state="readonly")
-        self.cb_prac["values"] = SET_NAMES
-        self.cb_prac.current(0)
-        self.cb_prac.pack(fill="x", pady=(self.px(10), self.px(0)))
-        self.cb_prac.bind("<<ComboboxSelected>>", lambda e: self._refresh_practice())
-
-        self.entry_custom = ttk.Entry(card, textvariable=self.custom_text)
-        self.entry_custom.bind("<KeyRelease>", lambda e: self._refresh_practice())
-
-        self.p_target = ttk.Label(card, text="", style="Card.Big.TLabel", wraplength=self.px(470))
-        self.p_target.pack(anchor="w", pady=(self.px(12), self.px(2)))
-        # gợi ý bài có ký hiệu IPA ("/θ/ /ð/") → font có đủ IPA (D-28)
-        self.p_hint = ttk.Label(card, text="", style="Card.HintIpa.TLabel",
-                                wraplength=self.px(470))
-        self.p_hint.pack(anchor="w")
-        self.p_ipa = ttk.Label(card, text="", style="Card.Ipa.TLabel",
-                               wraplength=self.px(470))
-        self.p_ipa.pack(anchor="w", pady=(self.px(4), self.px(0)))
-        self.p_prog = ttk.Label(card, text="", style="Card.Hint.TLabel",
-                                wraplength=self.px(470))
-        self.p_prog.pack(anchor="w", pady=(self.px(6), self.px(0)))
-
-        self.p_how_card = ttk.Frame(card, style="CardInner.TFrame")
-        self.p_how = self._mk_text(self.p_how_card, role="out", scroll=True, height=7,
-                                   wrap="word")
-        self.p_how.holder.pack(fill="x")
-        self.p_how.configure(state="disabled")
-        self.p_samples = ttk.Frame(self.p_how_card, style="CardInner.TFrame")
-        self.p_samples.pack(fill="x", pady=(self.px(8), self.px(0)))
-
-        self.p_rec_row = ttk.Frame(card, style="CardInner.TFrame")
-        self.p_rec_row.pack(fill="x", pady=(self.px(16), self.px(0)))
-        self.btn_prec = ttk.Button(self.p_rec_row, text="●  Thu âm & chấm",
-                                   style="Accent.TButton", command=self._prac_record)
-        self.btn_prec.pack(side="left")
-        self.btn_preplay = ttk.Button(self.p_rec_row, text="Nghe lại", style="Ghost.TButton",
-                                      command=self._prac_replay, state="disabled")
-        self.btn_preplay.pack(side="left", padx=(self.px(8), self.px(0)))
-        ttk.Button(self.p_rec_row, text="Dừng phát", style="Ghost.TButton",
-                   command=self._stop_play).pack(side="left", padx=(self.px(8), self.px(0)))
-        ttk.Button(self.p_rec_row, text="Chấm file…", style="Ghost.TButton",
-                   command=self._prac_from_file).pack(side="left", padx=(self.px(8), self.px(0)))
-
-        self._mk_mic_row(card)
-        self.lbl_plevel = ttk.Label(card, text="", style="Card.Mono.TLabel")
-        self.lbl_plevel.pack(anchor="w", pady=(self.px(8), self.px(0)))
-        # chỉ hiện khi đang chấm (_prac_score → _prac_done/_prac_error), V-11
-        self.pbar_p = ttk.Progressbar(card, mode="determinate", maximum=100, value=0)
-        self._pbar_p_pack = {"fill": "x", "pady": (self.px(10), self.px(0))}
-
-        res = self._card(right, None, expand=True, pady=(self.px(0), self.px(0)))
-        head = ttk.Frame(res, style="CardInner.TFrame")
-        head.pack(fill="x")
-        ttk.Label(head, text="Kết quả", style="Card.Title.TLabel").pack(side="left")
-        # đầu kết quả (S-2): vòng điểm + câu chính + tóm tắt; chỉ hiện khi có kết quả
-        self.p_head = ttk.Frame(res, style="CardInner.TFrame")
-        self._p_head_after = head
-        self.p_ring = tk.Canvas(self.p_head, width=self.px(60), height=self.px(60), bd=0,
-                                highlightthickness=0, bg=self.P["card"])
-        self.p_ring.pack(side="left", padx=(0, self.px(12)))
-        info = ttk.Frame(self.p_head, style="CardInner.TFrame")
-        info.pack(side="left", fill="x", expand=True)
-        self.p_headline = ttk.Label(info, text="", style="Card.Headline.TLabel")
-        self.p_headline.pack(anchor="w")
-        self.p_summary = ttk.Label(info, text="", style="Card.Hint.TLabel",
-                                   wraplength=self.px(620), justify="left")
-        self.p_summary.pack(anchor="w", pady=(self.px(2), 0))
-        ttk.Label(res, textvariable=self.p_status, style="Card.Hint.TLabel",
-                  wraplength=self.px(620)).pack(anchor="w", pady=(self.px(8), self.px(8)))
-        self._embeds = []          # widget nhúng trong p_txt (chip, thẻ) — hủy khi vẽ lại
+        self._p_target = ""
+        self._embeds = []          # widget động trong panel (thẻ lỗi, ghi chú) — hủy khi vẽ lại
+        self._pills = []
         self._last_view = None
         self._last_words_t = []
         self._show_details = False
         self._show_heard = False
-        self.p_txt = self._mk_text(res, role="out", scroll=True, state="disabled")
-        self.p_txt.holder.pack(fill="both", expand=True)
+        self._rec_ctl = prac_controls("idle", False)
+        self._stage_data = []
+        self._words_key = None
 
-        # --- Ngữ điệu (cao độ): chỉ hiện khi có dữ liệu so sánh ---
-        self.p_int_card = ttk.Frame(res, style="CardInner.TFrame")
-        int_head = ttk.Frame(self.p_int_card, style="CardInner.TFrame")
-        int_head.pack(fill="x", pady=(self.px(10), self.px(4)))
-        ttk.Label(int_head, text="Ngữ điệu", style="Card.Title.TLabel").pack(side="left")
-        ttk.Label(int_head, text="cao độ · bán cung (st) so với trung vị mỗi người",
-                  style="Card.Hint.TLabel").pack(side="left", padx=(self.px(8), self.px(0)))
-        self.p_int = tk.Canvas(self.p_int_card, height=self.px(175), bd=0,
-                               highlightthickness=0, bg=self.P["card2"])
-        self.p_int.pack(fill="x")
-        self.p_int.bind("<Configure>", lambda e: self._draw_intonation())
-        self.p_int.bind("<Map>", lambda e: self.after(60, self._draw_intonation))
-        self.p_int_note = ttk.Label(self.p_int_card, text="", style="Card.Hint.TLabel",
-                                    wraplength=self.px(900))
-        self.p_int_note.pack(anchor="w", pady=(self.px(4), 0))
+        # ---- thanh công cụ: chế độ · bài · vị trí · bài trước/sau ----
+        bar = self._toolbar(parent)
+        self._seg = self._frame(bar, bg="card2")
+        self._seg.pack(side="left", padx=(self.px(28), self.px(16)))
+        self._seg_items = {}
+        for code, text in (("set", "Luyện câu"), ("guide", "Học âm")):
+            lb = tk.Label(self._seg, text=text, font=(self.F, 10), bd=0, cursor="hand2",
+                          padx=self.px(12), pady=self.px(4), highlightthickness=1)
+            lb.pack(side="left", padx=self.px(3), pady=self.px(3))
+            lb.bind("<Button-1>", lambda e, c=code: self._set_prac_mode(c))
+            self._seg_items[code] = lb
+        self._redraws.append(self._draw_seg)
+        self.cb_prac = ttk.Combobox(bar, textvariable=self.prac_pick, width=30,
+                                    state="readonly", style="Toolbar.TCombobox",
+                                    font=(self.F, 12, "bold"))
+        self.cb_prac["values"] = SET_NAMES
+        self.cb_prac.current(0)
+        self.cb_prac.pack(side="left")
+        self.cb_prac.bind("<<ComboboxSelected>>", lambda e: self._refresh_practice())
+        self.p_pos = self._lbl(bar, "", fg="muted", size=10)
+        self.p_pos.pack(side="left", padx=(self.px(10), 0))
+        self.btn_pnext = ttk.Button(bar, text="Bài sau ▶", style="Ghost.TButton",
+                                    command=lambda: self._step_lesson(1))
+        self.btn_pnext.pack(side="right", padx=(0, self.px(28)))
+        self.btn_pprev = ttk.Button(bar, text="◀ Bài trước", style="Ghost.TButton",
+                                    command=lambda: self._step_lesson(-1))
+        self.btn_pprev.pack(side="right", padx=(0, self.px(8)))
+
+        # ---- thân: sân khấu (giữa) + panel chi tiết (phải) ----
+        body = self._frame(parent, bg="card")
+        body.pack(fill="both", expand=True)
+        self.p_side = self._frame(body, bg="side", width=self.px(400))
+        self.p_side.pack(side="right", fill="y")
+        self.p_side.pack_propagate(False)
+        self._tw(tk.Frame(body, width=1, bd=0, highlightthickness=0), bg="border").pack(
+            side="right", fill="y")
+        stage = self._frame(body, bg="card")
+        stage.pack(side="left", fill="both", expand=True)
+        self._build_stage(stage)
+        self._build_side(self.p_side)
         self._clear_prac_result()
 
+    # ---------- sân khấu: câu đọc, nghe mẫu, mẹo, nút thu ----------
+    def _build_stage(self, st):
+        inner = self._frame(st, bg="card")
+        inner.pack(fill="both", expand=True, padx=self.px(48), pady=(self.px(28), self.px(18)))
+        self._stage_in = inner
+        self.entry_custom = ttk.Entry(inner, textvariable=self.custom_text, font=(self.F, 11))
+        self.entry_custom.bind("<KeyRelease>", lambda e: self._refresh_practice())
+        self.p_lead = self._lbl(inner, "Đọc to câu này", fg="muted", size=10)
+        self.p_words = self._frame(inner, bg="card", height=self.px(60))
+        self.p_words.bind("<Configure>", lambda e: self._layout_words())
+        self.p_ipa = self._lbl(inner, "", fg="muted", font=(FONT_IPA, 12))
+        self.p_hint = self._lbl(inner, "", fg="muted", font=(FONT_IPA, 9), justify="center")
+        self.p_samples = self._frame(inner, bg="card")
+        self.p_tip = self._frame(inner, bg="card2")
+        ic = self._tw(tk.Canvas(self.p_tip, width=self.px(16), height=self.px(16), bd=0,
+                                highlightthickness=0), bg="card2")
+        ic.pack(side="left", anchor="n", padx=(self.px(14), self.px(10)), pady=(self.px(12), 0))
+        self._p_tip_icon = ic
+        self.p_how = self._lbl(self.p_tip, "", bg="card2", size=10, justify="left", anchor="w")
+        self.p_how.pack(side="left", fill="x", expand=True, padx=(0, self.px(14)),
+                        pady=self.px(10))
+        self._redraws.append(self._draw_tip_icon)
+        self._draw_tip_icon()
+
+        # khối thu âm ở đáy sân khấu
+        rb = self._frame(inner, bg="card")
+        rb.pack(side="bottom", fill="x")
+        self.p_recbox = rb
+        self.btn_prec = self._tw(tk.Canvas(rb, bd=0, highlightthickness=0, cursor="hand2"),
+                                 bg="card")
+        self.btn_prec.pack()
+        self.btn_prec.bind("<Button-1>", lambda e: self._rec_btn_click())
+        self.p_rec_label = self._lbl(rb, "Thu âm", size=12, weight="bold")
+        self.p_rec_label.pack(pady=(self.px(6), 0))
+        self.p_meter = self._tw(tk.Canvas(rb, width=self.px(260), height=self.px(10), bd=0,
+                                          highlightthickness=0), bg="card")
+        self.lbl_plevel = self._lbl(rb, "", fg="rec", size=9, weight="bold")
+        self.p_micline = self._frame(rb, bg="card")
+        self.p_micline.pack(pady=(self.px(8), 0))
+        self.p_mic_lbl = self._lbl(self.p_micline, "", fg="muted", size=9)
+        self.p_mic_lbl.pack(side="left")
+        self._link_lbl(self.p_micline, "Đổi", lambda: self._show_screen("set"), size=9).pack(
+            side="left", padx=(self.px(6), 0))
+        self.p_status_lbl = tk.Label(rb, textvariable=self.p_status, font=(self.F, 9), bd=0,
+                                     justify="center")
+        self._tw(self.p_status_lbl, bg="card", fg="muted")
+        links = self._frame(rb, bg="card")
+        links.pack(pady=(self.px(4), 0))
+        self._p_links = links
+        # dòng trạng thái chỉ chiếm chỗ khi có nội dung
+        self.p_status.trace_add("write", lambda *_: self._sync_status_line())
+        self._link_lbl(links, "Chấm file có sẵn…", self._prac_from_file, size=9).pack(side="left")
+        self._lbl(links, "  ·  ", fg="muted", size=9).pack(side="left")
+        self._link_lbl(links, "Dừng phát", self._stop_play, size=9).pack(side="left")
+        st.bind("<Configure>", self._stage_resized)
+        self.mic_var.trace_add("write", lambda *_: self._update_mic_line())
+        self._update_mic_line()
+        self._redraws.append(self._draw_rec_btn)
+        self._redraws.append(self._redraw_words)
+        self._redraws.append(self._redraw_pills)
+        self._draw_rec_btn()
+
+    def _sync_status_line(self):
+        on = bool(self.p_status.get().strip())
+        if on and not self.p_status_lbl.winfo_manager():
+            self.p_status_lbl.pack(pady=(self.px(4), 0), before=self._p_links)
+        elif not on and self.p_status_lbl.winfo_manager():
+            self.p_status_lbl.pack_forget()
+
+    def _stage_resized(self, e):
+        w = max(self.px(200), e.width - 2 * self.px(48))
+        self.p_how.configure(wraplength=min(self.px(640), w - self.px(60)))
+        self.p_hint.configure(wraplength=w)
+        self.p_status_lbl.configure(wraplength=w)
+
+    def _stage_repack(self, custom, ipa, hint, tip):
+        """Xếp lại phần trên sân khấu theo thứ tự cố định, bỏ phần trống."""
+        for w in (self.entry_custom, self.p_lead, self.p_words, self.p_ipa, self.p_hint,
+                  self.p_samples, self.p_tip):
+            if w.winfo_manager():
+                w.pack_forget()
+        if custom:
+            self.entry_custom.pack(fill="x", pady=(0, self.px(14)))
+        self.p_lead.pack()
+        self.p_words.pack(fill="x", pady=(self.px(8), 0))
+        if ipa:
+            self.p_ipa.pack(pady=(self.px(6), 0))
+        if hint:
+            self.p_hint.pack(pady=(self.px(4), 0))
+        self.p_samples.pack(pady=(self.px(14), 0))
+        if tip:
+            self.p_tip.pack(pady=(self.px(14), 0))
+
+    def _draw_tip_icon(self):
+        c, P, s = self._p_tip_icon, self.P, self.px(16)
+        c.delete("all")
+        w = max(1, self.px(1.6))
+        c.create_oval(w, w, s - w, s - w, outline=P["accent_fg"], width=w)
+        c.create_line(s / 2, s * 0.45, s / 2, s * 0.75, fill=P["accent_fg"], width=w)
+        c.create_oval(s / 2 - w, s * 0.27 - w, s / 2 + w, s * 0.27 + w, fill=P["accent_fg"],
+                      outline="")
+
+    # ----- câu trên sân khấu: từng từ + gạch chân + "nghe ‘…’" (S-2 / D-28) -----
+    def _words_font_size(self, text):
+        n = len(text or "")
+        size = 30 if n <= 36 else (24 if n <= 64 else 20)
+        return max(16, size - 6) if self._compact else size
+
+    def _set_stage_words(self, words):
+        self._stage_data = list(words)
+        self._redraw_words()
+
+    def _redraw_words(self):
+        for ch in self.p_words.winfo_children():
+            ch.destroy()
+        P = self.P
+        words = self._stage_data or [{"text": "…gõ câu của bạn ở ô trên…", "kind": "plain",
+                                      "note": ""}]
+        size = self._words_font_size(" ".join(w["text"] for w in words))
+        for w in words:
+            fg, line, nfg = {"ok": (P["fg"], P["card"], P["ok_fg"]),
+                             "warn": (P["warn_fg"], P["warn_line"], P["warn_fg"]),
+                             "bad": (P["bad_fg"], P["bad_line"], P["bad_fg"])}.get(
+                w["kind"], (P["fg"], P["card"], P["muted"]))
+            f = tk.Frame(self.p_words, bg=P["card"], bd=0, highlightthickness=0)
+            tk.Label(f, text=w["text"], font=(self.F, size, "bold"), bg=P["card"], fg=fg,
+                     bd=0, padx=0, pady=0).pack()
+            tk.Frame(f, bg=line, height=max(2, self.px(4)), bd=0,
+                     highlightthickness=0).pack(fill="x", pady=(self.px(2), self.px(2)))
+            tk.Label(f, text=w["note"] or " ", font=(self.F, 10), bg=P["card"], fg=nfg,
+                     bd=0, padx=0, pady=0).pack()
+        self._words_key = None
+        # đo kích thước khi Tk đã tính hình học (sau idle) — đo ngay thì mọi từ rộng 1 px
+        self.after_idle(self._layout_words)
+
+    def _layout_words(self):
+        """Xếp từ thành hàng, căn giữa, tự xuống dòng (Frame + place)."""
+        kids = self.p_words.winfo_children()
+        W = self.p_words.winfo_width()
+        if W <= 1 or not kids or any(k.winfo_reqwidth() <= 1 for k in kids):
+            return
+        key = (W, len(kids))
+        if key == self._words_key:
+            return
+        self._words_key = key
+        gx, gy = self.px(16), self.px(6)
+        rows, row, rw = [], [], 0
+        for k in kids:
+            kw = k.winfo_reqwidth()
+            if row and rw + gx + kw > W:
+                rows.append((row, rw))
+                row, rw = [], 0
+            rw += (gx if row else 0) + kw
+            row.append(k)
+        if row:
+            rows.append((row, rw))
+        y = 0
+        for row, rw in rows:
+            x = max(0, (W - rw) // 2)
+            h = max(k.winfo_reqheight() for k in row)
+            for k in row:
+                k.place(x=x, y=y)
+                x += k.winfo_reqwidth() + gx
+            y += h + gy
+        self.p_words.configure(height=max(1, y - gy))
+
+    # ----- nút nghe dạng viên thuốc (Canvas, góc bo) -----
+    def _round_rect(self, c, x0, y0, x1, y1, r, **kw):
+        pts = [x0 + r, y0, x1 - r, y0, x1, y0, x1, y0 + r, x1, y1 - r, x1, y1, x1 - r, y1,
+               x0 + r, y1, x0, y1, x0, y1 - r, x0, y0 + r, x0, y0]
+        return c.create_polygon(pts, smooth=True, **kw)
+
+    def _mk_pill(self, parent, text, command, enabled=True):
+        import tkinter.font as tkfont
+        f = tkfont.Font(family=self.F, size=10)
+        h = f.metrics("linespace") + self.px(14)
+        w = f.measure(text) + self.px(32) + self.px(12)
+        cv = tk.Canvas(parent, width=w, height=h, bd=0, highlightthickness=0, cursor="hand2")
+        cv._pill = {"text": text, "cmd": command, "enabled": enabled, "font": f}
+        cv.bind("<Button-1>", lambda e: cv._pill["enabled"] and cv._pill["cmd"]())
+        self._pills.append(cv)
+        self._draw_pill(cv)
+        return cv
+
+    def _draw_pill(self, cv):
+        P, d = self.P, cv._pill
+        w, h = int(cv.cget("width")), int(cv.cget("height"))
+        cv.configure(bg=P["card"], cursor="hand2" if d["enabled"] else "")
+        cv.delete("all")
+        self._round_rect(cv, 1, 1, w - 1, h - 1, h // 2, fill=P["card2"], outline=P["border"])
+        fg = P["fg"] if d["enabled"] else P["disabled_fg"]
+        x, y, t = self.px(16), h / 2.0, self.px(5)
+        cv.create_polygon(x, y - t, x, y + t, x + t * 1.6, y, fill=fg, outline="")
+        cv.create_text(x + self.px(16), y, text=d["text"], anchor="w", fill=fg, font=d["font"])
+
+    def _redraw_pills(self):
+        alive = []
+        for cv in self._pills:
+            try:
+                self._draw_pill(cv)
+                alive.append(cv)
+            except tk.TclError:
+                pass
+        self._pills = alive
+
+    def _pill_show(self, cv, on):
+        if on and not cv.winfo_manager():
+            cv.pack(side="left", padx=(0, self.px(10)))
+        elif not on and cv.winfo_manager():
+            cv.pack_forget()
+
+    # ----- nút thu tròn + thanh mức âm -----
+    def _rec_btn_click(self):
+        if self._rec_ctl.get("rec_enabled"):
+            self._prac_record()
+
+    def _draw_rec_btn(self):
+        c, P = self.btn_prec, self.P
+        d = self.px(72 if self._compact else 96)
+        ring = self.px(6 if self._compact else 8)
+        c.configure(width=d, height=d, bg=P["card"])
+        c.delete("all")
+        on = self._rec_ctl.get("rec_enabled", True)
+        c.create_oval(0, 0, d - 1, d - 1, fill=P["rec_ring"] if on else P["track"], outline="")
+        c.create_oval(ring, ring, d - 1 - ring, d - 1 - ring,
+                      fill=P["rec"] if on else P["disabled"], outline="")
+        s = int(d * 0.36)
+        self._draw_icon(c, self._rec_ctl.get("rec_icon", "mic"),
+                        "#FFFFFF" if on else P["disabled_fg"], s,
+                        ox=(d - s) // 2, oy=(d - s) // 2, clear=False)
+        c.configure(cursor="hand2" if on else "")
+
+    def _draw_meter(self, level=0.0):
+        c, P = self.p_meter, self.P
+        c.delete("all")
+        W, H, n = self.px(260), self.px(10), 20
+        gap = max(1, self.px(3))
+        cw = (W - gap * (n - 1)) / float(n)
+        lit = meter_cells(level, n)
+        for i in range(n):
+            x = i * (cw + gap)
+            c.create_rectangle(x, 0, x + cw, H, outline="",
+                               fill=P["accent"] if i < lit else P["track"])
+
+    def _update_mic_line(self):
+        name = self.mic_var.get()
+        if not name or name.startswith("("):
+            self.p_mic_lbl.configure(text="Chưa có micro —")
+        else:
+            self.p_mic_lbl.configure(text="Đọc xong, app tự dừng và chấm  ·  Micro: %s  ·"
+                                     % short_mic_name(name))
+
+    # ----- thanh công cụ: chế độ, bài trước/sau -----
+    def _draw_seg(self):
+        P = self.P
+        cur = self.prac_mode.get()
+        locked = self.p_working or self.recording
+        for code, lb in self._seg_items.items():
+            sel = code == cur
+            lb.configure(bg=P["card"] if sel else P["card2"],
+                         fg=P["fg"] if sel else (P["disabled_fg"] if locked else P["muted"]),
+                         font=(self.F, 10, "bold" if sel else "normal"),
+                         highlightbackground=P["border"] if sel else P["card2"],
+                         highlightcolor=P["border"] if sel else P["card2"],
+                         cursor="" if locked else "hand2")
+        self._seg.configure(bg=P["card2"])
+
+    def _set_prac_mode(self, code):
+        if self.p_working or self.recording or code == self.prac_mode.get():
+            return
+        self.prac_mode.set(code)
+        self._prac_mode_changed()
+
+    def _step_lesson(self, d):
+        if self.p_working or self.recording:
+            return
+        n = len(self.cb_prac["values"])
+        if n:
+            self.cb_prac.current((max(0, self.cb_prac.current()) + d) % n)
+            self._refresh_practice()
+
+    def _prac_compact(self, compact):
+        self.p_side.configure(width=self.px(320 if compact else 400))
+        self.cb_prac.configure(width=22 if compact else 30)
+        pad = self.px(20 if compact else 48)
+        self._stage_in.pack_configure(padx=pad, pady=(self.px(16 if compact else 28),
+                                                      self.px(12 if compact else 18)))
+        self._draw_rec_btn()
+        self._redraw_words()
+
+    # ---------- panel chi tiết (phải): cuộn được, nút chính ghim ở đáy ----------
+    def _scroll_area(self, parent, bg):
+        outer = self._frame(parent, bg=bg)
+        cv = self._tw(tk.Canvas(outer, bd=0, highlightthickness=0), bg=bg)
+        sb = ttk.Scrollbar(outer, orient="vertical", command=cv.yview)
+        inner = self._frame(cv, bg=bg)
+        win = cv.create_window(0, 0, window=inner, anchor="nw")
+
+        def sync(_e=None):
+            cv.configure(scrollregion=(0, 0, inner.winfo_reqwidth(), inner.winfo_reqheight()))
+            need = inner.winfo_reqheight() > cv.winfo_height() + 1
+            if need and not sb.winfo_manager():
+                sb.pack(side="right", fill="y", before=cv)   # trước canvas: canvas đã chiếm hết bề ngang
+            elif not need and sb.winfo_manager():
+                sb.pack_forget()
+                cv.yview_moveto(0)
+
+        inner.bind("<Configure>", sync)
+        cv.bind("<Configure>", lambda e: (cv.itemconfigure(win, width=e.width), sync()))
+        cv.configure(yscrollcommand=sb.set)
+        cv.pack(side="left", fill="both", expand=True)
+        cv._scroll_sb = sb
+        self._scrollers.append(cv)
+        return outer, inner
+
+    def _on_wheel(self, e):
+        """Cuộn panel nằm dưới con trỏ (Text tự cuộn bằng binding riêng của nó)."""
+        w = self.winfo_containing(e.x_root, e.y_root)
+        while w is not None:
+            if w in self._scrollers:
+                if w._scroll_sb.winfo_manager():
+                    w.yview_scroll(int(-e.delta / 120) or (-1 if e.delta > 0 else 1), "units")
+                return
+            w = w.master
+
+    def _build_side(self, side):
+        self._scrollers = getattr(self, "_scrollers", [])
+        self.bind_all("<MouseWheel>", self._on_wheel, add="+")
+        pad = self.px(24)
+        # đáy ghim: tiến bộ + nút chính
+        foot = self._frame(side, bg="side")
+        foot.pack(side="bottom", fill="x", padx=pad, pady=(self.px(8), self.px(20)))
+        self.p_prog = self._lbl(foot, "", bg="side", fg="muted", size=9, justify="left",
+                                anchor="w")
+        self.p_prog.pack(fill="x", pady=(0, self.px(10)))
+        self.p_actions = self._frame(foot, bg="side")
+        self.btn_pmain = ttk.Button(self.p_actions, text="Thử lại", style="Accent.TButton")
+        self.btn_pmain.pack(side="left", fill="x", expand=True)
+        self.p_sec = self._link_lbl(self.p_actions, "", lambda: None, bg="side", size=10)
+        outer, inner = self._scroll_area(side, "side")
+        outer.pack(fill="both", expand=True)
+        body = self._frame(inner, bg="side")
+        body.pack(fill="both", expand=True, padx=pad, pady=(pad, 0))
+        self._side_body = body
+        self._side_wraps = []
+        inner.bind("<Configure>", lambda e: self._side_wrap(e.width - 2 * pad), add="+")
+
+        # chờ / hướng dẫn (idle, đang thu, đang chấm, lỗi)
+        self.pp_wait = self._frame(body, bg="side")
+        self.pp_wait_t = self._lbl(self.pp_wait, "", bg="side", size=15, weight="bold",
+                                   justify="left", anchor="w")
+        self.pp_wait_t.pack(fill="x", pady=(self.px(40), self.px(6)))
+        self._wrap(self.pp_wait_t)
+        self.pp_wait_s = self._lbl(self.pp_wait, "", bg="side", fg="muted", size=10,
+                                   justify="left", anchor="w")
+        self.pp_wait_s.pack(fill="x")
+        self._wrap(self.pp_wait_s)
+        self.pp_steps = self._frame(self.pp_wait, bg="side")
+        for i, txt in enumerate(("Bấm “Nghe mẫu” để nghe câu chuẩn",
+                                 "Bấm nút đỏ và đọc to câu",
+                                 "Xem từ nào đúng, từ nào cần sửa"), 1):
+            row = self._frame(self.pp_steps, bg="side")
+            row.pack(fill="x", pady=(self.px(6), 0))
+            self._lbl(row, str(i), bg="side", fg="accent_fg", size=10, weight="bold").pack(
+                side="left", padx=(0, self.px(10)))
+            self._wrap(self._lbl(row, txt, bg="side", size=10, justify="left", anchor="w"),
+                       self.px(24)).pack(side="left", fill="x")
+        self.pbar_p = ttk.Progressbar(self.pp_wait, mode="indeterminate", maximum=100)
+
+        # đầu kết quả: vòng điểm + câu chính + tóm tắt
+        self.pp_head = self._frame(body, bg="side")
+        self.p_ring = self._tw(tk.Canvas(self.pp_head, width=self.px(64), height=self.px(64),
+                                         bd=0, highlightthickness=0), bg="side")
+        self.p_ring.pack(side="left", anchor="n", padx=(0, self.px(14)))
+        info = self._frame(self.pp_head, bg="side")
+        info.pack(side="left", fill="x", expand=True)
+        self.p_headline = self._lbl(info, "", bg="side", size=15, weight="bold",
+                                    justify="left", anchor="w")
+        self.p_headline.pack(fill="x")
+        self._wrap(self.p_headline, self.px(78))
+        self.p_summary = self._lbl(info, "", bg="side", fg="muted", size=10, justify="left",
+                                   anchor="w")
+        self.p_summary.pack(fill="x", pady=(self.px(2), 0))
+        self._wrap(self.p_summary, self.px(78))
+        self.pp_heard = self._lbl(body, "", bg="side", fg="muted", size=9, justify="left",
+                                  anchor="w")
+        self._wrap(self.pp_heard)
+        self.pp_fix = self._frame(body, bg="side")
+        self._caps(self.pp_fix, "CẦN SỬA").pack(fill="x", pady=(0, self.px(4)))
+        self.pp_fix_rows = self._frame(self.pp_fix, bg="side")
+        self.pp_fix_rows.pack(fill="x")
+        self.pp_notes = self._frame(body, bg="side")
+        self.pp_unsure = self._frame(body, bg="side")
+        self.pp_detail = self._frame(body, bg="side")
+
+        # NGỮ ĐIỆU (B4b sẽ thêm nhãn từ, trọng âm, tốc độ — S-5/S-5b)
+        self.p_int_card = self._frame(body, bg="side")
+        self._caps(self.p_int_card, "NGỮ ĐIỆU").pack(fill="x", pady=(0, self.px(6)))
+        self.p_int = self._tw(tk.Canvas(self.p_int_card, height=self.px(110), bd=0,
+                                        highlightthickness=0), bg="side")
+        self.p_int.pack(fill="x")
+        self.p_int.bind("<Configure>", lambda e: self._draw_intonation())
+        self.p_int_note = self._lbl(self.p_int_card, "", bg="side", fg="muted", size=9,
+                                    justify="left", anchor="w")
+        self.p_int_note.pack(fill="x", pady=(self.px(4), 0))
+        self._wrap(self.p_int_note)
+        self._redraws.append(self._draw_intonation)
+        self._redraws.append(lambda: self._last_view is None or self._draw_ring(
+            self._last_view["ring"]))
+        self._panel_sections = []
+
+    def _caps(self, parent, text):
+        return self._lbl(parent, text, bg="side", fg="muted", size=8, weight="bold",
+                         anchor="w")
+
+    def _wrap(self, lb, margin=0):
+        self._side_wraps.append((lb, margin))
+        return lb
+
+    def _side_wrap(self, width):
+        alive = []
+        for lb, m in self._side_wraps:
+            try:
+                lb.configure(wraplength=max(self.px(80), width - m))
+                alive.append((lb, m))
+            except tk.TclError:
+                pass
+        self._side_wraps = alive
+
+    def _panel_show(self, names):
+        order = (("wait", self.pp_wait), ("head", self.pp_head), ("heard", self.pp_heard),
+                 ("unsure", self.pp_unsure), ("fix", self.pp_fix), ("notes", self.pp_notes),
+                 ("inton", self.p_int_card), ("detail", self.pp_detail))
+        for _n, w in order:
+            if w.winfo_manager():
+                w.pack_forget()
+        first = True
+        for n, w in order:
+            if n in names:
+                w.pack(fill="x", pady=(0 if first else self.px(18), 0))
+                first = False
+        self._panel_sections = list(names)
+
+    def _show_actions(self, primary=None, primary_cmd=None, secondary=None, secondary_cmd=None):
+        if not primary:
+            if self.p_actions.winfo_manager():
+                self.p_actions.pack_forget()
+            return
+        self.btn_pmain.configure(text=primary, command=primary_cmd)
+        if secondary:
+            self.p_sec.configure(text=secondary)
+            self.p_sec.bind("<Button-1>", lambda e: secondary_cmd())
+            if not self.p_sec.winfo_manager():
+                self.p_sec.pack(side="left", padx=(self.px(14), self.px(4)))
+        elif self.p_sec.winfo_manager():
+            self.p_sec.pack_forget()
+        if not self.p_actions.winfo_manager():
+            self.p_actions.pack(fill="x")
+
+    def _panel_state(self, state):
+        """Panel khi chưa có kết quả: hướng dẫn / đang nghe / đang chấm / lỗi."""
+        if state in ("result", "unsure"):
+            return
+        t, s = {"idle": ("Kết quả sẽ hiện ở đây", ""),
+                "recording": ("Đang nghe bạn đọc…", "Kết quả hiện ngay khi bạn đọc xong."),
+                "scoring": ("Đang chấm…", "Máy đang nghe lại bản thu của bạn — vài giây."),
+                "error": ("Chưa chấm được",
+                          "Xem thông báo dưới nút thu âm, sửa rồi bấm Thu lại.")}[state]
+        self.pp_wait_t.configure(text=t)
+        self.pp_wait_s.configure(text=s)
+        if s and not self.pp_wait_s.winfo_manager():
+            self.pp_wait_s.pack(fill="x", after=self.pp_wait_t)
+        elif not s and self.pp_wait_s.winfo_manager():
+            self.pp_wait_s.pack_forget()
+        if state == "idle" and not self.pp_steps.winfo_manager():
+            self.pp_steps.pack(fill="x", pady=(self.px(6), 0))
+        elif state != "idle" and self.pp_steps.winfo_manager():
+            self.pp_steps.pack_forget()
+        if state == "scoring":
+            if not self.pbar_p.winfo_manager():
+                self.pbar_p.pack(fill="x", pady=(self.px(16), 0))
+            self.pbar_p.start(12)
+        elif self.pbar_p.winfo_manager():
+            self.pbar_p.stop()
+            self.pbar_p.pack_forget()
+        self._panel_show(["wait"])
+        self._show_actions(None)
+
     def _clear_prac_result(self, note=True):
-        """Xóa điểm/kết quả/ngữ điệu của lần chấm trước — đổi bài (P-01), thu/chấm lại."""
-        self.p_score.set("")
+        """Xóa kết quả/ngữ điệu của lần chấm trước — đổi bài (P-01), thu/chấm lại."""
         self.p_status.set("Chọn bài (hoặc âm), bấm Thu âm rồi đọc to, rõ.")
         self._destroy_embeds()
         self._last_view = None
         self._show_details = self._show_heard = False
-        if self.p_head.winfo_manager():
-            self.p_head.pack_forget()
-        t = self.p_txt
-        t.configure(state="normal")
-        t.delete("1.0", "end")
-        if note:
-            t.insert("1.0", "Kết quả sẽ hiện ở đây: từ nào đúng, từ nào cần sửa và cách sửa.",
-                     "note")
-        t.configure(state="disabled")
         self._inton = None
-        if self.p_int_card.winfo_manager():
-            self.p_int_card.pack_forget()
+        self._set_stage_words(stage_words(self._p_target, None))
+        self._panel_state(getattr(self, "prac_state", "idle")
+                          if getattr(self, "prac_state", "idle") not in ("result", "unsure")
+                          else "idle")
 
     def _destroy_embeds(self):
         for w in getattr(self, "_embeds", []):
@@ -3385,71 +4162,49 @@ class App(tk.Tk):
 
     def _refresh_practice(self):
         # đổi bài / chế độ -> kết quả cũ không còn đúng với câu mới (P-01, D-31: về idle)
+        guide = self.prac_mode.get() == "guide"
+        idx = self.cb_prac.current()
+        ids = GUIDE_IDS if guide else SET_IDS
+        idx = idx if 0 <= idx < len(ids) else 0
+        sid = None
+        if guide:
+            g = GUIDES[GUIDE_IDS[idx]]
+            target, hint, ipa = g["target"], "Đọc đúng câu trên, so khẩu hình với hướng dẫn.", ""
+            tip, samples, custom = g["instruction"], g["samples"], False
+        else:
+            sid = SET_IDS[idx]
+            s = PRACTICE_SETS[sid]
+            target, hint, ipa = s["target"], s["hint"], s.get("ipa") or ""
+            custom = sid == "custom"
+            if custom:
+                target = self.custom_text.get().strip()
+                hint = "Gõ câu của bạn ở ô trên (Việt hoặc Anh)."
+            tip = "\n".join("•  " + x for x in (s.get("tips") or []))
+            samples = s.get("samples") or []
+        self._p_target = target
         if not self.p_working:
             self._clear_prac_result()
             if getattr(self, "prac_state", "idle") in ("result", "unsure", "error"):
                 self._set_prac_state("idle")
-        guide = self.prac_mode.get() == "guide"
-        idx = self.cb_prac.current()
-        if guide:
-            idx = idx if 0 <= idx < len(GUIDE_IDS) else 0
-            g = GUIDES[GUIDE_IDS[idx]]
-            self.p_target.configure(text=g["target"])
-            self.p_hint.configure(text="Đọc đúng câu trên, so khẩu hình với hướng dẫn.")
-            self.p_ipa.configure(text="")
-            self.p_prog.configure(text="")
-            t = self.p_how
-            t.configure(state="normal")
-            t.delete("1.0", "end")
-            t.insert("1.0", g["instruction"])
-            t.configure(state="disabled")
-            self._fill_samples(g["samples"])
-            if not self.p_how_card.winfo_manager():
-                self.p_how_card.pack(fill="x", pady=(self.px(12), self.px(0)), before=self.p_rec_row)
-            if self.entry_custom.winfo_manager():
-                self.entry_custom.pack_forget()
-        else:
-            idx = idx if 0 <= idx < len(SET_IDS) else 0
-            sid = SET_IDS[idx]
-            s = PRACTICE_SETS[sid]
-            target, hint = s["target"], s["hint"]
-            if sid == "custom":
-                target = self.custom_text.get().strip()
-                hint = "Gõ câu của bạn ở ô trên (Việt hoặc Anh)."
-                if not self.entry_custom.winfo_manager():
-                    self.entry_custom.pack(fill="x", pady=(self.px(10), self.px(0)), before=self.p_target)
-            else:
-                if self.entry_custom.winfo_manager():
-                    self.entry_custom.pack_forget()
-            self.p_target.configure(text=target or "…gõ câu của bạn ở ô trên…")
-            self.p_hint.configure(text=hint)
-            ipa = s.get("ipa") or ""
-            self.p_ipa.configure(text=("IPA:  " + ipa) if ipa else "")
-            tips = s.get("tips") or []
-            if tips:
-                t = self.p_how
-                t.configure(state="normal")
-                t.delete("1.0", "end")
-                t.insert("1.0", "\n".join("•  " + x for x in tips))
-                t.configure(state="disabled")
-                self._fill_samples(s.get("samples") or [])
-                if not self.p_how_card.winfo_manager():
-                    self.p_how_card.pack(fill="x", pady=(self.px(12), self.px(0)),
-                                         before=self.p_rec_row)
-            elif self.p_how_card.winfo_manager():
-                self.p_how_card.pack_forget()
-            self._update_prog(sid)
+        self.p_pos.configure(text="Bài %d / %d" % (idx + 1, len(ids)))
+        self.p_ipa.configure(text=ipa)
+        self.p_hint.configure(text=hint)
+        self.p_how.configure(text=tip)
+        self._stage_repack(custom, ipa, hint, tip)
+        self._fill_samples(samples)
+        self._draw_seg()
+        self._update_prog(sid)
 
     def _fill_samples(self, samples):
         for ch in self.p_samples.winfo_children():
             ch.destroy()
         for label, fname in samples:
             p = os.path.join(MAU_DIR, fname)
-            b = ttk.Button(self.p_samples, text=f"▶ {label}", style="Ghost.TButton",
-                           command=lambda p=p: self._play_sample(p))
-            b.pack(side="left", padx=(self.px(0), self.px(8)))
-            if not os.path.exists(p):
-                b.state(["disabled"])
+            pill = self._mk_pill(self.p_samples, "Nghe mẫu" if label == "Cả câu" else label,
+                                 lambda p=p: self._play_sample(p), os.path.exists(p))
+            pill.pack(side="left", padx=(0, self.px(10)))
+        self.btn_preplay = self._mk_pill(self.p_samples, "Bản thu của bạn", self._prac_replay)
+        self._pill_show(self.btn_preplay, self._rec_ctl.get("replay_enabled", False))
 
     def _play_sample(self, path):
         if self.playing:
@@ -3468,18 +4223,10 @@ class App(tk.Tk):
 
     # ---------- ngữ điệu (cao độ) ----------
     def _show_intonation(self, d):
+        """Ngữ điệu nằm trong panel kết quả; chỉ hiện khi có kết quả chắc chắn (D-29)."""
         self._inton = d or None
-        if not d:
-            if self.p_int_card.winfo_manager():
-                self.p_int_card.pack_forget()
-            return
-        if not self.p_int_card.winfo_manager():
-            self.p_int_card.pack(side="bottom", fill="x",
-                                 pady=(self.px(10), self.px(0)), before=self.p_txt.holder)
-        self.p_int_note.configure(text=self._inton_text(d))
-        self.p_int.update_idletasks()
-        self._draw_intonation()
-        self.after(60, self._draw_intonation)  # vẽ lại sau khi cửa sổ hiện ra
+        if self._last_view:
+            self._render_result(self._last_view)
 
     def _inton_text(self, d):
         def slope(v):
@@ -3508,10 +4255,11 @@ class App(tk.Tk):
         if not d:
             return
         W, H = c.winfo_width(), c.winfo_height()
-        if W < self.px(180) or H < self.px(80):
+        if W < self.px(160) or H < self.px(60):
             return
         P = self.P
-        ml, mr, mt, mb = self.px(44), self.px(14), self.px(10), self.px(24)
+        c.configure(bg=P["side"])
+        ml, mr, mt, mb = self.px(30), self.px(6), self.px(6), self.px(18)
         x0, x1 = ml, W - mr
         y0, y1 = mt, H - mb
         if x1 - x0 < 10 or y1 - y0 < 10:
@@ -3592,7 +4340,7 @@ class App(tk.Tk):
             txt += f" · lần trước {h['last']:.0f}%"
         weak = hist_weakest(self.hist, PRACTICE_SETS.get(sid, {}).get("lang"))
         if weak:
-            txt += f"   |   Âm yếu nhất: {weak[0]} ({weak[1]} lần)"
+            txt += f"\nÂm hay sai: {weak[0]} ({weak[1]} lần)"
         self.p_prog.configure(text=txt)
 
     def _record_hist(self, sid, res, view=None):
@@ -3657,7 +4405,7 @@ class App(tk.Tk):
         self.p_status.set(
             f"● ĐANG THU bằng {name}. Đọc câu trên — đọc xong app tự dừng, "
             f"hoặc bấm ■ Dừng & chấm.")
-        self.lbl_plevel.configure(text="● 0s — mời bạn đọc…")
+        self.lbl_plevel.configure(text="● Đang thu · 00:00 · mời bạn đọc…")
         self._prac_tick()
 
     def _prac_tick(self):
@@ -3670,9 +4418,9 @@ class App(tk.Tk):
             hint = "chưa nghe thấy giọng — nói to / gần mic hơn"
         else:
             hint = "mời bạn đọc…"
-        self.lbl_plevel.configure(
-            text=f"● Đang thu {el}s  ·  {hint}  ·  {self.recorder.level_bar()}")
-        self.after(200, self._prac_tick)
+        self.lbl_plevel.configure(text=f"● Đang thu · {el // 60:02d}:{el % 60:02d} · {hint}")
+        self._draw_meter(self.recorder.level)
+        self.after(120, self._prac_tick)
 
     def _set_last_wav(self, path):
         """Đổi bản ghi để Nghe lại; xóa bản cũ (file tạm luyen_*) để không rò rỉ (I10)."""
@@ -3695,7 +4443,7 @@ class App(tk.Tk):
             return
         path, secs, info = save_frames_wav(frames, "luyen_", rate)
         self._set_last_wav(path)
-        self.btn_preplay.state(["!disabled"])
+        self._pill_show(self.btn_preplay, True)
         peak0 = float(info.get("peak0", 0.0) or 0.0)
         if peak0 < MIC_MIN_PEAK:
             # Gần như im lặng: KHÔNG đưa cho Whisper (dễ bịa ra câu lặp vô nghĩa).
@@ -3877,113 +4625,162 @@ class App(tk.Tk):
         lesson = PRACTICE_SETS.get(sid) if sid and sid != "custom" else None
         v = build_result_view(res, lesson)
         self._set_prac_state(v["state"])
-        self.p_score.set(v["score_line"])
-        self.p_status.set(v["status_line"])
+        self.p_status.set("")
         self._last_words_t = res.get("words_t") or []
         self._show_details = self._show_heard = False
+        self._inton = res.get("inton") if v["state"] == "result" else None
         self._render_result(v)
-
-        self._show_intonation(res.get("inton"))
 
         self._record_hist(sid, res, v)
         self._update_prog(sid)
 
-    # ---------- kết quả luyện (S-2, B3): chỉ VẼ view của build_result_view ----------
+    # ---------- kết quả luyện (S-2, B3/B4a): chỉ VẼ view của build_result_view ----------
     def _render_result(self, v):
-        """Vẽ đầu kết quả + câu mẫu + chip từng từ + thẻ "Cần sửa" vào p_txt."""
+        """Câu trên sân khấu tô theo từng từ; panel phải: vòng điểm, CẦN SỬA, ngữ điệu."""
         self._last_view = v
         self._destroy_embeds()
-        P = self.P
+        self._set_stage_words(stage_words(v["target"], v))
         self._draw_ring(v["ring"])
         self.p_headline.configure(text=v["headline"])
         self.p_summary.configure(text=v["summary"],
-                                 style="Card.HintIpa.TLabel" if has_ipa(v["summary"])
-                                 else "Card.Hint.TLabel")
-        if not self.p_head.winfo_manager():
-            self.p_head.pack(fill="x", pady=(self.px(10), 0), after=self._p_head_after)
-        t = self.p_txt
-        t.configure(state="normal")
-        t.delete("1.0", "end")
-        t.insert("end", "Câu mẫu:  ", "note")
-        t.insert("end", v["target"] + "\n", "big")
+                                 font=(FONT_IPA if has_ipa(v["summary"]) else self.F, 10))
+        sections = ["head"]
+        heard = v["status_line"]
+        if v["extras"] and v["state"] == "result":   # D-29: chữ "nghe thêm" khi không chắc là chữ bịa
+            more = v["extras_total"] - 3
+            heard += ("\n" if heard else "") + "Đọc thêm: " + ", ".join(
+                "“%s”" % w for w in v["extras"][:3]) + (" … +%d từ" % more if more > 0 else "")
+        if heard:
+            self.pp_heard.configure(text=heard)
+            sections.append("heard")
 
         if v["state"] == "unsure":
             # D-29: không số, không tô màu câu, không đổ lỗi cho người học
-            box = tk.Frame(t, bg=P["info_bg"], padx=self.px(14), pady=self.px(10))
-            tk.Label(box, text="Thử lại như sau", bg=P["info_bg"], fg=P["accent_fg"],
-                     font=(self.F, 10, "bold")).pack(anchor="w")
+            box = self._frame(self.pp_unsure, bg="info_bg")
+            box.pack(fill="x")
+            self._embeds.append(box)
+            self._lbl(box, "Thử lại như sau", bg="info_bg", fg="accent_fg", size=10,
+                      weight="bold").pack(anchor="w", padx=self.px(14), pady=(self.px(10), 0))
             for tip in v["tips"]:
-                tk.Label(box, text="•  " + tip, bg=P["info_bg"], fg=P["fg"], font=(self.F, 10),
-                         justify="left").pack(anchor="w", pady=(self.px(2), 0))
-            self._embed(box, pady=self.px(8))
-            t.insert("end", "\n")
-            arrow = "▾" if self._show_heard else "▸"
-            self._link(t, "Máy nghe được gì? " + arrow, self._toggle_heard)
+                self._wrap(self._lbl(box, "•  " + tip, bg="info_bg", size=10, justify="left",
+                                     anchor="w"), self.px(28)).pack(
+                    fill="x", padx=self.px(14), pady=(self.px(3), 0))
+            tk.Frame(box, height=self.px(10), bd=0, highlightthickness=0,
+                     bg=self.P["info_bg"]).pack()
+            tog = self._link_lbl(self.pp_unsure, "Máy nghe được gì? " +
+                                 ("▾" if self._show_heard else "▸"), self._toggle_heard,
+                                 bg="side", size=9)
+            tog.pack(anchor="w", pady=(self.px(10), 0))
+            self._embeds.append(tog)
             if self._show_heard:
-                t.insert("end", "\n“%s”" % v["heard_text"], "note")
-                if v["heard_note"]:
-                    t.insert("end", "\n" + v["heard_note"], "note")
-            t.insert("end", "\n")
-            t.configure(state="disabled")
-            return
-
-        t.insert("end", "\nTừng từ\n", "note")
-        for c in v["chips"]:
-            self._embed(self._mk_chip(t, c), padx=self.px(3), pady=self.px(3))
-        for w in v["extras"][:3]:
-            self._embed(self._mk_chip(t, {"kind": "extra", "target": w, "heard": None}),
-                        padx=self.px(3), pady=self.px(3))
-        if v["extras_total"] > 3:
-            t.insert("end", "  … +%d từ thừa" % (v["extras_total"] - 3), "note")
-        t.insert("end", "\n")
-
-        if v["cards"]:
-            t.insert("end", "\nCần sửa\n", "note")
-            for card in v["cards"]:
-                self._embed(self._mk_card(t, card), pady=self.px(4))
-                t.insert("end", "\n")
-            if v["cards_more"]:
-                t.insert("end", "… và %d lỗi khác\n" % v["cards_more"], "note")
-        if v["notes"]:
-            t.insert("end", "\n")
-            for n in v["notes"][:6]:
-                t.insert("end", "•  %s\n" % n)
-        if v["is_en"] and not v["cards"] and not v["perfect"] and v["score"] < 95:
-            t.insert("end", "\nChưa đủ dữ liệu để kết luận âm vị — đọc to và rõ hơn.\n", "note")
-        if not v["is_en"] and v["correct"] == 0 and not v["cards"]:
-            t.insert("end", "\nNghe lại câu mẫu rồi đọc chậm, rõ hơn; nếu bản ghi nghe rõ mà "
-                            "vẫn sai, thử model “small”.\n", "note")
-        if v["low_conf"]:
-            t.insert("end", "\nMáy nghe chưa chắc (tín hiệu yếu/nhiễu) — phần âm vị chỉ để "
-                            "tham khảo.\n", "note")
-        if v["has_gop"]:
-            # Q-03: số GOP chỉ hiện trong "Chi tiết số đo"; mặc định là mức chữ (I7)
-            t.insert("end", "\n")
-            self._link(t, "Chi tiết số đo " + ("▾" if self._show_details else "▸"),
-                       self._toggle_details)
-            t.insert("end", "\n")
-            if self._show_details:
+                txt = "“%s”" % v["heard_text"] + ("\n" + v["heard_note"] if v["heard_note"]
+                                                   else "")
+                lb = self._wrap(self._lbl(self.pp_unsure, txt, bg="side", fg="muted", size=9,
+                                          justify="left", anchor="w"))
+                lb.pack(fill="x", pady=(self.px(4), 0))
+                self._embeds.append(lb)
+            sections.append("unsure")
+            self._show_actions("Thử lại", self._prac_record, "Kiểm tra micro",
+                               lambda: self._show_screen("set"))
+        else:
+            if v["cards"]:
                 for card in v["cards"]:
-                    if card.get("detail"):
-                        t.insert("end", "%s:  %s\n" % (card["title"], card["detail"]), "ipa")
-                t.insert("end", "Điểm GOP 0–100 do mô hình âm học chấm, so với bản mẫu cùng câu — "
-                                "không phải phần trăm phát âm đúng.\n" if v["gop_has_ref"] else
-                                "Điểm GOP 0–100 do mô hình âm học chấm (ngưỡng tuyệt đối vì "
-                                "không có bản mẫu) — không phải phần trăm phát âm đúng.\n", "note")
-        t.configure(state="disabled")
+                    self._mk_fix(self.pp_fix_rows, card)
+                if v["cards_more"]:
+                    lb = self._lbl(self.pp_fix_rows, "… và %d lỗi khác" % v["cards_more"],
+                                   bg="side", fg="muted", size=9, anchor="w")
+                    lb.pack(fill="x", pady=(self.px(8), 0))
+                    self._embeds.append(lb)
+                sections.append("fix")
+            notes = ["•  " + n for n in v["notes"][:6]]
+            if v["is_en"] and not v["cards"] and not v["perfect"] and v["score"] < 95:
+                notes.append("Chưa đủ dữ liệu để kết luận âm vị — đọc to và rõ hơn.")
+            if not v["is_en"] and v["correct"] == 0 and not v["cards"]:
+                notes.append("Nghe lại câu mẫu rồi đọc chậm, rõ hơn; nếu bản ghi nghe rõ mà "
+                             "vẫn sai, thử model “small”.")
+            if v["low_conf"]:
+                notes.append("Máy nghe chưa chắc (tín hiệu yếu/nhiễu) — phần âm vị chỉ để "
+                             "tham khảo.")
+            for n in notes:
+                lb = self._wrap(self._lbl(self.pp_notes, n, bg="side", size=9, justify="left",
+                                          anchor="w", fg="fg" if n.startswith("•") else "muted"))
+                lb.pack(fill="x", pady=(0, self.px(4)))
+                self._embeds.append(lb)
+            if notes:
+                sections.append("notes")
+            if self._inton:
+                sections.append("inton")
+            if v["has_gop"]:
+                # Q-03: số GOP chỉ trong "Chi tiết số đo"; mặc định là mức chữ (I7)
+                tog = self._link_lbl(self.pp_detail, "Chi tiết số đo " +
+                                     ("▾" if self._show_details else "▸"), self._toggle_details,
+                                     bg="side", size=9)
+                tog.pack(anchor="w")
+                self._embeds.append(tog)
+                if self._show_details:
+                    lines = ["%s:  %s" % (c["title"], c["detail"]) for c in v["cards"]
+                             if c.get("detail")]
+                    lines.append("Điểm GOP 0–100 do mô hình âm học chấm, so với bản mẫu cùng câu"
+                                 " — không phải phần trăm phát âm đúng." if v["gop_has_ref"] else
+                                 "Điểm GOP 0–100 do mô hình âm học chấm (ngưỡng tuyệt đối vì "
+                                 "không có bản mẫu) — không phải phần trăm phát âm đúng.")
+                    for ln in lines:
+                        lb = self._wrap(self._lbl(self.pp_detail, ln, bg="side", fg="muted",
+                                                  font=(FONT_IPA, 9), justify="left",
+                                                  anchor="w"))
+                        lb.pack(fill="x", pady=(self.px(4), 0))
+                        self._embeds.append(lb)
+                sections.append("detail")
+            if v["perfect"]:
+                self._show_actions("Bài tiếp theo →", lambda: self._step_lesson(1),
+                                   "Thử lại", self._prac_record)
+            else:
+                self._show_actions("Thử lại", self._prac_record)
+        self._panel_show(sections)
+        if self._inton:
+            self.p_int_note.configure(text=self._inton_text(self._inton))
+            self.after(60, self._draw_intonation)
+        self._side_wrap(self._side_body.winfo_width())
 
-    def _embed(self, widget, **kw):
-        self.p_txt.window_create("end", window=widget, **kw)
-        self._embeds.append(widget)
-
-    def _link(self, t, text, command):
-        """Chữ bấm được trong ô kết quả (dùng tag riêng cho mỗi link)."""
-        tag = "link_" + getattr(command, "__name__", "x")   # một tag cho mỗi hành động
-        t.insert("end", text, (tag,))
-        t.tag_configure(tag, foreground=self.P["accent_fg"], underline=False)
-        t.tag_bind(tag, "<Button-1>", lambda e: command())
-        t.tag_bind(tag, "<Enter>", lambda e: t.configure(cursor="hand2"))
-        t.tag_bind(tag, "<Leave>", lambda e: t.configure(cursor=""))
+    def _mk_fix(self, parent, card):
+        """Một dòng CẦN SỬA: chấm màu · tiêu đề + mức · mẹo · ▶ Mẫu / ▶ Bạn đọc."""
+        P = self.P
+        row = self._frame(parent, bg="side")
+        row.pack(fill="x", pady=(self.px(10), 0))
+        self._embeds.append(row)
+        s = self.px(10)
+        dot = self._tw(tk.Canvas(row, width=s, height=s, bd=0, highlightthickness=0), bg="side")
+        dot.create_oval(0, 0, s, s, outline="",
+                        fill=P["bad_line"] if card["kind"] == "bad" else P["warn_line"])
+        dot.pack(side="left", anchor="n", padx=(0, self.px(12)), pady=(self.px(5), 0))
+        col = self._frame(row, bg="side")
+        col.pack(side="left", fill="x", expand=True)
+        top = self._frame(col, bg="side")
+        top.pack(fill="x")
+        self._lbl(top, card["level"], bg="side", fg="muted", size=9,
+                  font=(FONT_IPA, 9) if has_ipa(card["level"]) else None).pack(
+            side="right", anchor="n", padx=(self.px(8), 0))
+        title = self._lbl(top, card["title"], bg="side", size=10, weight="bold",
+                          font=(FONT_IPA, 10, "bold") if card.get("ipa") else None,
+                          justify="left", anchor="w")
+        title.pack(side="left", fill="x")
+        self._wrap(title, self.px(130))
+        if card.get("tip"):
+            self._wrap(self._lbl(col, card["tip"], bg="side", size=10, justify="left", anchor="w",
+                                 font=(FONT_IPA, 10) if has_ipa(card["tip"]) else None),
+                       self.px(22)).pack(fill="x", pady=(self.px(3), 0))
+        links = self._frame(col, bg="side")
+        sample = os.path.join(MAU_DIR, card["sample"]) if card.get("sample") else None
+        if sample and os.path.exists(sample):
+            self._link_lbl(links, "▶ Mẫu “%s”" % card["word"],
+                           lambda p=sample: self._play_sample(p), bg="side", size=9).pack(
+                side="left", padx=(0, self.px(14)))
+        if card.get("heard") and self._heard_span(card["heard"]):
+            self._link_lbl(links, "▶ Bạn đọc", lambda h=card["heard"]: self._play_heard(h),
+                           bg="side", size=9).pack(side="left")
+        if links.winfo_children():
+            links.pack(anchor="w", pady=(self.px(4), 0))
+        return row
 
     def _toggle_details(self):
         self._show_details = not self._show_details
@@ -3996,8 +4793,8 @@ class App(tk.Tk):
             self._render_result(self._last_view)
 
     def _draw_ring(self, ring):
-        c, P, s = self.p_ring, self.P, self.px(60)
-        c.configure(bg=P["card"])
+        c, P, s = self.p_ring, self.P, self.px(64)
+        c.configure(bg=P["side"])
         c.delete("all")
         w = self.px(7)
         pad = w / 2.0 + 1
@@ -4009,97 +4806,7 @@ class App(tk.Tk):
                          extent=-359.9 * min(1.0, ring["frac"]), style="arc",
                          outline=color, width=w)
         c.create_text(s / 2.0, s / 2.0, text=ring["text"], fill=P["fg"],
-                      font=(self.F, 12, "bold"))
-
-    def _mk_chip(self, parent, c):
-        """Chip một từ (Canvas, góc bo): biểu tượng + từ mẫu + "→ nghe ‘…’" (P-02)."""
-        import tkinter.font as tkfont
-        P = self.P
-        kind = c["kind"]
-        bg, fg, icon = {
-            "ok": (P["ok_bg"], P["ok_fg"], "✓"),
-            "warn": (P["warn_bg"], P["warn_fg"], "!"),
-            "tone": (P["warn_bg"], P["warn_fg"], "!"),
-            "rhyme": (P["bad_bg"], P["bad_fg"], "✕"),
-            "bad": (P["bad_bg"], P["bad_fg"], "✕"),
-            "missing": (P["bad_bg"], P["bad_fg"], "✕"),
-            "extra": (P["card2"], P["muted"], "+"),
-        }.get(kind, (P["card2"], P["fg"], "•"))
-        word = c["target"] if c["target"] is not None else (c.get("heard") or "")
-        sub = ""
-        if kind == "missing":
-            sub = "→ (thiếu)"
-        elif kind in ("warn", "tone", "rhyme", "bad") and c.get("heard"):
-            sub = "→ nghe “%s”" % c["heard"]
-        f_main = tkfont.Font(family=self.F, size=11, weight="bold")
-        f_sub = tkfont.Font(family=self.F, size=9)
-        f_icon = tkfont.Font(family=self.F, size=10)
-        gap, padx = self.px(5), self.px(10)
-        w_icon, w_main = f_icon.measure(icon), f_main.measure(word)
-        w_sub = f_sub.measure(sub) if sub else 0
-        width = padx * 2 + w_icon + gap + w_main + ((gap + w_sub) if sub else 0)
-        height = f_main.metrics("linespace") + self.px(10)
-        cv = tk.Canvas(parent, width=width, height=height, bd=0, highlightthickness=0,
-                       bg=P["card"])
-        r = self.px(5)
-        pts = [r, 0, width - r, 0, width, 0, width, r, width, height - r, width, height,
-               width - r, height, r, height, 0, height, 0, height - r, 0, r, 0, 0]
-        cv.create_polygon(pts, smooth=True, fill=bg,
-                          outline=P["border"] if kind == "extra" else bg,
-                          dash=(self.px(3), self.px(2)) if kind == "extra" else None)
-        y = height / 2.0
-        x = padx
-        cv.create_text(x, y, text=icon, anchor="w", fill=fg, font=f_icon)
-        x += w_icon + gap
-        cv.create_text(x, y, text=word, anchor="w", fill=fg, font=f_main)
-        if sub:
-            x += w_main + gap
-            cv.create_text(x, y, text=sub, anchor="w", fill=fg, font=f_sub)
-        return cv
-
-    def _mk_card(self, parent, card):
-        """Thẻ một lỗi: chấm màu + tiêu đề + mức, mẹo khẩu hình, ▶ Mẫu / ▶ Bạn đọc."""
-        P = self.P
-        width = max(self.px(360), min(self.px(720), self.p_txt.winfo_width() - self.px(40)))
-        f = tk.Frame(parent, bg=P["card"], highlightthickness=1,
-                     highlightbackground=P["border"], padx=self.px(12), pady=self.px(8))
-        top = tk.Frame(f, bg=P["card"])
-        top.pack(fill="x")
-        dot = tk.Canvas(top, width=self.px(10), height=self.px(10), bd=0, highlightthickness=0,
-                        bg=P["card"])
-        dot.create_oval(0, 0, self.px(10), self.px(10), outline="",
-                        fill=P["ring_bad"] if card["kind"] == "bad" else P["ring_warn"])
-        dot.pack(side="left", padx=(0, self.px(8)))
-        title_font = (FONT_IPA, 11, "bold") if card.get("ipa") else (self.F, 11, "bold")
-        tk.Label(top, text=card["title"], bg=P["card"], fg=P["fg"], font=title_font,
-                 anchor="w").pack(side="left")
-        tk.Label(top, text=card["level"], bg=P["card"], fg=P["muted"],
-                 font=((FONT_IPA, 9) if has_ipa(card["level"]) else (self.F, 9))).pack(
-            side="right", padx=(self.px(12), 0))
-        if card.get("tip"):
-            tk.Label(f, text=card["tip"], bg=P["card"], fg=P["fg"],
-                     font=((FONT_IPA, 10) if has_ipa(card["tip"]) else (self.F, 10)),
-                     wraplength=width - self.px(30), justify="left", anchor="w").pack(
-                fill="x", pady=(self.px(4), 0))
-        row = tk.Frame(f, bg=P["card"])
-        sample = os.path.join(MAU_DIR, card["sample"]) if card.get("sample") else None
-        if sample and os.path.exists(sample):
-            self._mk_link_label(row, "▶ Mẫu “%s”" % card["word"],
-                                lambda p=sample: self._play_sample(p))
-        if card.get("heard") and self._heard_span(card["heard"]):
-            self._mk_link_label(row, "▶ Bạn đọc", lambda h=card["heard"]: self._play_heard(h))
-        if row.winfo_children():
-            row.pack(anchor="w", pady=(self.px(6), 0))
-        # khung co theo nội dung → mọi thẻ cùng rộng nhờ một thanh chống cao 0
-        tk.Frame(f, bg=P["card"], width=width - 2 * self.px(12), height=0).pack()
-        return f
-
-    def _mk_link_label(self, parent, text, command):
-        lb = tk.Label(parent, text=text, bg=self.P["card"], fg=self.P["accent_fg"],
-                      font=(self.F, 10), cursor="hand2")
-        lb.pack(side="left", padx=(0, self.px(16)))
-        lb.bind("<Button-1>", lambda e: command())
-        return lb
+                      font=(self.F, 12 if len(ring["text"]) <= 4 else 10, "bold"))
 
     def _heard_span(self, word):
         """Mốc (bắt đầu, kết thúc) của từ máy nghe trong bản thu luyện — None nếu không có."""
@@ -4165,12 +4872,8 @@ class App(tk.Tk):
             self.mic_var.set(self._mic_names[0])
 
     def _on_tab_changed(self, _evt=None):
-        """Vào tab Cài đặt -> quét lại thiết bị (thấy mic ngoài vừa kết nối)."""
-        try:
-            cur = self.nb.nametowidget(self.nb.select())
-        except Exception:
-            return
-        if cur is self.tab_set:
+        """Vào màn hình Cài đặt -> quét lại thiết bị (thấy mic ngoài vừa kết nối)."""
+        if self.screen == "set":
             self._refresh_mics(rescan=True)
 
     def _mic_hint_text(self):

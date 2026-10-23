@@ -50,7 +50,7 @@ và skill nào cần nạp. Dùng file này thay vì grep toàn repo.
 
 | # | Tính năng | Hành vi | Code | Skill | Kiểm chứng |
 |---|---|---|---|---|---|
-| F4.1 | Model/ngôn ngữ dùng chung | thanh trên + tab 3 | `self.model_name`, `self.lang` | `app-ui` | đổi → áp cho cả 2 tab |
+| F4.1 | Model/ngôn ngữ dùng chung | chân thanh điều hướng (menu) + màn Cài đặt | `self.model_name`, `self.lang`, `App._model_menu` | `app-ui` | đổi → áp cho cả 2 màn hình |
 | F4.2 | Thư mục lưu | chọn, mặc định `downloads/` | `out_dir`, `_pick_out_dir` | `app-ui` | lưu video đúng chỗ |
 | F4.3 | Theme sáng/tối | đổi ngay, nhớ khi mở lại | `THEMES`, `_apply_theme` | `app-ui` | khởi động lại vẫn đúng |
 | F4.4 | DPI scaling | 100–250% không bóp chữ | `self.S`, `px()` | `app-ui` | đổi scaling Windows 150% |

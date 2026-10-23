@@ -17,8 +17,8 @@ $env:PYTHONIOENCODING='utf-8'          # console hay là cp1252
 
 & $PY tools\context_check.py            # tài liệu/symbol/skill/asset
 & $PY tools\context_check.py --snapshot # sinh docs/CONTEXT-SNAPSHOT.md
-& $PY tools\smoke_test.py               # 54 test khói
-& $PY tools\ui_shots.py before          # chụp 11 trạng thái UI vào %TEMP%\oriole_shots\before
+& $PY tools\smoke_test.py               # 56 test khói
+& $PY tools\ui_shots.py before          # chụp 15 trạng thái UI vào %TEMP%\oriole_shots\before
 & $PY -m py_compile app.py pron_en.py gop.py prosody.py gen_mau.py tools\build_lessons.py tools\context_check.py tools\smoke_test.py
 ```
 
@@ -27,7 +27,7 @@ $env:PYTHONIOENCODING='utf-8'          # console hay là cp1252
 - `py_compile` không in gì = OK; `__pycache__` không được commit/chia sẻ.
   Liệt kê file rõ ràng: PowerShell **không** mở rộng `tools\*.py` cho lệnh native.
 
-### `smoke_test.py` phủ gì (54 case)
+### `smoke_test.py` phủ gì (56 case)
 
 | Nhóm | Case |
 |---|---|
@@ -44,6 +44,7 @@ $env:PYTHONIOENCODING='utf-8'          # console hay là cp1252
 | Luyện / recorder | `practice_hyp_falls_back_to_segment_text`, `recording_belongs_to_one_tab` |
 | View / trạng thái / lịch sử (B2) | `result_view_english_errors`, `result_view_perfect_and_extras`, `result_view_vietnamese_counts_by_lesson_language`, `result_view_gop_levels_not_percent`, `screen_states_drive_controls`, `history_keeps_tries_and_migrates`, `weakest_sound_is_per_language`, `practice_keeps_word_timings` |
 | Cổng bằng chứng / tiếng Việt (B3) | `evidence_gate_blocks_hallucination_and_noise`, `unsure_view_shows_no_score_and_is_not_stored`, `perfect_needs_every_word`, `vietnamese_rhyme_state_named`, `vi_spell_splits_syllable`, `ipa_text_detected_for_font`, `wav_segment_bounds_clamped`, `theme_text_contrast_ok` |
+| Khung app-style (B4a) | `stage_words_mark_each_original_word`, `shell_helpers` |
 | Giao diện (B1) | `ui_font_bundled_and_registered`, `indicator_images_follow_theme`, `window_icon_drawn_in_code`, `language_names_map_to_codes` |
 
 Chạy **trước và sau** mỗi thay đổi. Thêm hành vi mới ⇒ thêm case, không sửa case cũ
@@ -157,7 +158,7 @@ lessons_en.json  mau/  assets/fonts/  requirements.txt  run.bat  README.md
 ```
 Đã chạy:
   context_check.py        -> X OK / Y FAIL
-  smoke_test.py           -> 54/54 PASS
+  smoke_test.py           -> 56/56 PASS
   py_compile              -> OK
 Đã thử tay:
   M1 (file mp3 14s)       -> PASS
