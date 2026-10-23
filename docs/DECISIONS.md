@@ -345,6 +345,31 @@ nên chỉ so trước/sau, **không** hiệu chuẩn điểm (I13); bản ghi t
 `resample_blocks_aliasing`, `highpass_matches_one_pole_loop`, `enhance_gain_ignores_click`,
 `guess_lang_from_target_text`, `practice_asr_options`, `whisper_model_is_cached`.
 
+### D-37 — Đợt 2: "máy chưa chắc", small cho bài Việt, ghi chú ồn, chỉnh Recorder (2026-10-23)
+**Quyết định:**
+- Từ chấm **đúng** mà xác suất Whisper < `WORD_UNSURE_P` (0,25) → câu trên sân khấu ghi
+  "máy chưa chắc" (kind `unsure`, gạch xám) thay ✓, và không còn "Hoàn hảo". Điểm **không đổi** (I4).
+  GOP "lệch rõ" (D-35) ưu tiên hơn.
+- Bài tiếng Việt (ngôn ngữ ASR = vi) chấm bằng **`small`** khi model chọn nhỏ hơn và `small` đã có
+  trên máy (`practice_model`, `whisper_model_on_disk` — không tự tải, I9); `load_model` giữ tối đa
+  2 cỡ (bỏ cỡ dùng lâu nhất).
+- `enhance_audio` trả `snr_db` (RMS khung 20 ms, phân vị 90 / 10); `quality_note` ghi "phòng hơi
+  ồn" khi < `SNR_LOW_DB` (15 dB). **Chỉ ghi chú, không thành cổng chấm.**
+- `Recorder`: nền nhiễu 0,5 s đầu theo phân vị 20 (thay trung vị); đếm `dropped` (input overflow)
+  → `quality_note` "mất N đoạn âm"; bài luyện tự dừng sau `PRAC_SILENCE_SEC` = 1,8 s im lặng.
+**Vì sao:** đo 2026-10-23. (1) Whisper `small` nghe TTS đọc sai "Tink" thành "Think" với p 0,80,
+từ đọc đúng có khi chỉ 0,72 → xác suất từ **không** phát hiện được Whisper "sửa hộ"; ở 0,5 dấu này
+báo oan ~1/5 câu đọc đúng; ở 0,25 không báo oan câu sạch/ồn, 1–2 từ ở mic yếu → chỉ là lưới an
+toàn khi chính Whisper rất không chắc. (2) `base` nghe câu mẫu sạch "Lan năm nay lên lớp" thành
+"là nằm này lên lắm" (1/5), `small` 5/5 ở mic yếu; asr_bench tổng: đúng 129→131 (sạch), 128→132
+(yếu), 122→126 (click), 119→121 (ồn). (3) Ngưỡng SNR/cổng chưa hiệu chuẩn với phòng thật — ghi chú
+trước, cổng sau P4. (4) Đọc ngay khi bấm làm trung vị 0,5 s đầu là giọng → ngưỡng bật giọng quá
+cao; người học hay dừng giữa câu để nhớ từ, 1,3 s cắt ngang.
+**Hệ quả:** kind mới `unsure` ở `stage_words`/`_redraw_words`; view có `unsure_words`, `model`.
+Bài Việt chấm chậm hơn (small). Test: `unsure_word_loses_tick_not_points`,
+`vietnamese_practice_uses_small_when_on_disk`, `snr_estimate_and_quality_note`,
+`recorder_noise_floor_and_practice_silence`, `whisper_model_is_cached`.
+
 ## B. Những cách làm đã bị loại (đừng lặp lại)
 
 Nguồn: `PHASE2-DANH-GIA-DU-AN-CU.md` §2.2 và §6.

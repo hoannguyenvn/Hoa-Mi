@@ -130,11 +130,20 @@ def run_one(model, frames, rate, target, lang, overrides):
     probs = asr["probs"]
     res["conf"] = (sum(probs) / len(probs)) if probs else 1.0
     res["low_conf"] = bool(probs) and res["conf"] < 0.35
+    res["words_t"], res["det_lang"] = asr["words_t"], lang
     gate = app.evidence_gate(res) if asr["hyp"] else "empty"
+    # từ chấm đúng nhưng Whisper nghe với xác suất thấp ("máy chưa chắc", D-37)
+    unsure = len(app.build_result_view(res).get("unsure_words") or {}) if asr["hyp"] else 0
+    # xác suất Whisper của các từ chấm ĐÚNG — để chọn ngưỡng WORD_UNSURE_P từ dữ liệu
+    ok_ti = {i for i, it in enumerate(t for t in res["items"] if t[0] is not None)
+             if it[1] == "ok"}
+    idx = app.map_to_target(target, [w["w"] for w in asr["words_t"]])
+    ok_p = [round(w["p"], 3) for w, ti in zip(asr["words_t"], idx) if ti in ok_ti]
     return {"hyp": asr["hyp"], "wer": round(wer(target, asr["hyp"]), 3),
             "correct": res["correct"], "total": res["total"],
             "conf": round(res["conf"], 3), "gate": gate,
             "peak0": round(float(info.get("peak0", 0)), 4),
+            "snr_db": info.get("snr_db"), "unsure": unsure, "ok_p": ok_p,
             "t_front": round(t_front, 3), "t_asr": round(t_asr, 3)}
 
 
@@ -165,18 +174,21 @@ def summarize(rows):
             "correct": sum(r["correct"] for r in rs),
             "total": sum(r["total"] for r in rs),
             "gated": sum(1 for r in rs if r["gate"]),
+            "unsure": sum(r.get("unsure", 0) for r in rs),
+            "snr_db": round(float(np.median([r["snr_db"] for r in rs
+                                             if r.get("snr_db") is not None] or [0])), 1),
             "t_front": round(sum(r["t_front"] for r in rs), 2),
             "t_asr": round(sum(r["t_asr"] for r in rs), 2)}
     return out
 
 
 def print_summary(summ, old=None):
-    print("\n%-11s %4s %7s %11s %6s %8s %7s" % ("điều kiện", "n", "WER", "đúng/tổng",
-                                               "chặn", "front s", "asr s"))
+    print("\n%-11s %4s %7s %11s %6s %7s %7s %8s %7s" % (
+        "điều kiện", "n", "WER", "đúng/tổng", "chặn", "chưa_ch", "SNR dB", "front s", "asr s"))
     for cond, s in summ.items():
-        line = "%-11s %4d %7.3f %5d/%-5d %6d %8.2f %7.2f" % (
+        line = "%-11s %4d %7.3f %5d/%-5d %6d %7d %7.1f %8.2f %7.2f" % (
             cond, s["n"], s["wer"], s["correct"], s["total"], s["gated"],
-            s["t_front"], s["t_asr"])
+            s.get("unsure", 0), s.get("snr_db", 0), s["t_front"], s["t_asr"])
         o = (old or {}).get(cond)
         if o:
             line += "   (trước: WER %.3f, đúng %d, chặn %d)" % (o["wer"], o["correct"],
@@ -186,7 +198,8 @@ def print_summary(summ, old=None):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--model", default="base")
+    ap.add_argument("--model", default="base",
+                    help="cỡ Whisper (mặc định base); bài Việt trong app dùng small (D-37)")
     ap.add_argument("--dir", help="thư mục bản ghi thật (x.wav + x.txt)")
     ap.add_argument("--only", help="chỉ chạy item có tên chứa chuỗi này")
     ap.add_argument("--asr", action="append", metavar="KEY=VALUE",
@@ -203,9 +216,10 @@ def main():
     conds = (("real", None, None, None),) if a.dir else CONDITIONS
     print("model %s · %d mẫu × %d điều kiện · ghi đè %s" % (a.model, len(items),
                                                          len(conds), overrides or "-"))
-    model = app.load_model(a.model)
     rows = []
     for k, (name, path, target, lang) in enumerate(items):
+        # chọn model như app (bài Việt dùng small nếu đã có trên máy — practice_model)
+        model = app.load_model(app.practice_model(a.model, lang)[0])
         x, sr = read_wav(path)
         for cname, peak, noise, click in conds:
             if a.dir:

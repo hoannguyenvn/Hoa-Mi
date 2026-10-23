@@ -589,25 +589,51 @@ def ensure_av_patched():
         pass
 
 
-_MODEL_CACHE = {}               # model_size -> WhisperModel (giữ một model, đổi cỡ thì thay)
+_MODEL_CACHE = {}               # model_size -> WhisperModel, cũ nhất đứng đầu
+_MODEL_CACHE_MAX = 2            # vd base cho bài Anh + small cho bài Việt (D-37)
 _MODEL_LOCK = threading.Lock()
 
 
 def load_model(model_size):
     """WhisperModel dùng lại giữa các lần chấm/nhận dạng; nạp lần đầu cho mỗi cỡ.
 
-    Chỉ giữ một cỡ trong RAM (small/medium nặng hàng trăm MB). CTranslate2 cho phép
-    gọi transcribe từ nhiều thread trên cùng một model.
+    Giữ tối đa 2 cỡ trong RAM (small/medium nặng hàng trăm MB), bỏ cỡ dùng lâu nhất.
+    CTranslate2 cho phép gọi transcribe từ nhiều thread trên cùng một model.
     """
     with _MODEL_LOCK:
-        m = _MODEL_CACHE.get(model_size)
+        m = _MODEL_CACHE.pop(model_size, None)
         if m is None:
             ensure_av_patched()
             from faster_whisper import WhisperModel
-            _MODEL_CACHE.clear()
             m = WhisperModel(model_size, device="cpu", compute_type="int8")
-            _MODEL_CACHE[model_size] = m
+        _MODEL_CACHE[model_size] = m          # đưa xuống cuối = vừa dùng
+        while len(_MODEL_CACHE) > _MODEL_CACHE_MAX:
+            _MODEL_CACHE.pop(next(iter(_MODEL_CACHE)))
         return m
+
+
+PRAC_VI_MODEL = "small"   # base nghe sai cả câu mẫu sạch tiếng Việt; small đúng (D-37)
+
+
+def whisper_model_on_disk(model_size):
+    """Model đã tải về máy chưa (không dùng mạng)."""
+    try:
+        from faster_whisper.utils import download_model
+        download_model(model_size, local_files_only=True)
+        return True
+    except Exception:
+        return False
+
+
+def practice_model(selected, lang, on_disk=whisper_model_on_disk):
+    """Cỡ model để chấm bài luyện: bài tiếng Việt dùng tối thiểu `small` nếu đã có trên
+    máy (không tự tải 480 MB — I9). -> (cỡ, đã_nâng_cấp)."""
+    if lang != "vi" or selected not in MODELS or \
+            MODELS.index(selected) >= MODELS.index(PRAC_VI_MODEL):
+        return selected, False
+    if on_disk(PRAC_VI_MODEL):
+        return PRAC_VI_MODEL, True
+    return selected, False
 
 
 # Tham số Whisper cho bản ghi luyện phát âm (một câu ngắn). Dùng chung với tools/asr_bench.py.
@@ -1043,6 +1069,30 @@ def speech_peak(x, rate):
     return float(pk[min(n - 1, max(2, int(GAIN_SKIP_FRAC * n)))])
 
 
+SNR_FRAME_MS = 20
+SNR_LOW_DB = 15.0     # giọng hơn nền < 15 dB → ghi chú "phòng hơi ồn" (chỉ ghi chú, chưa thành cổng)
+SNR_MAX_DB = 60.0
+
+
+def estimate_snr_db(x, rate):
+    """Ước lượng giọng/nền (dB): RMS khung 20 ms ở phân vị 90 so với phân vị 10.
+
+    Bản thu luyện luôn có đoạn lặng trước/sau giọng (0,5 s đo nền đầu, ~1,8 s im lặng
+    cuối) nên phân vị 10 là nền nhiễu. None nếu bản thu quá ngắn.
+    """
+    import numpy as np
+    x = np.asarray(x, dtype=np.float32)
+    f = max(1, int(rate * SNR_FRAME_MS / 1000.0))
+    n = len(x) // f
+    if n < 10:
+        return None
+    rms = np.sqrt(np.mean(x[:n * f].reshape(n, f) ** 2, axis=1))
+    speech, noise = float(np.percentile(rms, 90)), float(np.percentile(rms, 10))
+    if speech <= 1e-7:
+        return None
+    return round(min(SNR_MAX_DB, 20.0 * math.log10(speech / max(noise, 1e-7))), 1)
+
+
 def enhance_audio(samples, rate=16000):
     """Lọc DC + high-pass mềm (~75Hz) + giới hạn mềm + chuẩn hóa về -3dB
     + fade + cắt im lặng đầu/cuối. Trả về (int16, info). Hàm thuần, dễ test."""
@@ -1051,7 +1101,7 @@ def enhance_audio(samples, rate=16000):
     if len(x) == 0:
         return np.asarray(samples).flatten().astype(np.int16), {
             "peak0": 0.0, "peak1": 0.0, "quiet": True,
-            "clipped": False, "trimmed": 0.0}
+            "clipped": False, "trimmed": 0.0, "snr_db": None}
     peak_raw = float(np.max(np.abs(x))) if len(x) else 0.0
     clipped = peak_raw >= 0.99
     x = x - float(np.mean(x))  # bỏ DC (ù, lệch mic)
@@ -1060,6 +1110,7 @@ def enhance_audio(samples, rate=16000):
     # đáp ứng xung của chính bộ lọc đó (cắt khi a^n < 1e-7) — cùng kết quả, không lặp Python.
     if len(x) > 1 and rate > 0:
         x = fft_convolve(x, highpass_1pole_kernel(rate))[:len(x)]
+    snr_db = estimate_snr_db(x, rate)
     peak0 = float(np.max(np.abs(x))) if len(x) else 0.0
     if peak0 > 1e-6:
         # Chuẩn hóa về -3dB; nếu đầu vào đã vỡ thì HẠ xuống chứ không khuếch đại thêm.
@@ -1094,7 +1145,7 @@ def enhance_audio(samples, rate=16000):
         x[-f:] = x[-f:] * ramp[::-1]
     out = (x * 32767).astype(np.int16)
     return out, {"peak0": peak_raw, "peak1": peak1, "quiet": peak_raw < 0.05,
-                 "clipped": clipped, "trimmed": trimmed}
+                 "clipped": clipped, "trimmed": trimmed, "snr_db": snr_db}
 
 
 def flag_pair(t, h, lang):
@@ -1412,16 +1463,20 @@ def stage_words(target, view=None):
     view None (chưa chấm / đang thu) hoặc "unsure" → không tô màu (D-29). Chip của view
     theo thứ tự từ mẫu đã chuẩn hóa; một từ gốc có thể ứng với 0 hoặc nhiều từ chuẩn hóa.
     Từ máy nghe ĐÚNG nhưng GOP thấy âm "lệch rõ" (view["gop_marks"]) → warn "âm /θ/ lệch"
-    (D-35; điểm vẫn là số từ đúng, I4). kind: plain | ok | warn | bad. Hàm thuần.
+    (D-35; điểm vẫn là số từ đúng, I4). Từ đúng mà Whisper nghe với xác suất thấp
+    (view["unsure_words"]) → "unsure" "máy chưa chắc" (D-37).
+    kind: plain | ok | unsure | warn | bad. Hàm thuần.
     """
     tokens = (target or "").split()
     chips = list((view or {}).get("chips") or [])
     shown = bool(view) and view.get("state") == "result"
     marks = (view or {}).get("gop_marks") or {}
+    unsure = (view or {}).get("unsure_words") or {}
     rank = {"plain": 0, "ok": 1, "warn": 2, "bad": 3}
     out, ci = [], 0
     for ti, tok in enumerate(tokens):
         n = len(norm_words(tok))
+        c0 = ci
         mine, ci = chips[ci:ci + n], ci + n
         if not shown or not mine:
             out.append({"text": tok, "kind": "plain", "note": ""})
@@ -1437,6 +1492,8 @@ def stage_words(target, view=None):
         if kind == "ok" and marks.get(ti):
             # chữ đúng nhưng âm lệch rõ (GOP): cảnh báo, KHÔNG trừ điểm (I4)
             kind, note = "warn", "âm %s lệch" % ", ".join("/%s/" % x for x in marks[ti][:2])
+        elif kind == "ok" and any(k in unsure for k in range(c0, ci)):
+            kind, note = "unsure", "máy chưa chắc"
         out.append({"text": tok, "kind": kind, "note": note})
     return out
 
@@ -1596,6 +1653,32 @@ def gop_level(score):
     return "lệch rõ" if float(score) < GOP_LEVEL_STRONG else "hơi lệch"
 
 
+# Xác suất Whisper của một từ "đúng" dưới mức này → "máy chưa chắc". asr_bench (từ TTS đọc
+# đúng): p<0,5 báo oan ~1/5 câu sạch, p<0,25 không báo oan câu sạch/ồn, 1–2 từ ở mic yếu.
+WORD_UNSURE_P = 0.25
+
+
+def word_unsure_marks(res, chips):
+    """{chỉ số từ mẫu chuẩn hóa: p} cho từ chấm ĐÚNG mà Whisper nghe với xác suất thấp.
+
+    Không trừ điểm (I4) — chỉ bỏ dấu ✓ chắc chắn. Giới hạn đã đo (D-37): Whisper vẫn hay
+    "sửa" từ đọc sai thành từ đúng với xác suất cao (TTS "tink" → "Think" p 0,80, trong khi
+    từ đọc đúng có thể chỉ 0,72), nên dấu này không thay được GOP.
+    """
+    wt = res.get("words_t") or []
+    if not wt:
+        return {}
+    idx = map_to_target(res.get("target", ""), [w.get("w", "") for w in wt])
+    out = {}
+    for w, ti in zip(wt, idx):
+        p = w.get("p")
+        if ti is None or p is None or not (0 <= ti < len(chips)):
+            continue
+        if chips[ti]["kind"] == "ok" and p < WORD_UNSURE_P:
+            out[ti] = min(p, out.get(ti, 1.0))
+    return out
+
+
 def build_result_view(res, lesson=None):
     """Kết quả chấm → nội dung hiển thị (D-31, spec S-2). Hàm thuần, không Tk.
 
@@ -1680,6 +1763,8 @@ def build_result_view(res, lesson=None):
                 if ipa and ipa not in gop_marks.setdefault(wi, []):
                     gop_marks[wi].append(ipa)
 
+    unsure_words = word_unsure_marks(res, chips)
+
     # ghi chú mức từ chưa có thẻ nào giải thích (vd "Thiếu từ …")
     notes = [w["note"] for i, w in enumerate(chips)
              if w["kind"] in ("warn", "tone", "rhyme", "bad", "missing") and w["note"]
@@ -1688,7 +1773,8 @@ def build_result_view(res, lesson=None):
     score, correct, total = res.get("score", 0), res.get("correct", 0), res.get("total", 0)
     # "Hoàn hảo — đúng cả N từ" chỉ khi đúng thật mọi từ (câu dài sai 1 từ vẫn ≥ 95 %)
     perfect = (bool(total) and correct == total and not extras_total and not notes
-               and not n_iss and not cards and not res.get("warns") and not res.get("tones"))
+               and not n_iss and not cards and not res.get("warns") and not res.get("tones")
+               and not unsure_words)
     gate = evidence_gate(res)
     state = "unsure" if gate else "result"
 
@@ -1746,7 +1832,7 @@ def build_result_view(res, lesson=None):
         "is_en": is_en, "cards": cards, "cards_more": cards_more, "has_gop": bool(is_en and g),
         "gop_has_ref": bool(g and g.get("has_ref")),
         "n_issues": n_iss, "perfect": perfect, "correct": correct, "total": total,
-        "gop_marks": gop_marks,
+        "gop_marks": gop_marks, "unsure_words": unsure_words, "model": res.get("model"),
         "score": score, "ring": ring, "headline": headline, "summary": summary,
         "score_line": "" if state == "unsure" else f"{correct}/{total} từ",
         "status_line": status_line,
@@ -1819,6 +1905,9 @@ YT_KIND_NAMES = [n for _, n in YT_KINDS]
 YT_KIND_BY_NAME = {n: c for c, n in YT_KINDS}
 YT_KIND_NAME = {c: n for c, n in YT_KINDS}
 
+# Bài luyện: chờ 1,8 s im lặng mới tự dừng (1,3 s cũ cắt ngang người học dừng giữa câu để
+# nhớ từ). Tab Văn bản không tự dừng theo im lặng.
+PRAC_SILENCE_SEC = 1.8
 REC_LONG_SEC = 900          # giới hạn ghi âm ở tab chuyển văn bản (15 phút)
 
 
@@ -1865,6 +1954,12 @@ def quality_note(info):
         parts.append("đầu vào hơi NHỎ — để mic gần hơn (10–20cm)")
     elif p0 < 0.05:
         parts.append("đầu vào hơi nhỏ — đọc to hơn một chút")
+    snr = info.get("snr_db")
+    if snr is not None and snr < SNR_LOW_DB:
+        parts.append("phòng hơi ồn (giọng chỉ to hơn nền ~%d dB) — tắt quạt/nhạc, "
+                     "nói gần mic hơn" % round(snr))
+    if info.get("dropped"):
+        parts.append("mất %d đoạn âm khi thu (máy đang bận)" % info["dropped"])
     return "Đã xử lý: " + ", ".join(parts) + "."
 
 
@@ -2118,6 +2213,7 @@ class Recorder:
         self.speech_seen = False
         self.voice_t = 0.0
         self.stop_reason = None
+        self.dropped = 0        # số block báo input overflow (máy bận, mất âm)
         self._blocks = queue.Queue()
 
     def start(self, device, rate, max_sec, on_autostop, on_error,
@@ -2139,6 +2235,7 @@ class Recorder:
         self.speech_seen = False
         self.voice_t = 0.0
         self.stop_reason = None
+        self.dropped = 0
         cap = int(max_sec * rate)
         step = max(1, int(rate * 0.1))
         cfg = dict(auto_stop or {})
@@ -2161,6 +2258,8 @@ class Recorder:
                 break
 
         def _on_block(indata, frames_n, t_info, status):
+            if status and getattr(status, "input_overflow", False):
+                self.dropped += 1
             if self.active:
                 blocks.put(indata.copy())
 
@@ -2190,9 +2289,11 @@ class Recorder:
 
                         # 0,5 s đầu đo nền nhiễu; sau đó ngưỡng bật/tắt có hysteresis
                         # để người nói nhỏ vẫn không bị cắt giữa chừng.
+                        # Phân vị 20 thay cho trung vị: người đọc ngay khi bấm thì nửa
+                        # sau của 0,5 s đã là giọng, trung vị sẽ coi giọng là nền nhiễu.
                         if now - self.t0 < 0.5:
                             calib.append(rms)
-                            noise = float(np.median(calib))
+                            noise = float(np.percentile(calib, 20))
                         elif not self.speech_seen:
                             # Sàn thấp (0,4% RMS): micro array laptop cho đỉnh ~2%
                             # (RMS ~0,5%) vẫn phải bật được, nếu không app báo oan
@@ -4174,6 +4275,7 @@ class App(tk.Tk):
         # file tạm thuộc về _w_file (delete_after=True); không gán last_wav — đó là
         # bản ghi để Nghe lại của tab Luyện phát âm.
         path, secs, info = save_frames_wav(frames, "stt_", rate)
+        info["dropped"] = self.recorder.dropped
         self._log(quality_note(info))
         if secs < 0.4:
             remove_temp(path)
@@ -4365,6 +4467,7 @@ class App(tk.Tk):
         size = self._words_font_size(" ".join(w["text"] for w in words))
         for w in words:
             fg, line, nfg = {"ok": (P["fg"], P["card"], P["ok_fg"]),
+                             "unsure": (P["fg"], P["border"], P["muted"]),
                              "warn": (P["warn_fg"], P["warn_line"], P["warn_fg"]),
                              "bad": (P["bad_fg"], P["bad_line"], P["bad_fg"])}.get(
                 w["kind"], (P["fg"], P["card"], P["muted"]))
@@ -5069,7 +5172,7 @@ class App(tk.Tk):
         self.recorder.start(dev, rate, REC_MAX_SEC,
                             lambda reason: self._queue.put(("prac_autostop", reason)),
                             lambda m: self._queue.put(("prac_error", m)),
-                            auto_stop={"silence": 1.3, "min_speech": 0.4,
+                            auto_stop={"silence": PRAC_SILENCE_SEC, "min_speech": 0.4,
                                        "start_timeout": 7.0})
         self.p_status.set(
             f"● ĐANG THU bằng {name}. Đọc câu trên — đọc xong app tự dừng, "
@@ -5122,6 +5225,7 @@ class App(tk.Tk):
                 % (peak0 * 100))
             self._find_mic_auto(show_dialog=True)
             return
+        info["dropped"] = self.recorder.dropped
         self.p_status.set(quality_note(info))
         if secs < 0.5:
             self.p_status.set("Bản thu quá ngắn (<0.5s) — thử lại, đọc to hơn.")
@@ -5227,10 +5331,14 @@ class App(tk.Tk):
                                  "File gần như im lặng (đỉnh %.2f%%) — không chấm điểm. "
                                  "Hãy chọn file khác." % (pk * 100)))
                 return
-            self._queue.put(("prac_status", "Đang nghe lại bài đọc của bạn…"))
-            model = load_model(model_size)
             # câu tự gõ (lang "auto"): lấy ngôn ngữ từ chữ của câu mẫu thay vì để Whisper dò
             asr_lang = lang if lang != "auto" else (guess_lang(target) or "auto")
+            model_size, upgraded = practice_model(model_size, asr_lang)
+            self._queue.put(("prac_status",
+                             "Đang nghe lại bài đọc của bạn (bài tiếng Việt: model small "
+                             "nghe tiếng Việt rõ hơn)…" if upgraded
+                             else "Đang nghe lại bài đọc của bạn…"))
+            model = load_model(model_size)
             asr = transcribe_practice(model, wav_path, asr_lang)
             _info, probs, words_t = asr["info"], asr["probs"], asr["words_t"]
             hyp = asr["hyp"]
@@ -5241,6 +5349,7 @@ class App(tk.Tk):
             res = score_pronunciation(target, hyp, lang)
             res["target"] = target
             res["words_t"] = words_t
+            res["model"] = model_size
             res["det_lang"] = (getattr(_info, "language", None) or lang or "auto")
             res["conf"] = (sum(probs) / len(probs)) if probs else 1.0
             res["low_conf"] = bool(probs) and res["conf"] < 0.35
@@ -5362,8 +5471,9 @@ class App(tk.Tk):
             if v["is_en"] and not v["cards"] and not v["perfect"] and v["score"] < 95:
                 notes.append("Chưa đủ dữ liệu để kết luận âm vị — đọc to và rõ hơn.")
             if not v["is_en"] and v["correct"] == 0 and not v["cards"]:
-                notes.append("Nghe lại câu mẫu rồi đọc chậm, rõ hơn; nếu bản ghi nghe rõ mà "
-                             "vẫn sai, thử model “small”.")
+                notes.append("Nghe lại câu mẫu rồi đọc chậm, rõ hơn" + (
+                    "." if v.get("model") in ("small", "medium") else
+                    "; nếu bản ghi nghe rõ mà vẫn sai, thử model “small”."))
             if v["low_conf"]:
                 notes.append("Máy nghe chưa chắc (tín hiệu yếu/nhiễu) — phần âm vị chỉ để "
                              "tham khảo.")

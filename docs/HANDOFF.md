@@ -898,3 +898,35 @@ bản ghi đã lọc mới (GOP đọc cùng WAV 16 kHz nên hưởng lợi, nh�
 **Việc tiếp theo:** PROJECT-STATE §1 P4 — người dùng thu bản thật cho `--dir`; đợt 2 cần duyệt.
 **Cảnh báo:** đổi biên lọc/gain/tham số Whisper phải chạy `asr_bench --compare`; biên 7,4 kHz đã
 thử và tệ hơn. Bộ đo TTS chỉ để so trước/sau (I13).
+
+## 2026-10-23 (tiếp 8) — Claude Opus 5.5 — D-37: đợt 2 chất lượng nhận dạng
+
+**Mục tiêu phiên:** người dùng duyệt làm tiếp đợt 2 (bản thu thật gửi sau).
+
+**Đã làm (`app.py`):** `WORD_UNSURE_P` + `word_unsure_marks` → `view["unsure_words"]`, kind
+`unsure` "máy chưa chắc" trong `stage_words`/`_redraw_words`, chặn "Hoàn hảo"; `PRAC_VI_MODEL`,
+`whisper_model_on_disk`, `practice_model` (bài Việt → small nếu có trên máy), `res["model"]`,
+ghi chú "thử small" chỉ khi chưa dùng small; `load_model` giữ 2 cỡ (LRU); `estimate_snr_db`,
+`info["snr_db"]`, `SNR_LOW_DB`, `quality_note` ghi ồn + `dropped`; `Recorder.dropped`, nền nhiễu
+phân vị 20, `PRAC_SILENCE_SEC` 1,8 s. `tools/asr_bench.py`: cột "chưa_ch", SNR, `ok_p` từng dòng,
+chọn model như app. 4 test mới + sửa `whisper_model_is_cached` (74/74).
+Tài liệu: D-37, README §4, PROJECT-STATE (sửa luôn dòng "tab Văn bản tự dừng 1,3 s" — sai, tab
+này không tự dừng), ARCHITECTURE, skill `app-pronunciation`, `app-recording`, `app-transcription`,
+`app-qa-release`.
+
+**Phát hiện quan trọng:** xác suất từ của Whisper **không** phát hiện được "sửa hộ": TTS đọc
+"Tink about dis ting" → small nghe "Think(0,80)". Ở p<0,5 báo oan 6/30 câu đọc đúng → chọn 0,25.
+Phát hiện thật cho tiếng Anh vẫn là GOP (D-35); tiếng Việt chưa có (P3).
+
+**Kết quả đo (asr_bench, base + small cho bài Việt):** đúng 131/132/126/121 trên 146 (sạch/yếu/
+click/ồn), trước 129/128/122/119. SNR trung vị: 60 / 27 / 28 / 17 dB — điều kiện "ồn" giả lập
+(17 dB) **chưa** chạm ngưỡng ghi chú 15 dB.
+Thời gian ASR trong lần đo này cao gấp ~3–5× lần trước do máy bận (OneDrive dùng CPU) — front-end
+numpy cũng chậm tương ứng, không phải do code.
+
+**Quyết định mới:** D-37.
+**Đã kiểm chứng:** smoke 74/74, context_check, py_compile, asr_bench.
+**Chưa kiểm chứng:** mic thật; giao diện kind `unsure` chưa chụp bằng `ui_shots.py`; chấm bài
+Việt bằng small trong app thật (chậm hơn base bao nhiêu); ngưỡng SNR với phòng ồn thật.
+
+**Việc tiếp theo:** chờ bản thu thật của người dùng → `asr_bench --dir` (PROJECT-STATE P4a).

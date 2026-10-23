@@ -1,6 +1,6 @@
 # PROJECT STATE — Oriole
 
-- **Cập nhật lần cuối:** 2026-10-23 (D-36: lọc chống gập khi resample, gain bỏ click, tham số Whisper bài luyện, cache model, `tools/asr_bench.py`)
+- **Cập nhật lần cuối:** 2026-10-23 (D-36 + D-37: front-end âm thanh, tham số Whisper, `asr_bench`; "máy chưa chắc", small cho bài Việt, ghi chú ồn, Recorder)
 - **Phiên bản code:** 2.3 (`VERSION` trong `app.py`)
 - **Trạng thái:** chạy được trên máy hiện tại; git repo `main` (D-33); chưa có test tự động đầy đủ.
 - **Nguồn sự thật:** code + `docs/context-map.json`. Tài liệu này chỉ tóm tắt.
@@ -16,11 +16,10 @@
   gói tài liệu).
 - [ ] **P3 — Thanh điệu tiếng Việt bằng F0:** phân loại 6 thanh từ contour, so với mẫu
   cùng âm tiết; hiện "bạn đọc thanh sắc, mẫu là thanh huyền".
-- [ ] **P4 — Chất lượng thu âm/nhận dạng + hiệu chuẩn điểm:** đợt 1 xong (D-36). Kế tiếp:
-  (a) người dùng thu vài bản thật (mic array laptop, AirPods **đang đeo**) → `x.wav` + `x.txt`
-  → `tools/asr_bench.py --dir`; (b) đợt 2 cần duyệt: từ xác suất Whisper thấp ghi "máy chưa
-  chắc" thay ✓ (Whisper tự "sửa" tink → think), tự dùng `small` cho bài Việt, ước lượng SNR vào
-  ghi chú/cổng, chỉnh Recorder (đo nền theo phân vị thấp, im lặng 1,8–2 s, log block rơi);
+- [ ] **P4 — Chất lượng thu âm/nhận dạng + hiệu chuẩn điểm:** đợt 1 (D-36) + đợt 2 (D-37) xong.
+  Kế tiếp: (a) **người dùng sẽ gửi bản thu thật** (mic array laptop, AirPods đang đeo; `x.wav`
+  16-bit + `x.txt`) → `tools/asr_bench.py --dir … -v` với `base` và `small`; kiểm lại
+  `WORD_UNSURE_P`, `SNR_LOW_DB`, 1,8 s; (b) cân nhắc cổng SNR khi có dữ liệu phòng ồn thật;
   (c) so với giáo viên, chỉnh ngưỡng trước khi hứa "điểm phát âm".
 
 Việc đang dở (nếu có): **chẩn đoán micro** — đã sửa 4 lỗi: lọc WDM-KS, ưu tiên
@@ -38,7 +37,7 @@ Ký hiệu: ✅ chạy ổn · 🟡 chạy nhưng có giới hạn · ⛔ chưa 
 | Tính năng | Trạng thái | Ghi chú ngắn |
 |---|---|---|
 | Chuyển file audio/video → text + SRT | ✅ | `faster-whisper` CPU int8, beam 5 |
-| Ghi âm trực tiếp → text (tối đa 15 phút) | ✅ | tự dừng sau 1,3 s im lặng; chặn mic im lặng |
+| Ghi âm trực tiếp → text (tối đa 15 phút) | ✅ | dừng bằng tay (không tự dừng theo im lặng); chặn mic im lặng |
 | YouTube: chỉ transcript (không tải video) | ✅ | ưu tiên phụ đề có sẵn, fallback Whisper |
 | YouTube: MP4/MP3 + phụ đề + nhúng mềm | ✅ | phụ thuộc `yt-dlp`/`ffmpeg`; dễ gãy khi YouTube đổi |
 | Chọn ngôn ngữ phụ đề auto/vi/en | ✅ | có cảnh báo khi lấy bản dịch của YouTube |
@@ -57,7 +56,7 @@ Ký hiệu: ✅ chạy ổn · 🟡 chạy nhưng có giới hạn · ⛔ chưa 
 | Mic: chọn, kiểm tra, tự dò mic có tín hiệu | 🟡 | lọc WDM-KS, ưu tiên DirectSound, sàn 0,8% + gain +24 dB (D-20/D-21), thu bằng callback + queue (D-23) |
 | Mic ngoài (USB/bluetooth): Quét lại, cảnh báo Hands-Free | 🟡 | `rescan_audio_devices`, `headset_mic_missing` (D-22); AirPods đã lên thiết bị thu (WASAPI) nhưng bản ghi thử chưa nhận dạng được — xem mục 3 |
 | Context + skills cho AI | ✅ | `AGENTS.md`, `docs/`, 11 skill; `context_check` 40 OK |
-| Test tự động | 🟡 | 70 test khói + `context_check` + `tools/ui_shots.py` (chụp UI, xem bằng mắt) + `tools/asr_bench.py` (thu → nhận dạng trên mẫu TTS + mic giả lập, D-36); chưa có test mic thật |
+| Test tự động | 🟡 | 74 test khói + `context_check` + `tools/ui_shots.py` (chụp UI, xem bằng mắt) + `tools/asr_bench.py` (thu → nhận dạng trên mẫu TTS + mic giả lập, D-36); chưa có test mic thật |
 | Đóng gói `.exe` | ⛔ | chỉ có `run.bat` + Conda Python |
 | Git / CI | 🟡 | git `main` + GitHub riêng tư (D-33); chưa có CI |
 
@@ -73,7 +72,7 @@ Ký hiệu: ✅ chạy ổn · 🟡 chạy nhưng có giới hạn · ⛔ chưa 
 | Thấp | Chưa thử UI ở Windows scaling 100 %/150 % (máy này 250 %) | chữ/nút có thể lệch | thử trên máy khác hoặc đổi scaling rồi chạy `tools/ui_shots.py` |
 | Thấp | `save_frames_wav` (resample + `enhance_audio`, đã vector hóa) chạy trên main thread | bản ghi 15 phút làm UI đứng ~1,7 s | đưa vào worker nếu người dùng thấy khó chịu |
 | TB | `asr_bench` mặc định dùng giọng TTS + mic giả lập | cải thiện trên bộ đo chưa chắc đúng với giọng thật | thêm bản ghi thật vào `--dir`; không dùng để hiệu chuẩn điểm (I13) |
-| TB | Whisper là mô hình ngôn ngữ: hay "sửa" từ đọc sai thành từ đúng (tink → think ✓) | chấm theo từ dễ dãi | đợt 2 (P4b): xác suất từ thấp → "máy chưa chắc"; GOP đã gạch cam (D-35) |
+| **Cao** | Whisper là mô hình ngôn ngữ: "sửa" từ đọc sai thành từ đúng với xác suất cao (TTS "Tink" → "Think" p 0,80) | chấm theo từ dễ dãi; xác suất từ (D-37) **không** bắt được | tiếng Anh: GOP gạch cam (D-35); tiếng Việt: chưa có — cần F0/âm học (P3) |
 | TB | `lessons_en.json` có trường `samples` nhưng app bỏ qua, tự ghép `en/<id>.wav` | sửa JSON không có tác dụng | thống nhất một nguồn; ghi trong skill `app-lessons` |
 | TB | SRT/VTT parser tự viết | format lạ có thể sai | thêm fixture test |
 | TB | Phụ thuộc YouTube/yt-dlp | gãy theo thời gian | log lỗi rõ, test thủ công định kỳ |
@@ -81,7 +80,7 @@ Ký hiệu: ✅ chạy ổn · 🟡 chạy nhưng có giới hạn · ⛔ chưa 
 | Thấp | `bv*[ext=mp4]` có thể chọn AV1 (`av01`) | máy thiếu AV1 codec không phát được MP4 | cân nhắc ưu tiên `vcodec^=avc1` — cần quyết định, skill đang khóa chuỗi format |
 | **Cao** | Mic array Intel SST cho tín hiệu yếu (~2% đỉnh, RMS ~0,5%) | phải hạ sàn + tăng gain; chưa kiểm chứng Whisper nhận đúng ở mức này | tăng Microphone Level 100%/Boost; nếu vẫn kém, dùng mic ngoài; theo dõi D-21 |
 | **Cao** | Hai bản ghi AirPods (4,6 s / 5,7 s) có năng lượng nói nhưng Whisper `base` và `small` đều **không ra chữ** (hallucination) | chưa chấm được điểm; dễ hiểu nhầm là "app nhận dạng sai" | thử lại khi **đeo** tai nghe (mic AirPods nằm trên thân); nếu vẫn kém → mic USB hoặc mic array |
-| TB | `base` yếu với tiếng Việt: file mẫu sạch `mau/vi_cau.wav` → "là nằm này lên lắm" | người dùng tưởng do phát âm | khuyến nghị model `small` cho tiếng Việt; ghi trong UI/README |
+| Thấp | `base` yếu với tiếng Việt (`vi_cau.wav` → "là nằm này lên lắm") | bài Việt nay tự dùng `small` nếu có trên máy (D-37); máy chưa tải `small` vẫn dùng `base` | nút/hướng dẫn tải `small` nếu người dùng gặp |
 | TB | GOP tải model 1,2 GB lần đầu | lần chấm đầu rất chậm | thông báo tiến trình, cache, có nút cài |
 | Thấp | Chưa có icon/ bản cài | khó phát hành | packaging sau khi 2A ổn |
 | Thấp | Console cp1252 làm mất tiếng Việt khi in | script log lỗi | luôn đặt `PYTHONIOENCODING=utf-8` |

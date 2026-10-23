@@ -302,8 +302,10 @@ def whisper_model_is_cached():
         a = app.load_model("base")
         assert app.load_model("base") is a
         app.load_model("small")
-        assert made == ["base", "small"], made
-        assert list(app._MODEL_CACHE) == ["small"]   # chỉ giữ một cỡ trong RAM
+        app.load_model("base")                       # base thành "vừa dùng"
+        app.load_model("tiny")                       # vượt 2 → bỏ cỡ dùng lâu nhất (small)
+        assert made == ["base", "small", "tiny"], made
+        assert list(app._MODEL_CACHE) == ["base", "tiny"], list(app._MODEL_CACHE)
     finally:
         app._MODEL_CACHE.clear()
         app._MODEL_CACHE.update(saved)
@@ -311,6 +313,63 @@ def whisper_model_is_cached():
             sys.modules.pop("faster_whisper", None)
         else:
             sys.modules["faster_whisper"] = real
+
+
+@case
+def vietnamese_practice_uses_small_when_on_disk():
+    yes, no = (lambda _s: True), (lambda _s: False)
+    assert app.practice_model("base", "vi", yes) == ("small", True)
+    assert app.practice_model("base", "vi", no) == ("base", False)   # không tự tải (I9)
+    assert app.practice_model("medium", "vi", yes) == ("medium", False)
+    assert app.practice_model("base", "en", yes) == ("base", False)
+    assert app.practice_model("base", "auto", yes) == ("base", False)
+
+
+@case
+def unsure_word_loses_tick_not_points():
+    # D-37: từ đúng nhưng Whisper nghe p rất thấp → "máy chưa chắc"; điểm giữ nguyên (I4)
+    res = app.score_pronunciation("Think about this", "think about this", "en")
+    res.update(target="Think about this", det_lang="en", words_t=[
+        {"w": "think", "p": 0.9}, {"w": "about", "p": 0.1}, {"w": "this.", "p": 0.95}])
+    v = app.build_result_view(res, {"lang": "en"})
+    assert v["unsure_words"] == {1: 0.1}, v["unsure_words"]
+    assert v["correct"] == 3 and not v["perfect"], v
+    kinds = [w["kind"] for w in app.stage_words("Think about this", v)]
+    assert kinds == ["ok", "unsure", "ok"], kinds
+    res["words_t"][1]["p"] = 0.6
+    v = app.build_result_view(res, {"lang": "en"})
+    assert v["unsure_words"] == {} and v["perfect"], v["unsure_words"]
+
+
+@case
+def snr_estimate_and_quality_note():
+    rng = np.random.default_rng(3)
+    noise = rng.standard_normal(16000 * 3).astype(np.float32) * 0.002
+    t = np.arange(16000, dtype=np.float32) / 16000.0
+    loud, faint = noise.copy(), noise.copy()
+    loud[16000:32000] += 0.2 * np.sin(2 * math.pi * 200 * t)
+    faint[16000:32000] += 0.006 * np.sin(2 * math.pi * 200 * t)
+    s_loud = app.estimate_snr_db(loud, 16000)
+    s_faint = app.estimate_snr_db(faint, 16000)
+    assert s_loud > 30 and s_faint < app.SNR_LOW_DB, (s_loud, s_faint)
+    assert app.estimate_snr_db(np.zeros(100), 16000) is None
+    base = {"peak0": 0.2, "trimmed": 0, "clipped": False}
+    assert "ồn" not in app.quality_note(dict(base, snr_db=s_loud))
+    assert "phòng hơi ồn" in app.quality_note(dict(base, snr_db=s_faint))
+    assert "mất 2 đoạn" in app.quality_note(dict(base, snr_db=None, dropped=2))
+    _out, info = app.enhance_audio((loud * 32767).astype(np.int16), 16000)
+    assert info["snr_db"] is not None and info["snr_db"] > 30, info
+
+
+@case
+def recorder_noise_floor_and_practice_silence():
+    # đọc ngay khi bấm: nền đo theo phân vị thấp, không theo trung vị; bài luyện chờ 1,8 s
+    import inspect
+    src = inspect.getsource(app.Recorder.start)
+    assert "np.percentile(calib, 20)" in src and "np.median(calib)" not in src
+    assert "input_overflow" in src
+    assert app.PRAC_SILENCE_SEC >= 1.8
+    assert "PRAC_SILENCE_SEC" in inspect.getsource(app.App._prac_start)
 
 
 # ---------------------------------------------------------------- âm vị / F0

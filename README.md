@@ -38,7 +38,7 @@ C:\Users\ADMIN\miniforge3\python.exe app.py
 **v2.3 — thu âm tự dừng & chặn "nghe nhầm" khi mic im lặng**
 
 - **Tự dừng khi đọc xong**: sau khi đã nghe thấy giọng, app tự dừng thu khi im
-  lặng ~1,3 giây và chấm luôn — không cần bấm gì. Nếu 7 giây đầu không có tiếng
+  lặng ~1,3 giây (nay 1,8 giây) và chấm luôn — không cần bấm gì. Nếu 7 giây đầu không có tiếng
   nói, app dừng và báo mic im lặng thay vì ghi tiếp.
 - **Không chấm khi mic im lặng**: bản thu gần như không có tín hiệu (đỉnh < 0,8%
   ≈ -42 dB) không được đưa cho Whisper — tránh kiểu "bịa" câu lặp vô nghĩa trên nền
@@ -137,11 +137,15 @@ Mỗi bài tiếng Anh có: câu mẫu, **IPA**, âm trọng tâm, cặp dễ l�
 nút nghe **Nghe mẫu / Chậm / 2 từ khoá**, và hộp gợi ý khẩu hình. Sau khi thu, có thêm
 nút **Bản thu của bạn** để nghe lại.
 
-Quy trình: bấm **nút tròn đỏ** (Thu âm) → đọc → app **tự dừng sau ~1,3 giây im lặng**
+Quy trình: bấm **nút tròn đỏ** (Thu âm) → đọc → app **tự dừng sau ~1,8 giây im lặng**
 và chấm; hoặc bấm lại nút (lúc này là ■ **Dừng & chấm**) để dừng ngay. Trong lúc thu có
 thanh mức âm, đồng hồ và trạng thái ("đã nghe giọng" / "chưa nghe thấy giọng"). Dưới
 nút là micro đang dùng và liên kết **Đổi** (sang Cài đặt › Micro; nên dùng
 **DirectSound** hoặc WASAPI, cách miệng 10–20 cm). **Chấm file có sẵn…** để nộp file.
+
+Bài **tiếng Việt** được chấm bằng model `small` (nghe tiếng Việt rõ hơn hẳn `base`) nếu máy
+đã có model này, kể cả khi thanh trái đang chọn `base`/`tiny`. Dòng "Đã xử lý" sau khi thu báo
+đầu vào nhỏ/vỡ, **phòng hơi ồn** (giọng chỉ to hơn nền dưới ~15 dB) và đoạn âm bị mất khi máy bận.
 
 Nếu mic gần như im lặng (đỉnh < 0,8%), app **không chấm** — báo rõ và tự dò micro
 khác có tín hiệu. Nếu 7 giây đầu không có tiếng nói, app cũng dừng và nhắc kiểm tra
@@ -155,7 +159,8 @@ Kết quả gồm:
    gạch chân cam (lỗi quen thuộc/sai thanh) hoặc đỏ (sai/thiếu/sai vần), bên dưới ghi
    **từ máy nghe được** ("Think" → nghe “tink”) hoặc "(thiếu)". Tiếng Anh có GOP: từ máy
    nghe đúng nhưng có âm **lệch rõ** cũng gạch cam, ghi "âm /θ/ lệch" — vẫn tính là từ
-   đúng trong điểm.
+   đúng trong điểm. Từ đúng mà chính máy nghe **rất không chắc** gạch xám, ghi "máy chưa
+   chắc" (vẫn tính đúng, nhưng không hiện "Hoàn hảo").
 3. **Cần sửa** — tối đa 4 mục: tiếng Việt gom lỗi N/L, sai dấu thanh, sai vần/dấu
    ("lắm" → "lám", kèm cách đọc tách "l + ăm + thanh sắc"); tiếng Anh theo âm vị.
    Mỗi mục có ▶ Mẫu (nếu có file mẫu) và ▶ Bạn đọc (nghe lại đúng từ đó trong bản thu).

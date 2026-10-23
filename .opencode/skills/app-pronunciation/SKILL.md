@@ -117,6 +117,8 @@ transcribe_practice(model, wav_path, asr_lang)   # PRAC_ASR_OPTS:
   (chữ có dấu → vi, toàn Latin không dấu → en, còn lại để Whisper dò). Chấm điểm vẫn dùng
   `lang` của bài.
 - Không `initial_prompt` (I2). Đổi tham số ⇒ chạy `tools/asr_bench.py --compare` trước/sau.
+- Cỡ model: `practice_model(selected, asr_lang)` — bài Việt dùng `PRAC_VI_MODEL` (`small`) nếu
+  chọn nhỏ hơn và `whisper_model_on_disk("small")`; không tự tải (I9). `res["model"]` = cỡ đã dùng.
 
 ## View-model (D-31) — sửa NỘI DUNG ở đây, không ở UI
 
@@ -139,7 +141,10 @@ Lịch sử: `hist_add_try(hist, sid, view, ts)` thêm `tries` (≤ 30), bỏ qu
 - Câu trên sân khấu (B4a): `stage_words(target, view)` (hàm thuần) → mỗi từ GỐC (giữ hoa,
   dấu câu) gạch chân cam/đỏ + "nghe ‘…’" / "(thiếu)" / ✓ bên dưới (P-02); `unsure` hoặc
   chưa chấm → không tô màu. Từ đúng chữ mà GOP có âm "lệch rõ" (`view["gop_marks"]`) →
-  gạch cam + "âm /θ/ lệch" (D-35; không đổi điểm, I4; "hơi lệch" không gạch).
+  gạch cam + "âm /θ/ lệch" (D-35; không đổi điểm, I4; "hơi lệch" không gạch). Từ đúng mà
+  Whisper p < `WORD_UNSURE_P` (0,25; `word_unsure_marks` → `view["unsure_words"]`) → kind
+  `unsure` "máy chưa chắc", chặn "Hoàn hảo" (D-37). **Không** nâng ngưỡng lên 0,5: báo oan ~1/5
+  câu đọc đúng; và xác suất từ không bắt được Whisper "sửa hộ" (tink → Think p 0,80).
   Từ thừa: dòng "Đọc thêm: …" trong panel, **chỉ** khi `result`
   (khi `unsure` đó là chữ bịa — D-29).
 - "CẦN SỬA" trong panel: tối đa 4 dòng `_mk_fix`. EN: theo GOP

@@ -38,7 +38,8 @@ Phân biệt giới hạn:
   DirectSound trên máy này trả 100 % số 0 ở chế độ blocking.
 - `stop()` đặt `active=False`, chờ 150 ms, **drain queue** rồi trả `(frames, rate)`.
 - Đọc block **100 ms** (`step = rate * 0.1`), mono `int16`.
-- 0,5 giây đầu: đo **nhiễu nền** bằng median RMS, chưa xét giọng.
+- 0,5 giây đầu: đo **nhiễu nền** bằng **phân vị 20** RMS (không trung vị: người đọc ngay
+  khi bấm thì nửa sau đã là giọng — D-37), chưa xét giọng.
 - Trước khi thấy giọng: ngưỡng `max(0.004, min(0.024, noise*2.2))`.
 - Sau khi thấy giọng: ngưỡng thấp hơn `max(0.0025, min(0.022, noise*1.2))`
   (hysteresis) để người nói nhỏ không bị cắt giữa chừng.
@@ -46,7 +47,10 @@ Phân biệt giới hạn:
 - `speech_seen = True` khi vượt ngưỡng; `voice_t` cập nhật mỗi block còn tiếng.
 - Tự dừng:
   - `"nospeech"`: chưa thấy giọng và quá `start_timeout = 7 s`.
-  - `"silence"`: đã thấy giọng, im lặng > `silence = 1.3 s`, và đã thu > `min_speech = 0.4 s`.
+  - `"silence"`: đã thấy giọng, im lặng > `silence` (bài luyện `PRAC_SILENCE_SEC` = 1,8 s,
+    D-37; tab Văn bản không tự dừng theo im lặng), và đã thu > `min_speech = 0.4 s`.
+- Callback đếm `Recorder.dropped` khi `status.input_overflow` (máy bận, mất âm); caller gán
+  `info["dropped"]` trước `quality_note`.
   - `"max"`: chạm `max_sec`.
 - Lỗi `"Blocking API not supported"` → thông điệp WDM-KS thân thiện, không crash.
 
@@ -67,7 +71,9 @@ Thứ tự bắt buộc:
 5. `tanh` + clip.
 6. Cắt im lặng đầu/cuối, ngưỡng `max(0.015, 0.04 * peak1)`, giữ 80 ms đệm.
 7. Fade 8 ms hai đầu.
-8. Trả `(int16, {peak0, peak1, quiet, clipped, trimmed})`.
+8. Trả `(int16, {peak0, peak1, quiet, clipped, trimmed, snr_db})`. `snr_db` = `estimate_snr_db` trên tín hiệu sau high-pass,
+   trước gain (RMS khung 20 ms, phân vị 90/10; None nếu < 10 khung). `quality_note` ghi "phòng hơi ồn"
+   khi < `SNR_LOW_DB` (15) — **chỉ ghi chú**, chưa thành cổng (D-37).
 
 `resample_to_16k(x, src, dst)` (D-36): khi hạ tần số, lọc chống gập bằng FIR Kaiser
 (`lowpass_kernel`: giữ tới `RESAMPLE_PASS_HZ` 7,9 kHz, chặn ≥ 80 dB từ `RESAMPLE_STOP_HZ`
@@ -166,7 +172,7 @@ $env:PYTHONIOENCODING='utf-8'
 
 Thủ công:
 1. Tab 1 → Ghi âm: nói 3 s rồi im → tự dừng, ra text.
-2. Luyện phát âm → nút tròn đỏ (Thu âm): nói 2 s → tự dừng sau ~1,3 s.
+2. Luyện phát âm → nút tròn đỏ (Thu âm): nói 2 s → tự dừng sau ~1,8 s.
 3. Bịt mic / mute → sau 7 s báo "không nghe thấy giọng", mở hướng dẫn, không chấm.
 4. Nói quá nhỏ (đỉnh < 0,8%) → không chấm, tự dò mic khác.
 5. Nói quá to/gần → cảnh báo VỠ nhưng vẫn xử lý.

@@ -92,8 +92,8 @@ Quy ước:
 - **Không** thay `beam_size`/`vad_filter` tùy tiện. Luồng file cố tình không bật VAD;
   `_w_whisper_cues` bật VAD vì đầu vào có im lặng. Luyện phát âm dùng `PRAC_ASR_OPTS`
   qua `transcribe_practice` (VAD chỉ cho file > 30 s — D-36); đổi ⇒ chạy `tools/asr_bench.py`.
-- `load_model()` **cache** một `WhisperModel` theo cỡ (`_MODEL_CACHE` + `_MODEL_LOCK`);
-  đổi cỡ thì thay model cũ. Test giả lập `faster_whisper` phải dọn `_MODEL_CACHE`.
+- `load_model()` **cache** tối đa 2 `WhisperModel` theo cỡ (`_MODEL_CACHE` + `_MODEL_LOCK`,
+  bỏ cỡ dùng lâu nhất — D-37). Test giả lập `faster_whisper` phải dọn `_MODEL_CACHE`.
 - `condition_on_previous_text=False` chỉ dùng cho **luyện phát âm** (chống bịa);
   luồng file/YouTube giữ mặc định để câu liền mạch.
 - Nếu đổi khóa `result`, sửa đồng thời `_on_result`, `_save_*`, `_open_*`.

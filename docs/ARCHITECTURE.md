@@ -154,7 +154,7 @@ App._run()
 Chọn bài (PRACTICE_SETS / GUIDES / custom)
   → App._prac_start()  (mic resolve, Recorder.start auto_stop)
   → Recorder (thread): 100 ms/block, 0,5 s calib, hysteresis, speech_seen
-      auto stop: "silence" (1,3 s) | "nospeech" (7 s) | "max"
+      auto stop: "silence" (1,8 s) | "nospeech" (7 s) | "max"; nền = phân vị 20
   → _prac_stop_and_score(reason)
       reason nospeech → báo, dò mic, KHÔNG chấm
       save_frames_wav → enhance_audio → WAV 16k
@@ -164,7 +164,8 @@ Chọn bài (PRACTICE_SETS / GUIDES / custom)
       wav_peak gate
       transcribe_practice (PRAC_ASR_OPTS: word_timestamps, temperature 0,
               condition_on_previous_text=False, VAD chỉ khi file > 30 s;
-              câu tự gõ: ngôn ngữ = guess_lang(target))
+              câu tự gõ: ngôn ngữ = guess_lang(target);
+              bài Việt: practice_model → small nếu có trên máy)
       score_pronunciation(target, hyp, lang)          # L1
       pron_en.analyze_pairs(...) nếu tiếng Anh
       prosody.compare(ref_wav, wav) nếu có mẫu
