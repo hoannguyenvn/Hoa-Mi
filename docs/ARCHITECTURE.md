@@ -86,10 +86,11 @@ Các hàm thuần (dễ test, không phụ thuộc UI):
 | `words_t` | `list[{w, s, e, p}]` | từ Whisper nghe + giây bắt đầu/kết thúc + xác suất (cho nhãn biểu đồ, S-5) |
 
 `build_result_view(res, lesson)` (hàm thuần, D-31) biến `res` thành **view** mà giao diện
-chỉ việc vẽ: `state` (`result`; `unsure` từ B3), `words`/`chips` (`target`, `heard`, `kind`
-∈ ok/warn/tone/bad/missing/extra, `code` nl/th/sh/final/tone), `notes`, `mismatches`, `gop`
-(mỗi lỗi có `level` "lệch rõ"/"hơi lệch"), `phon_cards`, `perfect`, `headline`, `summary`,
-`score_line`, `status_line`, `sounds` (đếm âm theo ngôn ngữ bài, cho lịch sử).
+chỉ việc vẽ: `state` (`result` | `unsure` theo `evidence_gate`, D-29) + `gate`, `words`/`chips`
+(`target`, `heard`, `kind` ∈ ok/warn/tone/rhyme/bad/missing/extra, `code` nl/th/sh/final/tone/
+rhyme), `extras`, `notes`, `cards` (≤ 4: `title`, `level`, `kind`, `tip`, `word`, `sample`,
+`heard`, `detail`), `perfect`, `ring`, `headline`, `summary`, `score_line`, `status_line`,
+`heard_text`/`heard_note`/`tips` (cho `unsure`), `sounds` (đếm âm theo ngôn ngữ bài).
 
 ### 3.4. Cài đặt & lịch sử
 
@@ -169,7 +170,7 @@ Chọn bài (PRACTICE_SETS / GUIDES / custom)
   → App._prac_done(res)
       v = build_result_view(res, lesson)      # hàm thuần, có test
       _set_prac_state(v["state"])
-      _render_result_text(v)                  # chỉ vẽ
+      _render_result(v)                       # chỉ vẽ (vòng điểm, chip, thẻ)
       vẽ ngữ điệu (Canvas), _record_hist(sid, res, v) → hist_add_try
 ```
 

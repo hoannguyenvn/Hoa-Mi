@@ -170,6 +170,18 @@ subs, embed, sub_lang, mic, geometry
 - Kiểm tra bằng mắt: `tools/ui_shots.py <nhãn>` chụp 11 trạng thái vào
   `%TEMP%\oriole_shots\<nhãn>\` mà không ghi config/lịch sử.
 
+### Thành phần kết quả luyện (B3)
+
+- Vòng điểm `_draw_ring` (Canvas 60 px × `S`), chip từ `_mk_chip` (Canvas đa giác bo góc,
+  đo chữ bằng `tkfont.Font.measure`), thẻ lỗi `_mk_card` (Frame viền 1 px) — nhúng vào
+  `p_txt` bằng `window_create` qua `_embed`; `_destroy_embeds` dọn khi vẽ lại.
+- Token màu B3 trong `THEMES` (cả sáng/tối): `ok_bg/ok_fg`, `warn_bg/warn_fg`,
+  `bad_bg/bad_fg`, `ring_ok/ring_warn/ring_bad`, `info_bg`, `track`.
+- Frame co theo nội dung: muốn các thẻ cùng rộng phải có **thanh chống** (Frame cao 0,
+  `width=`) bên trong; `f.configure(width=)` một mình không có tác dụng khi con được pack.
+- Đã biết (B4 phải sửa): ở cửa sổ tối thiểu 980×640, đầu kết quả (vòng điểm) đẩy ô
+  `p_txt` còn ~1 dòng → chip bị che (V-09). Bố cục app-style (D-28) thay hẳn phần này.
+
 ## 10. Trạng thái màn hình (D-31)
 
 - Tab Văn bản: `STT_STATES` = idle/recording/processing/result/error →

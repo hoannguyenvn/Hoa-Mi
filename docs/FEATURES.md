@@ -37,10 +37,11 @@ và skill nào cần nạp. Dùng file này thay vì grep toàn repo.
 | F3.3 | Nghe mẫu | nút ▶ thường/chậm/từ khóa | `_fill_samples`, `play_wav_file` | `app-lessons` | nghe được, nút xám nếu thiếu file |
 | F3.4 | Thu & tự chấm | đọc → tự dừng → điểm | `_prac_start`, `_prac_stop_and_score` | `app-recording`, `app-pronunciation` | đọc đúng → ~100% |
 | F3.5 | Chấm file có sẵn | `Chấm file…` | `_prac_from_file` | `app-pronunciation` | file im lặng → từ chối chấm |
-| F3.6 | Điểm theo từ | xanh/đỏ/cam | `score_pronunciation`, `_prac_done` | `app-pronunciation` | "think"→"tink" tô cam |
-| F3.7 | Lỗi thanh điệu | "sai thanh điệu" | `strip_tone_vi` trong `score_pronunciation` | `app-pronunciation` | "má" vs "ma" → tone |
+| F3.6 | Điểm theo từ | vòng điểm "c/t từ" + chip ✓/!/✕ kèm từ máy nghe | `score_pronunciation`, `build_result_view`, `App._render_result` | `app-pronunciation` | "think"→ chip "! think → nghe ‘tink’" |
+| F3.7 | Lỗi thanh điệu / vần | thẻ "sai dấu thanh" / "sai vần/dấu" + cách đọc tách | `strip_tone_vi`, `strip_marks_vi`, `vi_spell` | `app-pronunciation` | "má"→"ma" tone; "lắm"→"lám" rhyme |
+| F3.7b | Máy chưa nghe rõ | không hiện điểm khi máy không chắc/bịa câu (D-29) | `evidence_gate` | `app-pronunciation` | hyp "cảm ơn các bạn đã theo dõi" → "Máy chưa nghe rõ bài đọc" |
 | F3.8 | Âm vị CMUdict | `/θ/ → [t]` + mẹo | `pron_en.analyze_pairs` | `app-phonemes` | câu th → báo TH |
-| F3.9 | GOP acoustic | % khớp, so mẫu | `gop.score` | `app-phonemes` | có torch → log "chấm GOP" |
+| F3.9 | GOP acoustic | mức "lệch rõ"/"hơi lệch"; số trong "Chi tiết số đo" | `gop.score`, `gop_level` | `app-phonemes` | có torch → log "chấm GOP" |
 | F3.10 | Ngữ điệu | đồ thị F0 bán cung | `prosody.compare`, `_show_intonation` | `app-prosody` | bài có mẫu → hiện canvas |
 | F3.11 | Tiến bộ | số lần/best/last/âm yếu | `_update_prog`, `_record_hist` | `app-pronunciation` | luyện 2 lần → n=2 |
 | F3.12 | Mic & kiểm tra | chọn, làm mới, kiểm tra | `_refresh_mics`, `_test_mic`, `_find_mic_auto` | `app-recording` | nói "a" → dB/TỐT |

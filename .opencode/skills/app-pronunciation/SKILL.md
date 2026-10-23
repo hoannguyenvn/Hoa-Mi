@@ -19,11 +19,12 @@ không đổi điểm.
 
 | Nhóm | Symbol |
 |---|---|
-| Chuẩn hóa | `norm_words`, `strip_tone_vi`, `_rest_sim`, `_TONE_MARKS` |
+| Chuẩn hóa | `norm_words`, `strip_tone_vi`, `strip_marks_vi`, `_rest_sim`, `_TONE_MARKS`, `vi_spell` |
 | Luật | `flag_pair`, `score_pronunciation` |
 | Worker | `App._w_prac` |
 | Hiển thị | `App._prac_done`, `App._prac_error`, `App._prac_stop_and_score` |
-| View (D-31) | `build_result_view`, `gop_level`, `App._render_result_text` |
+| Cổng bằng chứng (D-29) | `evidence_gate`, `HALLUCINATION_PHRASES`, `UNSURE_RATIO`, `GARBAGE_RATIO`, `GARBAGE_SCORE`, `UNSURE_TIPS` |
+| View (D-31) | `build_result_view`, `gop_level`, `_vi_cards`, `App._render_result` |
 | Lịch sử | `App._load_hist`, `App._save_hist`, `App._record_hist`, `App._update_prog`, `hist_add_try`, `hist_weakest` |
 
 Module liên quan: `pron_en.analyze_pairs` (chỉ tiếng Anh), `gop.score`,
@@ -38,6 +39,7 @@ score = round(100 * correct / total, 1)
 - `correct` = số item trạng thái `ok`.
 - `total` = số từ trong **câu mẫu**.
 - `warns` (nghi lỗi quen thuộc) và `tones` (sai thanh điệu) **không trừ điểm**.
+- `rhymes` (sai vần/dấu, B3) là từ **sai** (không tính `correct`), chỉ được đặt tên rõ.
 - Từ **thừa** không làm giảm điểm, chỉ hiện cảnh báo (tối đa 3 từ + tổng).
 - Câu mẫu rỗng → `score = 0.0`, `total = 0`.
 
@@ -48,6 +50,7 @@ score = round(100 * correct / total, 1)
 | `ok` | từ khớp | xanh (`ok`) |
 | `warn` | khớp luật lỗi quen thuộc (`flag_pair`) | cam (`warn`) |
 | `tone` | bỏ dấu thì giống → sai thanh điệu | cam (`warn`) |
+| `rhyme` | bỏ **mọi** dấu (`strip_marks_vi`) thì giống: "lắm"→"lám" | đỏ (`bad`) |
 | `bad` | sai/thiếu từ | đỏ (`bad`) |
 | `extra` | từ người học đọc thêm | ghi chú `[thừa: …]` |
 
@@ -61,6 +64,7 @@ score = round(100 * correct / total, 1)
 4. Với mỗi cặp `(target, heard)`:
    - `flag_pair` → `warn` + gợi ý;
    - tiếng Việt/auto và `strip_tone_vi(t) == strip_tone_vi(h)` → `tone`;
+   - tiếng Việt/auto và `strip_marks_vi(t) == strip_marks_vi(h)` → `rhyme`;
    - có `pos_flag[i]` → `warn`;
    - còn lại → `bad`.
 5. Target không có hyp tương ứng → `bad` + "thiếu chữ".
@@ -92,8 +96,16 @@ không có hyp           → prac_error "Không nghe được chữ nào"
 conf = mean(word.probability)
 low_conf = conf < 0.35 → ghi chú "máy nghe chưa chắc"
 garbage = hyp_words >= 8 và >= 2 * target_words và score < 35
-        → cảnh báo mic nhiễu, không tin kết quả
+        → cờ cũ, vẫn lưu trong res
 ```
+
+Sau đó `build_result_view` gọi `evidence_gate(res)` (D-29) → view `state="unsure"` khi:
+1. hyp chứa nguyên cụm trong `HALLUCINATION_PHRASES` mà câu mẫu không có (khớp **nguyên
+   từ**: "subscribe" ≠ "subscribers") → `"hallucination"`;
+2. số từ nghe ≥ `GARBAGE_RATIO` (1,6) × số từ mẫu và `score < GARBAGE_SCORE` (35) → `"garbage"`;
+3. `low_conf` và đúng < `UNSURE_RATIO` (50 %) → `"low_conf"`.
+`unsure` ⇒ không số, không chip màu, không đếm âm, `hist_add_try` bỏ qua. Thêm cụm mới
+vào `HALLUCINATION_PHRASES` kèm case trong `evidence_gate_blocks_hallucination_and_noise`.
 
 ASR cho luyện phát âm dùng:
 ```python
@@ -107,32 +119,33 @@ model.transcribe(wav_path,
 ## View-model (D-31) — sửa NỘI DUNG ở đây, không ở UI
 
 `_prac_done` = `build_result_view(res, lesson)` → `_set_prac_state(v["state"])` →
-`_render_result_text(v)`. Mọi quyết định (khen hoàn hảo, ghi chú nào ẩn vì đã có lỗi âm vị,
-cặp "Chưa khớp", mức GOP, câu tóm tắt, dòng điểm, đếm âm cho lịch sử) nằm trong
-`build_result_view` và có test (`result_view_*`). Renderer chỉ chèn text/tag.
+`_render_result(v)`. Mọi quyết định (cổng bằng chứng, khen hoàn hảo, thẻ "Cần sửa", ghi chú
+nào ẩn vì đã có thẻ, mức GOP, câu tóm tắt, vòng điểm, đếm âm cho lịch sử) nằm trong
+`build_result_view` và có test. Renderer chỉ vẽ (B4 sẽ thay bố cục, giữ nguyên view).
 Lịch sử: `hist_add_try(hist, sid, view, ts)` thêm `tries` (≤ 30), bỏ qua view `unsure`;
-`hist_weakest(hist, lang)` chỉ cộng bài cùng ngôn ngữ (bài Việt: mã `nl`, `tone`).
+`hist_weakest(hist, lang)` chỉ cộng bài cùng ngôn ngữ (bài Việt: mã `nl`, `tone`, `rhyme`).
 `_w_prac` lưu `res["words_t"]` (mốc từng từ) cho biểu đồ ngữ điệu.
 
-## Hiển thị `_prac_done`
+## Hiển thị `_render_result` (B3)
 
-Dòng điểm:
-```
-86.5%  (13/15 từ)  ·  2 chỗ cần sửa  ·  1 lỗi thanh điệu  ·  3 lỗi âm vị
-```
-- "Hoàn hảo — đúng cả N từ." hiện ngay dưới dòng "Bạn đọc" cho **mọi ngôn ngữ** khi
-  `score >= 95`, không từ thừa, không ghi chú cần sửa, không lỗi âm vị, không warns/tones
-  (biến `perfect` trong `_prac_done`).
-- Nhãn và mẹo âm vị chèn với tag `"ipa"` (Segoe UI) — font giao diện thiếu ký tự IPA (D-28).
+- Đầu kết quả `p_head`: vòng điểm `_draw_ring(v["ring"])` ("2/4", "✓", hoặc "?" khi
+  `unsure`), `headline` ("Đúng 2/4 từ" / "Hoàn hảo — đúng cả N từ" / "Máy chưa nghe rõ bài
+  đọc"), `summary` ("Lỗi chính: …"). `score_line` = "c/t từ" — **một** họ số (P-06).
+- "Hoàn hảo" chỉ khi `correct == total` (không dùng `score >= 95`: câu 21 từ sai 1 vẫn
+  95,2 %), không từ thừa, không ghi chú, không thẻ, không lỗi âm vị, không warns/tones —
+  cho **mọi ngôn ngữ** (test `perfect_needs_every_word`).
+- "Từng từ": chip `_mk_chip` cho mỗi từ mẫu: ✓/!/✕ + từ mẫu + "→ nghe ‘…’" hoặc
+  "→ (thiếu)" (P-02); từ thừa: chip "+" viền đứt, tối đa 3 + "… +N từ thừa".
+- "Cần sửa": tối đa 4 thẻ `_mk_card` (cùng rộng nhờ thanh chống cao 0). EN: theo GOP
+  (mức chữ "lệch rõ"/"hơi lệch") hoặc âm vị CMUdict. VI (`_vi_cards`): gom N/L theo chiều
+  + mẹo `_VI_TIPS` + mẫu `vi_la.wav`/`vi_na.wav`; mỗi lỗi thanh/vần một thẻ với cách đọc
+  tách `vi_spell`. Mỗi thẻ: ▶ Mẫu (nếu file tồn tại), ▶ Bạn đọc (`_play_heard` →
+  `play_wav_segment` theo `words_t`).
+- Số GOP chỉ trong "Chi tiết số đo ▸" (`_toggle_details`, Q-03, I7).
+- `unsure`: hộp "Thử lại như sau" (`UNSURE_TIPS`), câu máy nghe ẩn dưới
+  "Máy nghe được gì? ▸" (`_toggle_heard`), màu xám, không bao giờ đỏ.
+- Chữ IPA dùng `FONT_IPA` (`has_ipa`) — Be Vietnam Pro thiếu ký tự IPA (D-28).
 - Đổi bài/chế độ gọi `_clear_prac_result()` (trừ khi đang chấm) — không để kết quả cũ.
-- Không hiện "0% · 11 lỗi âm vị" nhưng vẫn "Hoàn hảo" (lỗi cũ đã sửa).
-- Với tiếng Anh, ghi chú cấp từ bị ẩn nếu đã có lỗi âm vị chi tiết (tránh trùng).
-- Giới hạn 5 lỗi âm vị hiển thị; phần còn lại ghi "… và N âm khác".
-- Dòng "Bạn đọc": item `bad` in **từ máy nghe được** (`hw`), hoặc `∅` khi thiếu —
-  không in từ mẫu (trước đây in từ mẫu nên 0% trông như đọc đúng).
-- Không phải tiếng Anh và `correct > 0`: thêm mục "Chưa khớp (mẫu → máy nghe)",
-  tối đa 6 cặp.
-- `correct == 0` + `garbage`: giải thích mic ồn/tai nghe chưa đeo đúng, gợi ý model `small`.
 
 ## Lịch sử
 

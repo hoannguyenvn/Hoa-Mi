@@ -670,6 +670,112 @@ def practice_keeps_word_timings():
     assert res["words_t"][1]["s"] == 0.5 and res["words_t"][1]["e"] == 0.9
 
 
+def _gate_of(target, hyp, lang, **extra):
+    res = app.score_pronunciation(target, hyp, lang)
+    res.update(target=target, **extra)
+    return app.evidence_gate(res)
+
+
+@case
+def evidence_gate_blocks_hallucination_and_noise():
+    # D-29 / P-03 / P-04: chuỗi Whisper tự sinh không được chấm thành lỗi của người học.
+    vi2 = app.PRACTICE_SETS["vi2"]["target"]
+    assert _gate_of(vi2, "cảm ơn các bạn đã theo dõi hẹn gặp lại các bạn", "vi") == "hallucination"
+    assert _gate_of("Read this line.", "please subscribe", "en") == "hallucination"
+    # câu mẫu chứa đúng cụm đó → đọc đúng thì vẫn chấm
+    assert _gate_of("Cảm ơn các bạn đã theo dõi.", "cảm ơn các bạn đã theo dõi", "vi") is None
+    # khớp nguyên từ: "subscribers" không phải "subscribe"
+    assert _gate_of("Our subscribers read it.", "our subscribers read it", "en") is None
+    # quá dài so với câu mẫu + điểm thấp → chuỗi rác
+    assert _gate_of("Lan năm nay", "một hai ba bốn năm sáu", "vi") == "garbage"
+    # máy không chắc + đúng < 50 % → chưa chấm; đúng ≥ 50 % thì vẫn chấm
+    assert _gate_of("Think about this thing.", "tink a dis ting", "en", low_conf=True) == "low_conf"
+    assert _gate_of("Think about this thing.", "tink about this thing", "en", low_conf=True) is None
+    assert _gate_of("Think about this thing.", "tink about dis thing", "en") is None
+
+
+@case
+def unsure_view_shows_no_score_and_is_not_stored():
+    vi2 = app.PRACTICE_SETS["vi2"]["target"]
+    v = _view_of(vi2, "cảm ơn các bạn đã theo dõi", "vi")
+    assert v["state"] == "unsure" and v["gate"] == "hallucination"
+    assert v["score_line"] == "" and v["status_line"] == "" and v["ring"]["text"] == "?"
+    assert v["headline"] == "Máy chưa nghe rõ bài đọc" and v["tips"] and v["heard_note"]
+    assert v["sounds"] == {}, "lần chưa nghe rõ không đếm âm hay sai"
+    hist = {}
+    app.hist_add_try(hist, "vi2", v, "t")
+    assert hist == {}, "lần chưa nghe rõ không lưu vào lịch sử (D-29/D-30)"
+
+
+@case
+def perfect_needs_every_word():
+    # câu dài sai 1 từ: 20/21 = 95,2 % nhưng KHÔNG được khen "đúng cả 21 từ"
+    words = ["ba"] * 21
+    hyp = list(words)
+    hyp[10] = "cá"
+    v = _view_of(" ".join(words), " ".join(hyp), "vi")
+    assert not v["perfect"] and v["headline"] == "Đúng 20/21 từ", v["headline"]
+    assert _view_of(" ".join(words), " ".join(words), "vi")["perfect"]
+
+
+@case
+def vietnamese_rhyme_state_named():
+    # S-4: "lắm" → "lám" (khác dấu phụ ± thanh) là "sai vần/dấu", không phải "chưa khớp"
+    assert app.strip_marks_vi("lắm") == "lam" and app.strip_marks_vi("Đường") == "Duong"
+    r = app.score_pronunciation("Lan nói lắm, mẹ bảo má", "lan nói lám mẹ bảo ma", "vi")
+    st = {t: s for t, s, _h, _n in r["items"]}
+    assert st["lắm"] == "rhyme" and st["má"] == "tone", r["items"]
+    assert r["rhymes"] == 1 and r["tones"] == 1 and r["correct"] == 4
+    v = _view_of("Lan nói lắm, mẹ bảo má", "lan nói lám mẹ bảo ma", "vi")
+    cards = {c["word"]: c for c in v["cards"]}
+    assert cards["lắm"]["kind"] == "bad" and cards["lắm"]["level"] == "sai vần/dấu"
+    assert "l + ăm + thanh sắc" in cards["lắm"]["tip"], cards["lắm"]["tip"]
+    assert cards["má"]["level"] == "sai dấu thanh"
+    assert v["sounds"] == {"rhyme": 1, "tone": 1}, v["sounds"]
+
+
+@case
+def vi_spell_splits_syllable():
+    assert app.vi_spell("lắm") == "l + ăm + thanh sắc"
+    assert app.vi_spell("nghiêng") == "ngh + iêng + thanh ngang"
+    assert app.vi_spell("Ạ") == "a + thanh nặng"
+    assert app.vi_spell("gì") == "g + i + thanh huyền"   # "gi" đứng một mình: g + i
+
+
+@case
+def ipa_text_detected_for_font():
+    # D-28: chữ IPA vẽ bằng FONT_IPA; chữ Việt thì không.
+    assert app.has_ipa("/θ/ trong “think”") and app.has_ipa("ˈθɪŋk") and app.has_ipa("ð")
+    assert not app.has_ipa("lắm nghiêng đường Ạ") and not app.has_ipa("") and not app.has_ipa(None)
+
+
+@case
+def wav_segment_bounds_clamped():
+    # ▶ Bạn đọc: nới đoạn một từ, kẹp trong file, không bao giờ âm/ngược
+    assert app.wav_segment_bounds(16000, 16000, 0.5, 0.5, pad=0.25) == (4000, 12000)
+    assert app.wav_segment_bounds(1000, 16000, 0.0, 0.01) == (0, 1000)
+    a, b = app.wav_segment_bounds(16000, 16000, 0.9, 0.1, pad=0.25)
+    assert a == b and a > 0, (a, b)
+
+
+@case
+def theme_text_contrast_ok():
+    # S-9 / D-32: mọi cặp chữ/nền của kết quả ≥ 4,5 : 1 ở cả hai theme
+    def lum(h):
+        def ch(c):
+            return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+        r, g, b = (int(h[i:i + 2], 16) / 255 for i in (1, 3, 5))
+        return 0.2126 * ch(r) + 0.7152 * ch(g) + 0.0722 * ch(b)
+    pairs = [("ok_fg", "ok_bg"), ("warn_fg", "warn_bg"), ("bad_fg", "bad_bg"),
+             ("fg", "info_bg"), ("accent_fg", "info_bg"), ("muted", "card"),
+             ("accent_fg", "card"), ("fg", "card")]
+    for name, P in app.THEMES.items():
+        for a, b in pairs:
+            hi, lo = sorted((lum(P[a]), lum(P[b])), reverse=True)
+            ratio = (hi + 0.05) / (lo + 0.05)
+            assert ratio >= 4.5, f"{name}: {a}/{b} = {ratio:.1f}"
+
+
 def main() -> int:
     if hasattr(sys.stdout, "reconfigure"):
         try:

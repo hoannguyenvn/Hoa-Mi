@@ -131,26 +131,35 @@ micro (Windows: Settings → System → Sound → Input — bỏ Mute, tăng Vol
 
 Kết quả gồm:
 
-1. **Điểm theo từ** — xanh = đúng, đỏ = sai/thiếu, cam = lỗi quen thuộc hoặc sai
-   thanh điệu; kèm câu mà máy nghe được.
-2. **Cần sửa** — từ thiếu/thừa, lỗi thanh điệu (tiếng Việt).
-3. **Âm vị (GOP)** (tiếng Anh, khi đã cài model acoustic) — chấm từng âm vị bằng
+1. **Đầu kết quả** — vòng điểm + "Đúng 2/4 từ" (hoặc "Hoàn hảo — đúng cả N từ" khi
+   đúng **mọi** từ) và lỗi chính.
+2. **Từng từ** — mỗi từ một ô: ✓ xanh = đúng, ! cam = lỗi quen thuộc/sai thanh,
+   ✕ đỏ = sai/thiếu/sai vần; ô sai ghi kèm **từ máy nghe được** ("think → nghe ‘tink’").
+3. **Cần sửa** — tối đa 4 thẻ: tiếng Việt gom lỗi N/L, sai dấu thanh, sai vần/dấu
+   ("lắm" → "lám", kèm cách đọc tách "l + ăm + thanh sắc"); tiếng Anh theo âm vị.
+   Thẻ có ▶ Mẫu (nếu có file mẫu) và ▶ Bạn đọc (nghe lại đúng từ đó trong bản thu).
+4. **Âm vị (GOP)** (tiếng Anh, khi đã cài model acoustic) — chấm từng âm vị bằng
    CTC trên chính bản đọc, so với bản mẫu cùng câu. Chỉ liệt kê âm **kém rõ rệt**
-   so với bản mẫu: `%` mức khớp, `%` của mẫu, âm model nghiêng về, cách sửa.
+   so với bản mẫu, ghi bằng chữ "lệch rõ" / "hơi lệch"; số đo nằm trong
+   "Chi tiết số đo".
    Nếu chưa có model, app quay về cách cũ: so chuỗi âm vị của từ Whisper nghe được
    với chuỗi chuẩn (CMUdict) — cũng hiện `/âm/ → [âm nghe được]`.
-4. **Tiến bộ** — số lần đã luyện, điểm cao nhất, lần trước, âm yếu nhất.
-5. **Ngữ điệu** — biểu đồ đường cao độ của **câu mẫu** (nét đứt) và **bản đọc**
+5. **Tiến bộ** — số lần đã luyện, điểm cao nhất, lần trước, âm yếu nhất.
+6. **Ngữ điệu** — biểu đồ đường cao độ của **câu mẫu** (nét đứt) và **bản đọc**
    (nét liền), trục ngang 0–100% độ dài câu, trục dọc là bán cung (st) so với
    trung vị giọng mỗi người. Dưới biểu đồ có nhận xét: cuối câu lên/xuống,
    khoảng cao độ, độ lệch đường cong. Chỉ hiện khi bài có audio mẫu câu.
+
+**Máy chưa nghe rõ:** khi máy không chắc (độ tin thấp và đúng < 50 %), nghe ra chuỗi
+dài bất thường, hoặc nghe ra câu Whisper hay tự sinh ("cảm ơn các bạn đã theo dõi"…),
+app **không hiện điểm**, không tô đỏ câu, không lưu vào tiến bộ — chỉ gợi ý cách thu lại.
 
 **GOP chấm thế nào (nói thẳng):**
 
 - Model nghe lại audio, ép căn chuỗi âm vị **mong đợi** (CMUdict) vào các khung
   20 ms bằng CTC Viterbi; mỗi âm vị lấy log xác suất của nó trừ log xác suất của
   âm cạnh tranh mạnh nhất → **GOP** (log posterior ratio).
-- `%` hiển thị là quy đổi logistic từ GOP (0–100), **không phải % phát âm đúng**;
+- Số 0–100 (trong "Chi tiết số đo") là quy đổi logistic từ GOP, **không phải % phát âm đúng**;
   chỉ để so sánh tương đối giữa các lần đọc.
 - Chỉ báo lỗi khi bạn kém bản mẫu **≥ 1.5 log** ở cùng âm (và dưới 55%), nên bản
   mẫu tự so với chính nó luôn 0 lỗi.

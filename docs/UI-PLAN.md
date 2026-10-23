@@ -2,7 +2,7 @@
 
 > Status: **GATE A passed 2026-10-22** — user approved the spec and accepted the default
 > answers for Q-01…Q-07 (§6). **GATE B passed 2026-10-22** (D-29…D-32). **Phase 3 build
-> in progress: B1, B2 done 2026-10-22 (§5.1–5.2); B3 partly coded, not yet tested (§5.3).** Design
+> in progress: B1, B2 done 2026-10-22 (§5.1–5.2), B3 done 2026-10-23 (§5.3), next B4.** Design
 > — canvas: https://claude.ai/artifact/L1oNuJ2Wq89LK7b8dFfRhK (private to the user).
 > Source of the issues: visual audits on
 > 2026-10-22 (`docs/HANDOFF.md` entries "tiếp 10" and "tiếp 11").
@@ -352,7 +352,7 @@ user checks in the real app. Increments are ordered so each one is useful alone.
 |---|---|---|---|
 | B1 Quick fixes ✅ | V-01…V-05, V-07, V-08, V-10, V-11, V-13, P-01, P-05, P-08 + font (D-28) | 13 issues, no layout change | done |
 | B2 Foundations ✅ | S-1 state model, S-2 `build_result_view` + tests, keep word timings (S-5 data), history `tries` (S-7 data) | A-01, A-02, H-02 (+ H-03 data side) | done |
-| B3 Trust and feedback 🟡 | S-3 evidence gate, S-4 Vietnamese wording + `rhyme`, chips + cards drawn from view-model | P-02, P-03, P-04, P-06, P-07, P-09, P-10 | 1,5 d |
+| B3 Trust and feedback ✅ | S-3 evidence gate, S-4 Vietnamese wording + `rhyme`, chips + cards drawn from view-model | P-02, P-03, P-04, P-06, P-07, P-09, P-10 | done |
 | B4 Layout and chart | app-style layout (§4.1, D-28; replaces S-6 columns), S-5 chart, S-7 progress UI, V-09, V-12, V-15 | P-11…P-13, C-01…C-04, H-01, H-03, V-09, V-12, V-15 | 1,5–2 d |
 | B5 Tab 1 and polish | S-8, V-06, V-14, T-04, settings save-on-change (§4.1), final contrast pass | T-01…T-04, V-06, V-14 | 0,5–1 d |
 
@@ -382,17 +382,23 @@ user checks in the real app. Increments are ordered so each one is useful alone.
   lessons no longer show English phoneme counts recorded under misdetection.
 - Tests: 46/46 (8 new). Not verified: real mic recording through the new states.
 
-### 5.3 B3 status (2026-10-23, in progress)
+### 5.3 B3 result (2026-10-23)
 
-- Coded (HANDOFF "tiếp 18"): `evidence_gate` + `HALLUCINATION_PHRASES` (view `state="unsure"`),
-  `rhyme` state + `strip_marks_vi`, Vietnamese cards with `vi_spell`, score ring `_draw_ring`,
-  chips `_mk_chip`, cards `_mk_card`, details/heard toggles, ▶ learner segment
-  (`play_wav_segment`, `wav_segment_bounds`). Existing 46 tests pass.
-- To finish: tests for the new pure functions (incl. hallucination fixtures, AirPods case);
-  `tools/ui_shots.py b3_after` vs `b3_before` (check card width before the Text is sized,
-  chip colours in dark); skills + `context-map.json`; commit.
-- Keep B3 renderer thin: B4 replaces the layout (underlined sentence + details panel).
-- Known nit: phrase match is substring-based, so "subscribe" also matches "subscribers".
+- Done: evidence gate D-29 (`evidence_gate`, `HALLUCINATION_PHRASES` matched as whole words)
+  → `unsure` view: "?" ring, "Máy chưa nghe rõ bài đọc", retry tips, heard text collapsed and
+  grey, not stored; `rhyme` state ("lắm"→"lám", `strip_marks_vi`) + human wording in
+  `flag_pair`; Vietnamese cards (N/L grouped with tip + sample, tone/rhyme with `vi_spell`);
+  score header (ring + "Đúng c/t từ" + main error) — one number family; word chips with heard
+  word; up to 4 cards with ▶ Mẫu / ▶ Bạn đọc (`play_wav_segment` on `words_t`); GOP as level
+  words, numbers under "Chi tiết số đo".
+- Fixed during review: "Hoàn hảo" required only `score >= 95` (a 21-word read with one wrong
+  word was praised) → now `correct == total`; cards had different widths → spacer strut.
+- Tests: 54/54 (8 new incl. theme contrast ≥ 4.5 : 1, all pairs ≥ 5.5). Screenshots
+  `b3_after` vs `b3_before`: EN/VI/perfect/unsure/dark reviewed.
+- **Carried to B4:** at minimum size (980×640) the new header leaves `p_txt` ~1 line, chips
+  hidden (V-09) — B4's app-style layout replaces this area; must be checked there.
+- Not verified: real mic attempts through the gate (thresholds are guesses — P4 calibration),
+  ▶ Bạn đọc with a real recording, 100/150 % scaling.
 
 Not in this plan: C-05 (needs real Vietnamese sample recordings — content work, Q-07).
 

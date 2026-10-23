@@ -1,6 +1,6 @@
 # PROJECT STATE — Oriole
 
-- **Cập nhật lần cuối:** 2026-10-23 (git + GitHub riêng tư D-33; ghi nhận B3 đang dở)
+- **Cập nhật lần cuối:** 2026-10-23 (xong B3: cổng bằng chứng D-29, chip/thẻ lỗi, `rhyme`; git D-33)
 - **Phiên bản code:** 2.3 (`VERSION` trong `app.py`)
 - **Trạng thái:** chạy được trên máy hiện tại; git repo `main` (D-33); chưa có test tự động đầy đủ.
 - **Nguồn sự thật:** code + `docs/context-map.json`. Tài liệu này chỉ tóm tắt.
@@ -10,10 +10,10 @@
 > Cập nhật mục này ở **cuối mỗi phiên**. Tối đa 3 việc.
 
 - [ ] **P2 — Đại tu giao diện theo `docs/UI-PLAN.md`**: GATE A (D-27), font + app-style (D-28),
-  GATE B (D-29…D-32) đã duyệt. **B1, B2 xong** (§5.1–5.2). **B3 ĐANG DỞ** (code đã có, xem
-  HANDOFF "tiếp 18" + UI-PLAN §5.3): còn thiếu test cho `evidence_gate`/`rhyme`/`vi_spell`/
-  `has_ipa`/`wav_segment_bounds`, chụp `b3_after` so `b3_before`, cập nhật skill + context-map.
-  Nên giữ renderer B3 mỏng — B4 dựng lại bố cục app-style (D-28).
+  GATE B (D-29…D-32) đã duyệt. **B1, B2, B3 xong** (§5.1–5.3). **Kế tiếp: B4** — bố cục
+  app-style (thanh điều hướng, panel chi tiết), biểu đồ có nhãn từ, tiến bộ dạng sparkline;
+  **phải** sửa cửa sổ tối thiểu (ô kết quả còn ~1 dòng sau B3). Nên tách B4a (khung) / B4b
+  (biểu đồ + tiến bộ).
 - [ ] **P3 — Thanh điệu tiếng Việt bằng F0:** phân loại 6 thanh từ contour, so với mẫu
   cùng âm tiết; hiện "bạn đọc thanh sắc, mẫu là thanh huyền".
 - [ ] **P4 — Hiệu chuẩn điểm:** thu bản ghi người thật, so với giáo viên, chỉnh ngưỡng
@@ -42,9 +42,10 @@ Ký hiệu: ✅ chạy ổn · 🟡 chạy nhưng có giới hạn · ⛔ chưa 
 | Giao diện sáng/tối, DPI cao | ✅ | theme `clam`, scale theo `winfo_fpixels`; nút header + radio cùng đổi |
 | Nhớ cài đặt | ✅ | `config.json`, chỉ khóa trong `DEFAULT_CFG` |
 | 3 bộ câu Việt + 14 bài Anh + 5 bài "Học âm" | ✅ | tổng 18 mục trong combobox luyện câu |
-| Chấm L1 theo từ (đúng/sai/thiếu/thừa) | ✅ | điểm = `correct/total` |
+| Chấm L1 theo từ (đúng/sai/thiếu/thừa) | ✅ | "Đúng c/t từ" + chip kèm từ máy nghe; "Hoàn hảo" chỉ khi đúng mọi từ |
+| Không chấm khi máy không chắc (D-29) | 🟡 | `evidence_gate`: bịa câu/chuỗi rác/độ tin thấp → "Máy chưa nghe rõ"; ngưỡng chưa hiệu chuẩn với bản thu thật |
 | Luật lỗi quen thuộc n/l, th, s/sh, âm cuối | ✅ | `flag_pair`, dựa trên chữ ASR |
-| Phát hiện sai thanh điệu tiếng Việt | 🟡 | chỉ so **chữ** (bỏ dấu) — chưa phân tích F0 |
+| Phát hiện sai thanh điệu / vần tiếng Việt | 🟡 | so **chữ**: `tone` (bỏ dấu thanh), `rhyme` (bỏ mọi dấu) — chưa phân tích F0 |
 | Phân tích âm vị tiếng Anh (CMUdict) | 🟡 | phụ âm đáng tin; nguyên âm có thể bỏ sót |
 | GOP acoustic (wav2vec2 CTC) | 🟡 | tùy chọn, cần torch; chưa hiệu chuẩn với giáo viên |
 | Biểu đồ ngữ điệu (F0, bán cung) | ✅ | chỉ mô tả, **không chấm điểm** |
@@ -52,7 +53,7 @@ Ký hiệu: ✅ chạy ổn · 🟡 chạy nhưng có giới hạn · ⛔ chưa 
 | Mic: chọn, kiểm tra, tự dò mic có tín hiệu | 🟡 | lọc WDM-KS, ưu tiên DirectSound, sàn 0,8% + gain +24 dB (D-20/D-21), thu bằng callback + queue (D-23) |
 | Mic ngoài (USB/bluetooth): Quét lại, cảnh báo Hands-Free | 🟡 | `rescan_audio_devices`, `headset_mic_missing` (D-22); AirPods đã lên thiết bị thu (WASAPI) nhưng bản ghi thử chưa nhận dạng được — xem mục 3 |
 | Context + skills cho AI | ✅ | `AGENTS.md`, `docs/`, 11 skill; `context_check` 40 OK |
-| Test tự động | 🟡 | 46 test khói + `context_check` + `tools/ui_shots.py` (chụp UI, xem bằng mắt); chưa có test ASR/mic |
+| Test tự động | 🟡 | 54 test khói + `context_check` + `tools/ui_shots.py` (chụp UI, xem bằng mắt); chưa có test ASR/mic |
 | Đóng gói `.exe` | ⛔ | chỉ có `run.bat` + Conda Python |
 | Git / CI | 🟡 | git `main` + GitHub riêng tư (D-33); chưa có CI |
 
@@ -64,7 +65,7 @@ Ký hiệu: ✅ chạy ổn · 🟡 chạy nhưng có giới hạn · ⛔ chưa 
 | Cao | Chưa có test UI/ASR/mic; `smoke_test` chỉ phủ hàm thuần | sửa UI/luồng có thể phá mà không báo | mở rộng dần; ghi rõ "chưa kiểm chứng" |
 | TB | Skill/tài liệu có thể lệch code nếu sửa mà không cập nhật | model sau làm sai chỗ | luôn chạy `context_check` + sửa tài liệu cùng phiên |
 | Cao | Chưa hiệu chuẩn thang điểm với giáo viên | người học không biết tin điểm đến đâu | thu ~100 bản ghi, 2 giáo viên chấm, Spearman |
-| TB | UI còn lại sau B1: hiện điểm khi máy không chắc (B3/D-29); ở kích thước tối thiểu dòng điểm tràn đè tiêu đề và hàng Micro bị cắt (B4); bố cục header/tab cũ chưa theo app-style (B4) | người dùng đọc nhầm kết quả | theo `docs/UI-PLAN.md` B2–B5 |
+| TB | UI còn lại sau B3: ở kích thước tối thiểu đầu kết quả đẩy ô kết quả còn ~1 dòng, hàng Micro bị cắt (V-09); bố cục header/tab cũ chưa theo app-style | chip/thẻ bị che ở cửa sổ nhỏ | B4 theo `docs/UI-PLAN.md` |
 | Thấp | Chưa thử UI ở Windows scaling 100 %/150 % (máy này 250 %) | chữ/nút có thể lệch | thử trên máy khác hoặc đổi scaling rồi chạy `tools/ui_shots.py` |
 | TB | `enhance_audio` high-pass là vòng lặp Python từng mẫu, chạy trên main thread | bản ghi 15 phút làm UI đứng vài giây | vector hóa (numpy) hoặc đưa vào worker |
 | TB | `load_model()` tạo model mới mỗi lần chấm | chậm, tốn RAM; mỗi câu luyện tốn thêm vài giây | cache theo `model_size` + khóa |

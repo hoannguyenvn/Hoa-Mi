@@ -1062,8 +1062,8 @@ def evidence_gate(res):
     hyp = " ".join(norm_words(res.get("hyp", "")))
     tgt = " ".join(norm_words(res.get("target", "")))
     for ph in HALLUCINATION_PHRASES:
-        p = " ".join(norm_words(ph))
-        if p in hyp and p not in tgt:
+        p = " %s " % " ".join(norm_words(ph))   # khớp nguyên từ: "subscribe" ≠ "subscribers"
+        if p in " %s " % hyp and p not in " %s " % tgt:
             return "hallucination"
     hw_n, tw_n = len(hyp.split()), len(tgt.split())
     if tw_n and hw_n >= GARBAGE_RATIO * tw_n and res.get("score", 0) < GARBAGE_SCORE:
@@ -1284,8 +1284,9 @@ def build_result_view(res, lesson=None):
              and i not in covered]
 
     score, correct, total = res.get("score", 0), res.get("correct", 0), res.get("total", 0)
-    perfect = (score >= 95 and not extras_total and not notes and not n_iss and not cards
-               and not res.get("warns") and not res.get("tones"))
+    # "Hoàn hảo — đúng cả N từ" chỉ khi đúng thật mọi từ (câu dài sai 1 từ vẫn ≥ 95 %)
+    perfect = (bool(total) and correct == total and not extras_total and not notes
+               and not n_iss and not cards and not res.get("warns") and not res.get("tones"))
     gate = evidence_gate(res)
     state = "unsure" if gate else "result"
 
@@ -4089,7 +4090,8 @@ class App(tk.Tk):
             self._mk_link_label(row, "▶ Bạn đọc", lambda h=card["heard"]: self._play_heard(h))
         if row.winfo_children():
             row.pack(anchor="w", pady=(self.px(6), 0))
-        f.configure(width=width)
+        # khung co theo nội dung → mọi thẻ cùng rộng nhờ một thanh chống cao 0
+        tk.Frame(f, bg=P["card"], width=width - 2 * self.px(12), height=0).pack()
         return f
 
     def _mk_link_label(self, parent, text, command):

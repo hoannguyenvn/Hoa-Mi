@@ -111,7 +111,19 @@
       "App._set_stt_state",
       "App._set_prac_state",
       "App._render_result",
-      "App._src_label"
+      "App._src_label",
+      "strip_marks_vi",
+      "evidence_gate",
+      "vi_spell",
+      "has_ipa",
+      "wav_segment_bounds",
+      "play_wav_segment",
+      "App._draw_ring",
+      "App._mk_chip",
+      "App._mk_card",
+      "App._toggle_details",
+      "App._toggle_heard",
+      "App._play_heard"
     ],
     "pron_en.py": [
       "phonemes",

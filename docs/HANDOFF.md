@@ -700,3 +700,34 @@ cập nhật skill/UI-PLAN §5.3/PROJECT-STATE/context-map (symbol mới); `cont
 
 **Việc tiếp theo:** hoàn tất B3 theo UI-PLAN §5.3, rồi commit.
 **Cảnh báo:** đừng `git add -A` khi `downloads/` hay file cá nhân bị đổi tên ra ngoài `.gitignore`.
+
+## 2026-10-23 (tiếp) — Claude Opus 5.5 — B3 xong: test, ảnh chụp, tài liệu
+
+**Mục tiêu phiên:** hoàn tất B3 đang dở ("tiếp 18") theo UI-PLAN §5.3.
+
+**Đã làm:**
+- `app.py:build_result_view` — "Hoàn hảo" đòi `correct == total` (trước: `score >= 95` ⇒ câu
+  21 từ sai 1 từ vẫn được khen "đúng cả 21 từ").
+- `app.py:evidence_gate` — khớp cụm bịa theo **nguyên từ** ("subscribe" ≠ "subscribers").
+- `app.py:App._mk_card` — thanh chống cao 0 để mọi thẻ cùng rộng (trước co theo nội dung).
+- `tools/smoke_test.py` — 8 case mới: cổng bằng chứng, view `unsure` không số/không lưu,
+  hoàn hảo cần đúng mọi từ, `rhyme`, `vi_spell`, `has_ipa`, `wav_segment_bounds`, tương phản
+  token ≥ 4,5 : 1 (thực tế ≥ 5,5).
+- Tài liệu: skill `app-pronunciation` (cổng, `rhyme`, renderer B3), `app-ui` (thành phần,
+  token, cạm bẫy độ rộng Frame, lỗi cửa sổ tối thiểu), `app-qa-release` (54 case);
+  `context-map.json` (+12 symbol); `ARCHITECTURE` §3.3/§6; `FEATURES` F3.6/F3.7/F3.7b/F3.9;
+  `README` (kết quả mới + "Máy chưa nghe rõ"); `UI-PLAN` §5.3, B3 ✅; `PROJECT-STATE`.
+
+**Quyết định mới:** không.
+
+**Đã kiểm chứng:**
+- [x] `smoke_test` 54/54, `context_check`, `py_compile` (xem kết quả cuối phiên).
+- [x] `tools/ui_shots.py b3_after` so `b3_before`: EN lỗi, VI (N/L + `rhyme`), hoàn hảo,
+  "chưa nghe rõ", tối, cửa sổ tối thiểu — đã xem từng ảnh.
+
+**Chưa kiểm chứng:** thu âm thật qua cổng D-29 (ngưỡng là phỏng đoán — P4); ▶ Bạn đọc với
+bản thu thật; Windows scaling 100/150 %.
+
+**Việc tiếp theo:** B4 (UI-PLAN §5) — đề xuất tách B4a khung app-style / B4b biểu đồ + tiến bộ.
+**Cảnh báo:** cửa sổ tối thiểu: ô kết quả còn ~1 dòng (V-09) — B4 phải xử lý; thêm câu bịa
+mới vào `HALLUCINATION_PHRASES` kèm case test.
