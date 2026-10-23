@@ -17,9 +17,10 @@ $env:PYTHONIOENCODING='utf-8'          # console hay là cp1252
 
 & $PY tools\context_check.py            # tài liệu/symbol/skill/asset
 & $PY tools\context_check.py --snapshot # sinh docs/CONTEXT-SNAPSHOT.md
-& $PY tools\smoke_test.py               # 64 test khói
+& $PY tools\smoke_test.py               # 70 test khói
+& $PY tools\asr_bench.py --compare F.json  # chuỗi thu → nhận dạng (cần model Whisper, ~1 phút)
 & $PY tools\ui_shots.py before          # chụp 21 trạng thái UI vào %TEMP%\oriole_shots\before
-& $PY -m py_compile app.py pron_en.py gop.py prosody.py gen_mau.py tools\build_lessons.py tools\context_check.py tools\smoke_test.py
+& $PY -m py_compile app.py pron_en.py gop.py prosody.py gen_mau.py tools\build_lessons.py tools\context_check.py tools\smoke_test.py tools\asr_bench.py
 ```
 
 - `context_check` FAIL ⇒ **dừng**, sửa drift trước khi thêm tính năng.
@@ -27,7 +28,7 @@ $env:PYTHONIOENCODING='utf-8'          # console hay là cp1252
 - `py_compile` không in gì = OK; `__pycache__` không được commit/chia sẻ.
   Liệt kê file rõ ràng: PowerShell **không** mở rộng `tools\*.py` cho lệnh native.
 
-### `smoke_test.py` phủ gì (64 case)
+### `smoke_test.py` phủ gì (70 case)
 
 | Nhóm | Case |
 |---|---|
@@ -36,7 +37,8 @@ $env:PYTHONIOENCODING='utf-8'          # console hay là cp1252
 | Cue/SRT | timestamp, txt có giờ, `_fix_cues`, `split_long_cues` |
 | Audio | `resample_length`, silence quiet, chuẩn hóa gain |
 | Âm vị/F0 | IPA `think`, `analyze_pairs`, sine 150 Hz |
-| Audio (tiếp) | `enhance_lifts_weak_mic` (D-21) |
+| Audio (tiếp) | `enhance_lifts_weak_mic` (D-21), `resample_blocks_aliasing`, `highpass_matches_one_pole_loop`, `enhance_gain_ignores_click` (D-36) |
+| ASR luyện (D-36) | `guess_lang_from_target_text`, `practice_asr_options`, `whisper_model_is_cached` |
 | Config | khóa + kiểu khớp `DEFAULT_CFG` |
 | Micro | `usable_mics_drops_wdmks`, `pick_default_prefers_real_mic`, `headset_without_mic_is_detected`, `recorder_uses_callback_not_blocking_read` (D-20/22/23) |
 | YouTube | `yt_worker_always_reports_back` (D-24), `yt_subtitle_429_falls_back_not_fatal` (D-25), `yt_progress_is_a_fraction` |
@@ -161,7 +163,7 @@ lessons_en.json  mau/  assets/fonts/  requirements.txt  run.bat  README.md
 ```
 Đã chạy:
   context_check.py        -> X OK / Y FAIL
-  smoke_test.py           -> 64/64 PASS
+  smoke_test.py           -> 70/70 PASS
   py_compile              -> OK
 Đã thử tay:
   M1 (file mp3 14s)       -> PASS

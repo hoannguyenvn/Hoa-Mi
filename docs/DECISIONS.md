@@ -322,6 +322,29 @@ lệch rõ — hai tín hiệu trái nhau trên cùng màn. Cảnh báo cam (kh�
 **Hệ quả:** `build_result_view` trả `gop_marks` {chỉ số từ tách khoảng trắng: [ipa]} (cùng
 chỉ số `wi` của `gop.score`); `stage_words` dùng nó; test `gop_clearly_off_marks_stage_word`.
 
+### D-36 — Đầu vào âm thanh + tham số Whisper cho bài luyện, đo bằng `asr_bench` (2026-10-23)
+**Quyết định:**
+- `resample_to_16k` lọc chống gập (FIR Kaiser, numpy) trước khi nội suy: giữ tới 7,9 kHz,
+  chặn ≥ 80 dB từ 8,6 kHz. High-pass 75 Hz của `enhance_audio` vẫn là bộ lọc 1 cực của D-11,
+  chỉ tính bằng FFT với đáp ứng xung của nó (không còn vòng lặp Python).
+- Gain của `enhance_audio` theo `speech_peak` (đỉnh khung 10 ms ở top 2 %) thay vì một mẫu
+  cao nhất; giữ trần +24 dB (D-21) và nhánh "đầu vào vỡ thì chỉ giảm".
+- Bản ghi luyện: `transcribe_practice` + `PRAC_ASR_OPTS` — `temperature=0`, **không VAD**
+  khi file WAV ≤ 30 s (file dài/không phải WAV vẫn VAD), vẫn `condition_on_previous_text=False`,
+  không `initial_prompt` (I2). Câu tự gõ: ngôn ngữ cho Whisper = `guess_lang(target)`.
+- `load_model` cache một `WhisperModel` theo cỡ.
+- `tools/asr_bench.py` là thước đo bắt buộc khi đổi các số trên (`--compare`).
+**Vì sao:** đo 2026-10-23, model `base`, 30 câu mẫu × 4 điều kiện mic giả lập (đúng/tổng từ):
+nội suy trần để lọt 87 % tiếng 10 kHz xuống 6 kHz (dải s/sh/th); một tiếng click trên mic yếu
+quyết định gain → giọng gần như không được khuếch đại → Silero VAD bỏ hết → 22/30 câu rỗng hoặc
+bị chặn (26/146 từ đúng). Sau thay đổi: sạch 126 → 129, mic yếu 125 → 128, mic yếu + click
+26 → 122, ồn 118 → 119. Biên lọc 7,4 kHz làm "sells" thành "fell" (ồn 114) nên chọn 7,9/8,6.
+`temperature=0` trung tính trên bộ đo; giữ vì nhánh lấy mẫu dự phòng là nơi sinh câu bịa.
+**Hệ quả:** I3 và các ngưỡng D-21 **không đổi** (`peak0` vẫn là đỉnh thô). Bộ đo dùng TTS
+nên chỉ so trước/sau, **không** hiệu chuẩn điểm (I13); bản ghi thật chạy `--dir`. Test:
+`resample_blocks_aliasing`, `highpass_matches_one_pole_loop`, `enhance_gain_ignores_click`,
+`guess_lang_from_target_text`, `practice_asr_options`, `whisper_model_is_cached`.
+
 ## B. Những cách làm đã bị loại (đừng lặp lại)
 
 Nguồn: `PHASE2-DANH-GIA-DU-AN-CU.md` §2.2 và §6.

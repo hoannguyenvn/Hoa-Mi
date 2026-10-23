@@ -203,6 +203,116 @@ def enhance_lifts_weak_mic():
     assert app.MIC_MIN_PEAK < app.MIC_GOOD_PEAK, (app.MIC_MIN_PEAK, app.MIC_GOOD_PEAK)
 
 
+@case
+def resample_blocks_aliasing():
+    # Mic 48/44,1 kHz: tiếng 10 kHz không được gập xuống 6 kHz (đè dải s/sh/th);
+    # dải giọng tới 7,5 kHz phải giữ nguyên. Nội suy tuyến tính cũ để lọt 87 %.
+    for sr in (48000, 44100):
+        t = np.arange(sr * 2) / sr
+
+        def rms_after(f):
+            y = app.resample_to_16k(0.5 * np.sin(2 * math.pi * f * t), sr)[2000:-2000]
+            return float(np.sqrt(np.mean(y ** 2)))
+        assert rms_after(10000) < 0.002, (sr, rms_after(10000))
+        assert rms_after(3000) > 0.33, (sr, rms_after(3000))
+        assert rms_after(7500) > 0.30, (sr, rms_after(7500))
+
+
+@case
+def highpass_matches_one_pole_loop():
+    # Bộ lọc vector hóa phải đúng là high-pass 1 cực cũ (D-11), chỉ nhanh hơn.
+    rate = 16000
+    x = np.random.default_rng(0).standard_normal(6000).astype(np.float32) * 0.1
+    rc = 1.0 / (2 * math.pi * 75.0)
+    a = rc / (rc + 1.0 / rate)
+    y = np.empty_like(x)
+    y[0] = x[0]
+    for n in range(1, len(x)):
+        y[n] = (x[n] - x[n - 1]) + a * y[n - 1]
+    z = app.fft_convolve(x, app.highpass_1pole_kernel(rate))[:len(x)]
+    assert float(np.max(np.abs(y - z))) < 1e-5
+
+
+@case
+def enhance_gain_ignores_click():
+    # Một tiếng gõ bàn không được quyết định gain: giọng nhỏ vẫn phải được kéo lên.
+    sp = (np.random.default_rng(1).standard_normal(16000 * 3) * 0.005).astype(np.float32)
+    outs = []
+    for click in (False, True):
+        s = sp.copy()
+        if click:
+            s[20000] = 0.5
+        out, _info = app.enhance_audio((s * 32767).astype(np.int16), 16000)
+        o = out.astype(np.float32) / 32767
+        outs.append(float(np.sqrt(np.mean(o ** 2))))
+    assert outs[1] > 0.8 * outs[0], outs
+
+
+@case
+def guess_lang_from_target_text():
+    assert app.guess_lang("Lan năm nay lên lớp.") == "vi"
+    assert app.guess_lang("đi") == "vi"
+    assert app.guess_lang("Think about this: three thanks.") == "en"
+    assert app.guess_lang("123 !!") is None
+    assert app.guess_lang("Grüß dich") is None
+
+
+@case
+def practice_asr_options():
+    # I2: không initial_prompt; temperature 0; VAD chỉ cho file dài/không phải WAV.
+    import types
+    seen = []
+
+    class FakeModel:
+        def transcribe(self, path, **k):
+            seen.append(k)
+            return iter(()), types.SimpleNamespace(language=k.get("language"))
+
+    short = _tmp_wav()
+    with app.wave.open(short, "wb") as w:   # WAV thật 1 s
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(16000)
+        w.writeframes(b"\0\0" * 16000)
+    try:
+        app.transcribe_practice(FakeModel(), short, "en")
+        app.transcribe_practice(FakeModel(), "khong_co.mp3", "auto")
+    finally:
+        app.remove_temp(short)
+    k0, k1 = seen
+    assert "initial_prompt" not in k0 and k0["temperature"] == 0.0, k0
+    assert k0["vad_filter"] is False and k0["language"] == "en", k0
+    assert k1["vad_filter"] is True and k1["language"] is None, k1
+
+
+@case
+def whisper_model_is_cached():
+    import types
+    made = []
+
+    class FakeWM:
+        def __init__(self, size, **k):
+            made.append(size)
+
+    real = sys.modules.get("faster_whisper")
+    sys.modules["faster_whisper"] = types.SimpleNamespace(WhisperModel=FakeWM)
+    saved = dict(app._MODEL_CACHE)
+    app._MODEL_CACHE.clear()
+    try:
+        a = app.load_model("base")
+        assert app.load_model("base") is a
+        app.load_model("small")
+        assert made == ["base", "small"], made
+        assert list(app._MODEL_CACHE) == ["small"]   # chỉ giữ một cỡ trong RAM
+    finally:
+        app._MODEL_CACHE.clear()
+        app._MODEL_CACHE.update(saved)
+        if real is None:
+            sys.modules.pop("faster_whisper", None)
+        else:
+            sys.modules["faster_whisper"] = real
+
+
 # ---------------------------------------------------------------- âm vị / F0
 @case
 def ipa_think_has_theta():

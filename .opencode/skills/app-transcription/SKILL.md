@@ -90,7 +90,10 @@ Quy ước:
 
 - **Không** gọi `load_model` trong main thread (đóng băng UI).
 - **Không** thay `beam_size`/`vad_filter` tùy tiện. Luồng file cố tình không bật VAD;
-  `_w_whisper_cues` và luyện phát âm bật VAD vì đầu vào có im lặng.
+  `_w_whisper_cues` bật VAD vì đầu vào có im lặng. Luyện phát âm dùng `PRAC_ASR_OPTS`
+  qua `transcribe_practice` (VAD chỉ cho file > 30 s — D-36); đổi ⇒ chạy `tools/asr_bench.py`.
+- `load_model()` **cache** một `WhisperModel` theo cỡ (`_MODEL_CACHE` + `_MODEL_LOCK`);
+  đổi cỡ thì thay model cũ. Test giả lập `faster_whisper` phải dọn `_MODEL_CACHE`.
 - `condition_on_previous_text=False` chỉ dùng cho **luyện phát âm** (chống bịa);
   luồng file/YouTube giữ mặc định để câu liền mạch.
 - Nếu đổi khóa `result`, sửa đồng thời `_on_result`, `_save_*`, `_open_*`.
@@ -99,13 +102,11 @@ Quy ước:
 
 ## Nợ đã biết
 
-- `load_model()` **không cache**: mỗi lần bấm Bắt đầu tạo model mới. Nếu sửa,
-  dùng cache theo `(model_size)` + khóa, và cân nhắc giải phóng RAM.
 - Chưa có hàng đợi nhiều file; mỗi lần một file.
 - `medium` có thể rất chậm trên CPU.
 - Không có thời gian còn lại/ETA; tiến trình chỉ là `s.end / duration`.
-- `enhance_audio` lọc high-pass bằng vòng lặp Python → bản ghi 15 phút xử lý chậm
-  trên main thread (UI đứng vài giây) trước khi worker chạy.
+- `save_frames_wav` vẫn chạy trên main thread: bản ghi 15 phút mất ~1,7 s (resample +
+  `enhance_audio`, đã vector hóa — D-36) trước khi worker chạy.
 
 ## Kiểm chứng
 

@@ -38,6 +38,8 @@
       "mux_subtitles_into_video",
       "ensure_av_patched",
       "load_model",
+      "transcribe_practice",
+      "guess_lang",
       "yt_ffmpeg_location",
       "yt_build_opts",
       "yt_progress_fraction",
@@ -51,7 +53,11 @@
       "query_mic_rate",
       "probe_input_levels",
       "best_input_mic",
+      "fft_convolve",
+      "lowpass_kernel",
       "resample_to_16k",
+      "highpass_1pole_kernel",
+      "speech_peak",
       "enhance_audio",
       "flag_pair",
       "score_pronunciation",
@@ -210,6 +216,11 @@
     ],
     "tools/smoke_test.py": [
       "main"
+    ],
+    "tools/asr_bench.py": [
+      "main",
+      "run_one",
+      "degrade"
     ],
     "tools/ui_shots.py": [
       "main",

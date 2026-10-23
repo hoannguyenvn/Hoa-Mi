@@ -107,14 +107,16 @@ Sau đó `build_result_view` gọi `evidence_gate(res)` (D-29) → view `state="
 `unsure` ⇒ không số, không chip màu, không đếm âm, `hist_add_try` bỏ qua. Thêm cụm mới
 vào `HALLUCINATION_PHRASES` kèm case trong `evidence_gate_blocks_hallucination_and_noise`.
 
-ASR cho luyện phát âm dùng:
+ASR cho luyện phát âm đi qua **một** hàm, dùng chung với `tools/asr_bench.py` (D-36):
 ```python
-model.transcribe(wav_path,
-    language=None if lang == "auto" else lang,
-    beam_size=5, word_timestamps=True,
-    vad_filter=True, condition_on_previous_text=False)
+transcribe_practice(model, wav_path, asr_lang)   # PRAC_ASR_OPTS:
+#   beam_size=5, word_timestamps=True, condition_on_previous_text=False,
+#   temperature=0.0, vad_filter chỉ khi file > PRAC_VAD_MAX_SEC (30 s) hoặc không phải WAV
 ```
-`condition_on_previous_text=False` + VAD là biện pháp chống Whisper "bịa" — không bỏ.
+- `asr_lang`: bài có ngôn ngữ thì dùng nó; câu tự gõ (`"auto"`) → `guess_lang(target)`
+  (chữ có dấu → vi, toàn Latin không dấu → en, còn lại để Whisper dò). Chấm điểm vẫn dùng
+  `lang` của bài.
+- Không `initial_prompt` (I2). Đổi tham số ⇒ chạy `tools/asr_bench.py --compare` trước/sau.
 
 ## View-model (D-31) — sửa NỘI DUNG ở đây, không ở UI
 
@@ -198,7 +200,6 @@ Lịch sử: `hist_add_try(hist, sid, view, ts)` thêm `tries` (≤ 30), bỏ qu
 
 ## Nợ đã biết (chưa sửa)
 
-- `load_model()` tạo `WhisperModel` mới **mỗi lần chấm** → mỗi câu tốn thêm vài giây.
 - 3 bài Việt (`vi1`–`vi3`) không có audio mẫu → không có nút nghe, không có ngữ điệu.
 
 ## Cạm bẫy
@@ -208,7 +209,8 @@ Lịch sử: `hist_add_try(hist, sid, view, ts)` thêm `tries` (≤ 30), bỏ qu
 | Điểm 100% nhưng đầy cảnh báo | đúng thiết kế (I4); đừng "sửa" bằng cách trừ điểm |
 | Báo sai thanh điệu khi phụ âm cũng sai | thứ tự kiểm tra: `flag_pair` trước, `tone` sau |
 | Cặp từ bị lệch vị trí | bỏ bước gộp delete+insert |
-| Whisper nghe ra câu lặp | thiếu VAD/`condition_on_previous_text=False` |
+| Whisper nghe ra câu lặp | thiếu `condition_on_previous_text=False` / `temperature=0` |
+| Mic yếu + tiếng click → máy nghe rỗng | gain theo đỉnh tuyệt đối (phải `speech_peak`) hoặc bật lại VAD cho bản thu ngắn |
 | Điểm cao trên im lặng | thiếu gate `peak0`/`wav_peak` |
 | Lịch sử ghi cả `custom` | quên kiểm tra `sid` |
 | "Hoàn hảo" khi có từ thừa | điều kiện phải gồm `extra_total == 0` |

@@ -589,10 +589,88 @@ def ensure_av_patched():
         pass
 
 
+_MODEL_CACHE = {}               # model_size -> WhisperModel (giữ một model, đổi cỡ thì thay)
+_MODEL_LOCK = threading.Lock()
+
+
 def load_model(model_size):
-    ensure_av_patched()
-    from faster_whisper import WhisperModel
-    return WhisperModel(model_size, device="cpu", compute_type="int8")
+    """WhisperModel dùng lại giữa các lần chấm/nhận dạng; nạp lần đầu cho mỗi cỡ.
+
+    Chỉ giữ một cỡ trong RAM (small/medium nặng hàng trăm MB). CTranslate2 cho phép
+    gọi transcribe từ nhiều thread trên cùng một model.
+    """
+    with _MODEL_LOCK:
+        m = _MODEL_CACHE.get(model_size)
+        if m is None:
+            ensure_av_patched()
+            from faster_whisper import WhisperModel
+            _MODEL_CACHE.clear()
+            m = WhisperModel(model_size, device="cpu", compute_type="int8")
+            _MODEL_CACHE[model_size] = m
+        return m
+
+
+# Tham số Whisper cho bản ghi luyện phát âm (một câu ngắn). Dùng chung với tools/asr_bench.py.
+# - Không có initial_prompt: gợi câu mẫu cho Whisper sẽ che lỗi của người học (I2).
+# - temperature 0, không lấy mẫu dự phòng ở nhiệt độ cao: trên bản thu yếu, nhánh dự
+#   phòng là nơi Whisper "bịa" câu; kết quả độ tin thấp để cổng D-29 xử lý.
+# - Không VAD cho bản thu ngắn: Recorder đã cắt im lặng; Silero (ngưỡng 0,5) bỏ mất
+#   giọng nhỏ — asr_bench: mic yếu + tiếng click WER 0,185 → 0,157 khi tắt.
+PRAC_ASR_OPTS = {"beam_size": 5, "word_timestamps": True,
+                 "condition_on_previous_text": False, "temperature": 0.0}
+PRAC_VAD_MAX_SEC = 30.0   # file dài hơn một cửa sổ Whisper (Chấm file…) vẫn dùng VAD
+
+
+def _wav_seconds(path):
+    """Độ dài file WAV (giây); None nếu không phải WAV đọc được."""
+    try:
+        with wave.open(path, "rb") as w:
+            return w.getnframes() / float(w.getframerate() or 1)
+    except Exception:
+        return None
+
+
+_VI_CHARS = set("àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ")
+
+
+def guess_lang(text):
+    """Ngôn ngữ của câu mẫu: 'vi' nếu có chữ tiếng Việt, 'en' nếu toàn chữ Latin
+    không dấu, None nếu không đoán được. Câu ngắn giọng Việt đọc tiếng Anh làm Whisper
+    dò nhầm ngôn ngữ → ra chữ rác; câu mẫu cho biết chắc hơn."""
+    letters = [c for c in (text or "").lower() if c.isalpha()]
+    if not letters:
+        return None
+    if any(c in _VI_CHARS for c in letters):
+        return "vi"
+    if all("a" <= c <= "z" for c in letters):
+        return "en"
+    return None
+
+
+def transcribe_practice(model, wav_path, lang, **overrides):
+    """Nhận dạng bản ghi luyện -> {hyp, words, probs, words_t, info}."""
+    secs = _wav_seconds(wav_path)
+    opts = dict(PRAC_ASR_OPTS, vad_filter=secs is None or secs > PRAC_VAD_MAX_SEC)
+    opts.update(overrides)
+    segs, info = model.transcribe(wav_path, language=None if lang == "auto" else lang,
+                                  **opts)
+    # segs là generator: chỉ duyệt được MỘT lần → gom luôn text dự phòng ở đây
+    words, probs, texts, words_t = [], [], [], []
+    for s in segs:
+        texts.append(getattr(s, "text", "") or "")
+        for w in (getattr(s, "words", None) or []):
+            t = (getattr(w, "word", "") or "").strip()
+            if t:
+                p = float(getattr(w, "probability", 1.0) or 0.0)
+                words.append(t)
+                probs.append(p)
+                # mốc thời gian từng từ: để vẽ nhãn từ dưới biểu đồ ngữ điệu (S-5)
+                st, en = getattr(w, "start", None), getattr(w, "end", None)
+                if st is not None and en is not None:
+                    words_t.append({"w": t, "s": round(float(st), 3),
+                                    "e": round(float(en), 3), "p": round(p, 3)})
+    hyp = " ".join(words).strip() or " ".join("".join(texts).split())
+    return {"hyp": hyp, "words": words, "probs": probs, "words_t": words_t, "info": info}
 
 
 # ---------- tải video YouTube (yt-dlp + ffmpeg) ----------
@@ -872,17 +950,97 @@ def best_input_mic(dur=1.0):
     return rows[0] if rows else None
 
 
+def fft_convolve(x, h):
+    """Tích chập đầy đủ (len x + len h - 1) bằng FFT overlap-add, numpy thuần, float32."""
+    import numpy as np
+    x = np.asarray(x, dtype=np.float32)
+    h = np.asarray(h, dtype=np.float64)
+    n, m = len(x), len(h)
+    out = np.zeros(n + m - 1, dtype=np.float32)
+    if n == 0 or m == 0:
+        return out
+    # FFT ~8× độ dài kernel: ít phần chồng lấn phí mà vẫn ít vòng lặp
+    nfft = max(4096, 1 << int(np.ceil(np.log2(8 * m))))
+    block = nfft - m + 1
+    H = np.fft.rfft(h, nfft)
+    for s in range(0, n, block):
+        seg = x[s:s + block]
+        k = len(seg) + m - 1
+        out[s:s + k] += np.fft.irfft(np.fft.rfft(seg, nfft) * H, nfft)[:k].astype(np.float32)
+    return out
+
+
+# Biên lọc khi về 16 kHz: giữ tới 7,9 kHz (s/sh/th nằm ở 4–8 kHz; Whisper dùng tới 8 kHz),
+# chặn ≥ 80 dB từ 8,6 kHz. Chỉ dải 8–8,6 kHz gập nhẹ vào 7,4–8 kHz. Đo bằng
+# tools/asr_bench.py: cắt sớm ở 7,4–8 kHz làm Whisper nghe "sells" thành "fell".
+RESAMPLE_PASS_HZ = 7900
+RESAMPLE_STOP_HZ = 8600
+RESAMPLE_ATTEN_DB = 80
+
+
+def lowpass_kernel(rate, pass_hz, stop_hz, atten_db=RESAMPLE_ATTEN_DB):
+    """FIR low-pass pha tuyến tính (sinc cửa sổ Kaiser), số tap lẻ."""
+    import numpy as np
+    width = 2.0 * np.pi * (stop_hz - pass_hz) / float(rate)
+    taps = int(np.ceil((atten_db - 8.0) / (2.285 * width))) | 1
+    beta = 0.1102 * (atten_db - 8.7)
+    fc = (pass_hz + stop_hz) / 2.0 / float(rate)
+    n = np.arange(taps) - (taps - 1) / 2.0
+    h = 2.0 * fc * np.sinc(2.0 * fc * n) * np.kaiser(taps, beta)
+    return h / np.sum(h)
+
+
 def resample_to_16k(samples, src_rate, dst_rate=16000):
-    """Resample tuyến tính bằng numpy (không cần scipy). Đủ tốt cho voice."""
+    """Đổi tần số lấy mẫu bằng numpy (không cần scipy).
+
+    Hạ tần số: lọc chống gập (FIR Kaiser, ≥ 80 dB) rồi mới nội suy. Không lọc thì
+    ồn/rít 8–24 kHz của mic 48 kHz gập xuống 0–8 kHz, đè lên dải s/sh/th.
+    """
     import numpy as np
     x = np.asarray(samples).flatten().astype(np.float32)
     if len(x) == 0 or src_rate == dst_rate:
         return x
+    if dst_rate < src_rate:
+        k = dst_rate / 16000.0
+        stop = min(RESAMPLE_STOP_HZ * k, 0.49 * src_rate)
+        h = lowpass_kernel(src_rate, min(RESAMPLE_PASS_HZ * k, 0.92 * stop), stop)
+        d = (len(h) - 1) // 2   # bù trễ của bộ lọc pha tuyến tính
+        x = fft_convolve(x, h)[d:d + len(x)]
     ratio = dst_rate / float(src_rate)
     n_out = max(1, int(round(len(x) * ratio)))
     old_idx = np.linspace(0, len(x) - 1, len(x))
     new_idx = np.linspace(0, len(x) - 1, n_out)
     return np.interp(new_idx, old_idx, x).astype(np.float32)
+
+
+def highpass_1pole_kernel(rate, fc=75.0, tol=1e-7):
+    """Đáp ứng xung của high-pass 1 cực y[n] = x[n]-x[n-1] + a*y[n-1]: h0=1, hn=a^n-a^(n-1)."""
+    import math
+    import numpy as np
+    rc = 1.0 / (2.0 * math.pi * fc)
+    dt = 1.0 / float(rate)
+    a = rc / (rc + dt)
+    n = int(math.ceil(math.log(tol) / math.log(a))) + 1
+    g = a ** np.arange(n, dtype=np.float64)
+    h = g.copy()
+    h[1:] -= g[:-1]
+    return h
+
+
+GAIN_FRAME_MS = 10     # khung đo đỉnh khi tính gain
+GAIN_SKIP_FRAC = 0.02  # bỏ 2 % khung to nhất (click, gõ bàn, bật hơi) khi tính đỉnh giọng
+
+
+def speech_peak(x, rate):
+    """Đỉnh đại diện cho giọng: đỉnh khung 10 ms ở vị trí top 2 % (bỏ ít nhất 2 khung)."""
+    import numpy as np
+    x = np.asarray(x, dtype=np.float32)
+    f = max(1, int(rate * GAIN_FRAME_MS / 1000.0))
+    n = len(x) // f
+    if n < 4:
+        return float(np.max(np.abs(x))) if len(x) else 0.0
+    pk = np.sort(np.max(np.abs(x[:n * f].reshape(n, f)), axis=1))[::-1]
+    return float(pk[min(n - 1, max(2, int(GAIN_SKIP_FRAC * n)))])
 
 
 def enhance_audio(samples, rate=16000):
@@ -898,18 +1056,10 @@ def enhance_audio(samples, rate=16000):
     clipped = peak_raw >= 0.99
     x = x - float(np.mean(x))  # bỏ DC (ù, lệch mic)
     # High-pass 1 cực ~75Hz: y[n] = x[n]-x[n-1] + a*y[n-1], mềm, không ringing
-    # như FFT brick-wall cũ (nguyên nhân gây "rè kim loại").
+    # như FFT brick-wall cũ (nguyên nhân gây "rè kim loại"). Tính bằng tích chập với
+    # đáp ứng xung của chính bộ lọc đó (cắt khi a^n < 1e-7) — cùng kết quả, không lặp Python.
     if len(x) > 1 and rate > 0:
-        fc = 75.0
-        import math
-        rc = 1.0 / (2.0 * math.pi * fc)
-        dt = 1.0 / float(rate)
-        a = rc / (rc + dt)
-        y = np.empty_like(x)
-        y[0] = x[0]
-        for n in range(1, len(x)):
-            y[n] = (x[n] - x[n - 1]) + a * y[n - 1]
-        x = y
+        x = fft_convolve(x, highpass_1pole_kernel(rate))[:len(x)]
     peak0 = float(np.max(np.abs(x))) if len(x) else 0.0
     if peak0 > 1e-6:
         # Chuẩn hóa về -3dB; nếu đầu vào đã vỡ thì HẠ xuống chứ không khuếch đại thêm.
@@ -917,9 +1067,10 @@ def enhance_audio(samples, rate=16000):
         if clipped and peak0 > 0:
             gain = min(1.0, target / peak0)
         else:
-            # Giới hạn +24dB (REC_GAIN_MAX): micro array laptop cho đỉnh 1–3% vẫn
-            # lên được mức Whisper nghe rõ mà không kéo nền nhiễu quá mức.
-            gain = min(REC_GAIN_MAX, target / max(peak0, 1e-4))
+            # Gain theo mức GIỌNG (đỉnh "thường gặp" của các khung 10 ms), không theo một
+            # mẫu cao nhất: một tiếng gõ bàn/bật hơi "p" không được quyết định âm lượng cả
+            # bản thu. Giới hạn +24dB (REC_GAIN_MAX) cho micro array laptop đỉnh 1–3%.
+            gain = min(REC_GAIN_MAX, target / max(speech_peak(x, rate), 1e-4))
         x = x * gain
     # Soft-clip nhẹ chống vỡ đầu ra
     x = np.tanh(x * 1.0)
@@ -5078,26 +5229,11 @@ class App(tk.Tk):
                 return
             self._queue.put(("prac_status", "Đang nghe lại bài đọc của bạn…"))
             model = load_model(model_size)
-            segs, _info = model.transcribe(
-                wav_path, language=None if lang == "auto" else lang,
-                beam_size=5, word_timestamps=True,
-                vad_filter=True, condition_on_previous_text=False)
-            # segs là generator: chỉ duyệt được MỘT lần → gom luôn text dự phòng ở đây
-            words, probs, texts, words_t = [], [], [], []
-            for s in segs:
-                texts.append(getattr(s, "text", "") or "")
-                for w in (getattr(s, "words", None) or []):
-                    t = (getattr(w, "word", "") or "").strip()
-                    if t:
-                        p = float(getattr(w, "probability", 1.0) or 0.0)
-                        words.append(t)
-                        probs.append(p)
-                        # mốc thời gian từng từ: để vẽ nhãn từ dưới biểu đồ ngữ điệu (S-5)
-                        st, en = getattr(w, "start", None), getattr(w, "end", None)
-                        if st is not None and en is not None:
-                            words_t.append({"w": t, "s": round(float(st), 3),
-                                            "e": round(float(en), 3), "p": round(p, 3)})
-            hyp = " ".join(words).strip() or " ".join("".join(texts).split())
+            # câu tự gõ (lang "auto"): lấy ngôn ngữ từ chữ của câu mẫu thay vì để Whisper dò
+            asr_lang = lang if lang != "auto" else (guess_lang(target) or "auto")
+            asr = transcribe_practice(model, wav_path, asr_lang)
+            _info, probs, words_t = asr["info"], asr["probs"], asr["words_t"]
+            hyp = asr["hyp"]
             if not hyp:
                 self._queue.put(("prac_error",
                                  "Không nghe được chữ nào — thử đọc to, gần mic hơn."))

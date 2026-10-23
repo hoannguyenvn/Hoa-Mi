@@ -108,7 +108,7 @@ rhyme), `extras`, `notes`, `cards` (≤ 4: `title`, `level`, `kind`, `tip`, `wor
 File chọn/temp WAV
   → App._run() (validate, _set_stt_state("processing"), thread)
   → App._w_file(fp, model_size, lang, delete_after, base)
-      load_model(model_size)                 # WhisperModel CPU int8
+      load_model(model_size)                 # WhisperModel CPU int8, cache theo cỡ
       model.transcribe(fp, language, beam_size=5)
       mỗi segment → ("progress", end/duration)
       _fix_cues(split_long_cues(cues))
@@ -162,8 +162,9 @@ Chọn bài (PRACTICE_SETS / GUIDES / custom)
       < 0,5 s → KHÔNG chấm
   → App._w_prac(wav, model, lang, target, ref_wav)
       wav_peak gate
-      Whisper word_timestamps=True, vad_filter=True,
-              condition_on_previous_text=False
+      transcribe_practice (PRAC_ASR_OPTS: word_timestamps, temperature 0,
+              condition_on_previous_text=False, VAD chỉ khi file > 30 s;
+              câu tự gõ: ngôn ngữ = guess_lang(target))
       score_pronunciation(target, hyp, lang)          # L1
       pron_en.analyze_pairs(...) nếu tiếng Anh
       prosody.compare(ref_wav, wav) nếu có mẫu
@@ -184,7 +185,7 @@ trình; bảng điều khiển theo trạng thái là hàm thuần `stt_controls
 ## 7. Luồng 4 — Mic
 
 - `list_input_mics()` → `[(index, name, hostapi, samplerate)]`.
-- `pick_default_mic()` ưu tiên micro thật > WASAPI > DirectSound > MME; tránh loopback.
+- `pick_default_mic()` ưu tiên micro thật; DirectSound > WASAPI > MME (D-20); tránh loopback.
 - `probe_input_levels()` thu thử 0,5 s từng mic, bỏ WDM-KS và loopback, xếp theo đỉnh.
 - `query_mic_rate()` lấy sample rate gốc; thu ở rate gốc rồi `resample_to_16k`
   (tốt hơn ép PortAudio resample).
@@ -195,14 +196,16 @@ trình; bảng điều khiển theo trạng thái là hàm thuần `stt_controls
 `enhance_audio(samples_i16, rate)` — hàm thuần:
 1. int16 → float [-1,1], đo `peak0`, phát hiện clip.
 2. Trừ DC.
-3. High-pass 1 cực ~75 Hz (IIR đơn giản, không ringing).
-4. Chuẩn hóa về -3 dB (`REC_TARGET_PEAK=0.70`), không khuếch đại > 12 dB.
+3. High-pass 1 cực ~75 Hz (không ringing), tính bằng FFT với đáp ứng xung của bộ lọc.
+4. Chuẩn hóa về -3 dB (`REC_TARGET_PEAK=0.70`) theo `speech_peak` (bỏ click), tối đa +24 dB.
 5. `tanh` + clip.
 6. Cắt im lặng đầu/cuối (ngưỡng `max(0.015, 0.04*peak)`), giữ 80 ms đệm.
 7. Fade 8 ms hai đầu.
 8. Trả `(int16, info)` với `peak0, peak1, quiet, clipped, trimmed`.
 
-`save_frames_wav` ghép frame → resample 16k → enhance → ghi WAV mono 16-bit.
+`save_frames_wav` ghép frame → resample 16k (lọc chống gập FIR Kaiser 7,9/8,6 kHz) → enhance
+→ ghi WAV mono 16-bit. `load_model` giữ một `WhisperModel` trong `_MODEL_CACHE` (D-36).
+Đo cả chuỗi bằng `tools/asr_bench.py`.
 
 ## 9. Điểm mở rộng
 

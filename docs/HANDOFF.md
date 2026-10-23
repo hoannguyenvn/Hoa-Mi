@@ -865,3 +865,36 @@ Tài liệu: DECISIONS D-35, README §4, UI-PLAN, PROJECT-STATE (bỏ rủi ro �
 
 **Chưa kiểm chứng:** với bản thu thật có GOP (cần torch) — người dùng đã có GOP trên máy.
 **Việc tiếp theo:** Phase 4 — người dùng thử tay (UI-PLAN §7).
+
+
+## 2026-10-23 (tiếp 7) — Claude Opus 5.5 — D-36: chất lượng thu âm + nhận dạng, đợt 1
+
+**Mục tiêu phiên:** người dùng muốn tập trung vào chất lượng bản ghi và nhận dạng. Rà soát,
+đề xuất 3 đợt; người dùng duyệt: làm bộ đo trước, rồi đợt 1.
+
+**Đã làm:**
+- `tools/asr_bench.py` (mới): chạy đúng code app (`save_frames_wav` → `transcribe_practice` →
+  `score_pronunciation` → `evidence_gate`) trên 30 câu mẫu TTS × 4 điều kiện mic giả lập
+  (`clean48k`, `weak` đỉnh 2 %, `weak_click`, `noisy`), hoặc `--dir` bản ghi thật (`x.wav` + `x.txt`).
+  `--out`/`--compare` JSON, `--asr key=value` thử tham số Whisper, `--only`, `-v`.
+- `app.py`: `fft_convolve`, `lowpass_kernel`, `resample_to_16k` lọc chống gập (7,9/8,6 kHz);
+  `highpass_1pole_kernel` (high-pass 1 cực cũ, vector hóa); `speech_peak` → gain không bị
+  click chi phối; `PRAC_ASR_OPTS` + `transcribe_practice` (temperature 0, VAD chỉ file > 30 s);
+  `guess_lang` cho câu tự gõ; `load_model` cache (`_MODEL_CACHE`, `_MODEL_LOCK`).
+- 6 test khói mới (70/70). Tài liệu: DECISIONS D-36, AGENTS §5, ARCHITECTURE §6/§8 (sửa luôn
+  thứ tự host API lệch D-20), PROJECT-STATE, skill `app-recording`, `app-transcription`,
+  `app-pronunciation`, `app-qa-release`, `context-map.json`.
+
+**Kết quả đo (base, đúng/tổng 146 từ; WER):** sạch 126 → 129 (0,150 → 0,135); mic yếu 125 → 128;
+mic yếu + click **26 → 122** (0,839 → 0,175; trước đó 22/30 câu rỗng/bị chặn); ồn 118 → 119.
+15 phút âm thanh qua front-end: ~4,5 s → ~1,7 s. `small` trên `vi_cau` mic yếu: 5/5 (base 1/5).
+
+**Quyết định mới:** D-36.
+
+**Đã kiểm chứng:** smoke 70/70, `context_check`, `py_compile`, `asr_bench` như trên.
+**Chưa kiểm chứng:** mic thật / AirPods sau D-36; app chạy bằng tay sau thay đổi; GOP trên
+bản ghi đã lọc mới (GOP đọc cùng WAV 16 kHz nên hưởng lợi, nhưng chưa đo).
+
+**Việc tiếp theo:** PROJECT-STATE §1 P4 — người dùng thu bản thật cho `--dir`; đợt 2 cần duyệt.
+**Cảnh báo:** đổi biên lọc/gain/tham số Whisper phải chạy `asr_bench --compare`; biên 7,4 kHz đã
+thử và tệ hơn. Bộ đo TTS chỉ để so trước/sau (I13).

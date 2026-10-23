@@ -1,6 +1,6 @@
 # PROJECT STATE — Oriole
 
-- **Cập nhật lần cuối:** 2026-10-23 (xong B5: màn Văn bản + Cài đặt mới; panel kết quả rộng theo thử nghiệm thật)
+- **Cập nhật lần cuối:** 2026-10-23 (D-36: lọc chống gập khi resample, gain bỏ click, tham số Whisper bài luyện, cache model, `tools/asr_bench.py`)
 - **Phiên bản code:** 2.3 (`VERSION` trong `app.py`)
 - **Trạng thái:** chạy được trên máy hiện tại; git repo `main` (D-33); chưa có test tự động đầy đủ.
 - **Nguồn sự thật:** code + `docs/context-map.json`. Tài liệu này chỉ tóm tắt.
@@ -16,8 +16,12 @@
   gói tài liệu).
 - [ ] **P3 — Thanh điệu tiếng Việt bằng F0:** phân loại 6 thanh từ contour, so với mẫu
   cùng âm tiết; hiện "bạn đọc thanh sắc, mẫu là thanh huyền".
-- [ ] **P4 — Hiệu chuẩn điểm:** thu bản ghi người thật, so với giáo viên, chỉnh ngưỡng
-  trước khi hứa "điểm phát âm".
+- [ ] **P4 — Chất lượng thu âm/nhận dạng + hiệu chuẩn điểm:** đợt 1 xong (D-36). Kế tiếp:
+  (a) người dùng thu vài bản thật (mic array laptop, AirPods **đang đeo**) → `x.wav` + `x.txt`
+  → `tools/asr_bench.py --dir`; (b) đợt 2 cần duyệt: từ xác suất Whisper thấp ghi "máy chưa
+  chắc" thay ✓ (Whisper tự "sửa" tink → think), tự dùng `small` cho bài Việt, ước lượng SNR vào
+  ghi chú/cổng, chỉnh Recorder (đo nền theo phân vị thấp, im lặng 1,8–2 s, log block rơi);
+  (c) so với giáo viên, chỉnh ngưỡng trước khi hứa "điểm phát âm".
 
 Việc đang dở (nếu có): **chẩn đoán micro** — đã sửa 4 lỗi: lọc WDM-KS, ưu tiên
 DirectSound, hạ sàn tín hiệu + gain +24 dB (D-20/D-21), hỗ trợ **mic ngoài** (Quét lại,
@@ -53,7 +57,7 @@ Ký hiệu: ✅ chạy ổn · 🟡 chạy nhưng có giới hạn · ⛔ chưa 
 | Mic: chọn, kiểm tra, tự dò mic có tín hiệu | 🟡 | lọc WDM-KS, ưu tiên DirectSound, sàn 0,8% + gain +24 dB (D-20/D-21), thu bằng callback + queue (D-23) |
 | Mic ngoài (USB/bluetooth): Quét lại, cảnh báo Hands-Free | 🟡 | `rescan_audio_devices`, `headset_mic_missing` (D-22); AirPods đã lên thiết bị thu (WASAPI) nhưng bản ghi thử chưa nhận dạng được — xem mục 3 |
 | Context + skills cho AI | ✅ | `AGENTS.md`, `docs/`, 11 skill; `context_check` 40 OK |
-| Test tự động | 🟡 | 64 test khói + `context_check` + `tools/ui_shots.py` (chụp UI, xem bằng mắt); chưa có test ASR/mic |
+| Test tự động | 🟡 | 70 test khói + `context_check` + `tools/ui_shots.py` (chụp UI, xem bằng mắt) + `tools/asr_bench.py` (thu → nhận dạng trên mẫu TTS + mic giả lập, D-36); chưa có test mic thật |
 | Đóng gói `.exe` | ⛔ | chỉ có `run.bat` + Conda Python |
 | Git / CI | 🟡 | git `main` + GitHub riêng tư (D-33); chưa có CI |
 
@@ -67,8 +71,9 @@ Ký hiệu: ✅ chạy ổn · 🟡 chạy nhưng có giới hạn · ⛔ chưa 
 | Cao | Chưa hiệu chuẩn thang điểm với giáo viên | người học không biết tin điểm đến đâu | thu ~100 bản ghi, 2 giáo viên chấm, Spearman |
 | TB | Trọng âm từ dựa trên cường độ + cao độ, chưa thử với bản thu người thật; mốc từ Whisper có thể lệch ±50 ms | đánh dấu nhầm từ được nhấn | chỉ mô tả (D-34); hiệu chuẩn cùng P4 |
 | Thấp | Chưa thử UI ở Windows scaling 100 %/150 % (máy này 250 %) | chữ/nút có thể lệch | thử trên máy khác hoặc đổi scaling rồi chạy `tools/ui_shots.py` |
-| TB | `enhance_audio` high-pass là vòng lặp Python từng mẫu, chạy trên main thread | bản ghi 15 phút làm UI đứng vài giây | vector hóa (numpy) hoặc đưa vào worker |
-| TB | `load_model()` tạo model mới mỗi lần chấm | chậm, tốn RAM; mỗi câu luyện tốn thêm vài giây | cache theo `model_size` + khóa |
+| Thấp | `save_frames_wav` (resample + `enhance_audio`, đã vector hóa) chạy trên main thread | bản ghi 15 phút làm UI đứng ~1,7 s | đưa vào worker nếu người dùng thấy khó chịu |
+| TB | `asr_bench` mặc định dùng giọng TTS + mic giả lập | cải thiện trên bộ đo chưa chắc đúng với giọng thật | thêm bản ghi thật vào `--dir`; không dùng để hiệu chuẩn điểm (I13) |
+| TB | Whisper là mô hình ngôn ngữ: hay "sửa" từ đọc sai thành từ đúng (tink → think ✓) | chấm theo từ dễ dãi | đợt 2 (P4b): xác suất từ thấp → "máy chưa chắc"; GOP đã gạch cam (D-35) |
 | TB | `lessons_en.json` có trường `samples` nhưng app bỏ qua, tự ghép `en/<id>.wav` | sửa JSON không có tác dụng | thống nhất một nguồn; ghi trong skill `app-lessons` |
 | TB | SRT/VTT parser tự viết | format lạ có thể sai | thêm fixture test |
 | TB | Phụ thuộc YouTube/yt-dlp | gãy theo thời gian | log lỗi rõ, test thủ công định kỳ |

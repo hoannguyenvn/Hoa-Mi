@@ -102,8 +102,12 @@ $env:PYTHONIOENCODING='utf-8'
 # Test khói (không cần mic/model)
 & $PY tools\smoke_test.py
 
+# Đo chuỗi thu âm → nhận dạng (cần model Whisper; chạy trước/sau khi sửa audio/ASR — D-36)
+& $PY tools\asr_bench.py --out $env:TEMP\b_before.json
+& $PY tools\asr_bench.py --compare $env:TEMP\b_before.json
+
 # Cú pháp toàn bộ module Python
-& $PY -m py_compile app.py pron_en.py gop.py prosody.py gen_mau.py tools\build_lessons.py tools\context_check.py tools\smoke_test.py
+& $PY -m py_compile app.py pron_en.py gop.py prosody.py gen_mau.py tools\build_lessons.py tools\context_check.py tools\smoke_test.py tools\asr_bench.py
 ```
 
 - Không có `pytest`; test là script stdlib. Nếu thêm pytest, phải ghi vào

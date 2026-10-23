@@ -20,7 +20,7 @@ Phạm vi: `Recorder`, chọn/kiểm tra micro, `save_frames_wav`, `enhance_audi
 | Thu | `Recorder.start`, `Recorder.stop`, `Recorder.level_bar` |
 | Thiết bị | `list_input_mics`, `list_usable_mics`, `rescan_audio_devices`, `headset_mic_missing`, `pick_default_mic`, `query_mic_rate` |
 | Dò tín hiệu | `probe_input_levels`, `best_input_mic` |
-| Xử lý | `resample_to_16k`, `enhance_audio`, `save_frames_wav`, `wav_peak` |
+| Xử lý | `resample_to_16k`, `lowpass_kernel`, `fft_convolve`, `enhance_audio`, `highpass_1pole_kernel`, `speech_peak`, `save_frames_wav`, `wav_peak` |
 | Phát | `play_wav_file`, `App._stop_play` |
 | UI | `App._refresh_mics`, `App._on_tab_changed`, `App._open_sound_settings`, `App._resolve_mic`, `App._test_mic`, `App._find_mic_auto` |
 | Hằng số | `REC_RATE=16000`, `REC_MAX_SEC=180`, `REC_LONG_SEC=900`, `REC_TARGET_PEAK=0.70`, `REC_GAIN_MAX=16.0`, `MIC_MIN_PEAK=0.008`, `MIC_GOOD_PEAK=0.03` |
@@ -58,13 +58,22 @@ phải kiểm tra rỗng trước khi concat.
 Thứ tự bắt buộc:
 1. int16 → float, đo `peak0`, phát hiện `clipped` (≥ 0,99).
 2. Trừ DC.
-3. High-pass 1 cực ~75 Hz (IIR), **không** FFT brick-wall (gây "rè kim loại").
-4. Gain về `0.70` (-3 dB); nếu đầu vào đã vỡ thì chỉ giảm, không tăng;
-   tối đa `REC_GAIN_MAX = 16.0` (+24 dB) để micro yếu vẫn nghe được.
+3. High-pass 1 cực ~75 Hz, **không** FFT brick-wall (gây "rè kim loại"). Tính bằng
+   `fft_convolve` với đáp ứng xung của chính bộ lọc 1 cực (`highpass_1pole_kernel`, cắt ở
+   1e-7) — kết quả như vòng lặp cũ (sai < 1e-5), nhanh ~8× (D-36).
+4. Gain về `0.70` (-3 dB) theo **`speech_peak`** (đỉnh khung 10 ms ở top 2 %, bỏ ≥ 2 khung
+   to nhất) — một tiếng click/gõ bàn không quyết định âm lượng (D-36); nếu đầu vào đã vỡ
+   thì chỉ giảm theo đỉnh thật; tối đa `REC_GAIN_MAX = 16.0` (+24 dB).
 5. `tanh` + clip.
 6. Cắt im lặng đầu/cuối, ngưỡng `max(0.015, 0.04 * peak1)`, giữ 80 ms đệm.
 7. Fade 8 ms hai đầu.
 8. Trả `(int16, {peak0, peak1, quiet, clipped, trimmed})`.
+
+`resample_to_16k(x, src, dst)` (D-36): khi hạ tần số, lọc chống gập bằng FIR Kaiser
+(`lowpass_kernel`: giữ tới `RESAMPLE_PASS_HZ` 7,9 kHz, chặn ≥ 80 dB từ `RESAMPLE_STOP_HZ`
+8,6 kHz) rồi nội suy tuyến tính. **Không** bỏ bộ lọc: nội suy trần để lọt 87 % tiếng 10 kHz
+xuống 6 kHz. **Không** hạ biên lọc xuống 7,4 kHz: asr_bench cho thấy Whisper nghe "sells"
+thành "fell". Đổi số ⇒ chạy `tools/asr_bench.py --compare`.
 
 `save_frames_wav`:
 ```
@@ -148,6 +157,11 @@ Recorder dùng chung hai tab: bắt đầu thu bằng `_set_stt_state("recording
 ```powershell
 $env:PYTHONIOENCODING='utf-8'
 & "C:\Users\ADMIN\miniforge3\python.exe" tools\smoke_test.py
+# trước/sau khi đổi resample/gain/tham số Whisper (~1 phút/lần, model base):
+& "C:\Users\ADMIN\miniforge3\python.exe" tools\asr_bench.py --out $env:TEMP\b_before.json
+& "C:\Users\ADMIN\miniforge3\python.exe" tools\asr_bench.py --compare $env:TEMP\b_before.json
+# bản ghi người thật: thư mục x.wav + x.txt (dòng 1 = câu mẫu)
+& "C:\Users\ADMIN\miniforge3\python.exe" tools\asr_bench.py --dir D:\ban_ghi -v
 ```
 
 Thủ công:
@@ -178,5 +192,7 @@ Thủ công:
 | Điểm mic "tốt" nhưng file im lặng | đọc `peak1` thay vì `peak0` |
 | UI đứng khi phát mẫu | gọi `sd.play/wait` trên main thread |
 | Thu 16k bị méo | ép InputStream 16k thay vì thu rate gốc + resample |
-| Ghi âm 15 phút xong phải chờ lâu mới ra text | high-pass trong `enhance_audio` là vòng lặp Python từng mẫu (~14 triệu vòng cho 15 phút), chạy trên main thread |
+| Ghi âm 15 phút xong UI đứng ~2 s | `save_frames_wav` (đã vector hóa) vẫn chạy trên main thread |
+| Một tiếng click làm Whisper nghe rỗng | gain theo đỉnh tuyệt đối thay vì `speech_peak` |
+| s/sh/th nghe lẫn khi mic 48 kHz | resample không lọc chống gập (ồn 8–24 kHz gập xuống) |
 | `%TEMP%` đầy `luyen_*.wav` | gán `self.last_wav` trực tiếp thay vì `_set_last_wav` |
