@@ -851,3 +851,17 @@ nhật ký, thanh mức âm, tự lưu, kết quả thử mic, khôi phục mặ
 rõ trong từ mà câu trên sân khấu ghi ✓ (PROJECT-STATE §3).
 **Cảnh báo:** `config.json` giờ được ghi khi đổi bất kỳ cài đặt nào (kể cả nguồn YouTube,
 chọn mic) — `ui_shots.py`/script thử phải chặn `save_config`.
+
+## 2026-10-23 (tiếp 6) — Claude Opus 5.5 — D-35: âm GOP "lệch rõ" hiện trên câu
+
+**Người dùng duyệt:** từ Whisper nghe đúng nhưng GOP có âm "lệch rõ" → gạch cam trên sân khấu,
+ghi "âm /θ/ lệch"; điểm giữ là số từ đúng (I4).
+
+**Đã làm:** `build_result_view` trả `gop_marks`; `stage_words` gạch cam (lỗi cấp từ vẫn ưu
+tiên "nghe ‘…’"; "hơi lệch" không gạch). Test `gop_clearly_off_marks_stage_word` (64/64).
+Ảnh trạng thái xấu nhất: "Think" cam "âm /θ/, /k/ lệch", điểm vẫn 2/4.
+Tài liệu: DECISIONS D-35, README §4, UI-PLAN, PROJECT-STATE (bỏ rủi ro đã xử lý), skill
+`app-pronunciation`, `app-qa-release`.
+
+**Chưa kiểm chứng:** với bản thu thật có GOP (cần torch) — người dùng đã có GOP trên máy.
+**Việc tiếp theo:** Phase 4 — người dùng thử tay (UI-PLAN §7).

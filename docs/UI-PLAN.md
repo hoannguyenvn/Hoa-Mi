@@ -470,6 +470,9 @@ user checks in the real app. Increments are ordered so each one is useful alone.
   pills wrap; one-line CẦN SỬA headers; one shared "Chi tiết số đo". A worst case (4 fixes +
   more + chart) fits one page at 1480×940.
 
+**D-35 (after the real-mic test):** a word Whisper heard correctly but with a GOP sound
+at "lệch rõ" is underlined amber on the stage with "âm /θ/ lệch"; score unchanged (I4).
+
 ### 5.6 B5 result (2026-10-23)
 
 - Transcription (S-8): toolbar with source segmented control (locked while busy); source bar

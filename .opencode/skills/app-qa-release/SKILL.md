@@ -17,7 +17,7 @@ $env:PYTHONIOENCODING='utf-8'          # console hay là cp1252
 
 & $PY tools\context_check.py            # tài liệu/symbol/skill/asset
 & $PY tools\context_check.py --snapshot # sinh docs/CONTEXT-SNAPSHOT.md
-& $PY tools\smoke_test.py               # 63 test khói
+& $PY tools\smoke_test.py               # 64 test khói
 & $PY tools\ui_shots.py before          # chụp 21 trạng thái UI vào %TEMP%\oriole_shots\before
 & $PY -m py_compile app.py pron_en.py gop.py prosody.py gen_mau.py tools\build_lessons.py tools\context_check.py tools\smoke_test.py
 ```
@@ -27,7 +27,7 @@ $env:PYTHONIOENCODING='utf-8'          # console hay là cp1252
 - `py_compile` không in gì = OK; `__pycache__` không được commit/chia sẻ.
   Liệt kê file rõ ràng: PowerShell **không** mở rộng `tools\*.py` cho lệnh native.
 
-### `smoke_test.py` phủ gì (63 case)
+### `smoke_test.py` phủ gì (64 case)
 
 | Nhóm | Case |
 |---|---|
@@ -47,6 +47,7 @@ $env:PYTHONIOENCODING='utf-8'          # console hay là cp1252
 | Khung app-style (B4a) | `stage_words_mark_each_original_word`, `shell_helpers` |
 | Ngữ điệu, trọng âm, tiến bộ (B4b) | `stress_picks_loud_high_word`, `heard_words_map_to_target`, `intonation_caption_rules`, `speed_and_stress_sentences`, `intonation_view_labels_and_markers`, `progress_summary_lines` |
 | Màn Văn bản (B5) | `transcription_screen_states` |
+| GOP trên câu (D-35) | `gop_clearly_off_marks_stage_word` |
 | Giao diện (B1) | `ui_font_bundled_and_registered`, `indicator_images_follow_theme`, `window_icon_drawn_in_code`, `language_names_map_to_codes` |
 
 Chạy **trước và sau** mỗi thay đổi. Thêm hành vi mới ⇒ thêm case, không sửa case cũ
@@ -160,7 +161,7 @@ lessons_en.json  mau/  assets/fonts/  requirements.txt  run.bat  README.md
 ```
 Đã chạy:
   context_check.py        -> X OK / Y FAIL
-  smoke_test.py           -> 63/63 PASS
+  smoke_test.py           -> 64/64 PASS
   py_compile              -> OK
 Đã thử tay:
   M1 (file mp3 14s)       -> PASS

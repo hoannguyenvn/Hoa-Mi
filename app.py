@@ -1260,14 +1260,16 @@ def stage_words(target, view=None):
 
     view None (chưa chấm / đang thu) hoặc "unsure" → không tô màu (D-29). Chip của view
     theo thứ tự từ mẫu đã chuẩn hóa; một từ gốc có thể ứng với 0 hoặc nhiều từ chuẩn hóa.
-    kind: plain | ok | warn | bad. Hàm thuần.
+    Từ máy nghe ĐÚNG nhưng GOP thấy âm "lệch rõ" (view["gop_marks"]) → warn "âm /θ/ lệch"
+    (D-35; điểm vẫn là số từ đúng, I4). kind: plain | ok | warn | bad. Hàm thuần.
     """
     tokens = (target or "").split()
     chips = list((view or {}).get("chips") or [])
     shown = bool(view) and view.get("state") == "result"
+    marks = (view or {}).get("gop_marks") or {}
     rank = {"plain": 0, "ok": 1, "warn": 2, "bad": 3}
     out, ci = [], 0
-    for tok in tokens:
+    for ti, tok in enumerate(tokens):
         n = len(norm_words(tok))
         mine, ci = chips[ci:ci + n], ci + n
         if not shown or not mine:
@@ -1281,6 +1283,9 @@ def stage_words(target, view=None):
                 kind = k
                 note = ("(thiếu)" if c["kind"] == "missing" or not c.get("heard")
                         else "nghe “%s”" % c["heard"])
+        if kind == "ok" and marks.get(ti):
+            # chữ đúng nhưng âm lệch rõ (GOP): cảnh báo, KHÔNG trừ điểm (I4)
+            kind, note = "warn", "âm %s lệch" % ", ".join("/%s/" % x for x in marks[ti][:2])
         out.append({"text": tok, "kind": kind, "note": note})
     return out
 
@@ -1513,6 +1518,17 @@ def build_result_view(res, lesson=None):
     cards_more = max(0, len(cards) - 4)
     cards = cards[:4]
 
+    # âm GOP "lệch rõ" theo từ gốc (wi = chỉ số từ tách khoảng trắng, như gop.score nhận) —
+    # để câu trên sân khấu không ghi ✓ cho từ mà mô hình âm học thấy lệch rõ. Không đổi điểm (I4).
+    gop_marks = {}
+    if is_en and g:
+        for it in g.get("issues") or []:
+            wi = it.get("wi")
+            if isinstance(wi, int) and gop_level(it["score"]) == "lệch rõ":
+                ipa = it.get("ipa_exp") or pron_en.ARPABET_IPA.get(it.get("ph"), it.get("ph"))
+                if ipa and ipa not in gop_marks.setdefault(wi, []):
+                    gop_marks[wi].append(ipa)
+
     # ghi chú mức từ chưa có thẻ nào giải thích (vd "Thiếu từ …")
     notes = [w["note"] for i, w in enumerate(chips)
              if w["kind"] in ("warn", "tone", "rhyme", "bad", "missing") and w["note"]
@@ -1579,6 +1595,7 @@ def build_result_view(res, lesson=None):
         "is_en": is_en, "cards": cards, "cards_more": cards_more, "has_gop": bool(is_en and g),
         "gop_has_ref": bool(g and g.get("has_ref")),
         "n_issues": n_iss, "perfect": perfect, "correct": correct, "total": total,
+        "gop_marks": gop_marks,
         "score": score, "ring": ring, "headline": headline, "summary": summary,
         "score_line": "" if state == "unsure" else f"{correct}/{total} từ",
         "status_line": status_line,

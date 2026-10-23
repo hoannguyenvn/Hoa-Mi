@@ -136,7 +136,9 @@ Lịch sử: `hist_add_try(hist, sid, view, ts)` thêm `tries` (≤ 30), bỏ qu
   cho **mọi ngôn ngữ** (test `perfect_needs_every_word`).
 - Câu trên sân khấu (B4a): `stage_words(target, view)` (hàm thuần) → mỗi từ GỐC (giữ hoa,
   dấu câu) gạch chân cam/đỏ + "nghe ‘…’" / "(thiếu)" / ✓ bên dưới (P-02); `unsure` hoặc
-  chưa chấm → không tô màu. Từ thừa: dòng "Đọc thêm: …" trong panel, **chỉ** khi `result`
+  chưa chấm → không tô màu. Từ đúng chữ mà GOP có âm "lệch rõ" (`view["gop_marks"]`) →
+  gạch cam + "âm /θ/ lệch" (D-35; không đổi điểm, I4; "hơi lệch" không gạch).
+  Từ thừa: dòng "Đọc thêm: …" trong panel, **chỉ** khi `result`
   (khi `unsure` đó là chữ bịa — D-29).
 - "CẦN SỬA" trong panel: tối đa 4 dòng `_mk_fix`. EN: theo GOP
   (mức chữ "lệch rõ"/"hơi lệch") hoặc âm vị CMUdict. VI (`_vi_cards`): gom N/L theo chiều

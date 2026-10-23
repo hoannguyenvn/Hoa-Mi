@@ -153,7 +153,9 @@ Kết quả gồm:
    N từ" khi đúng **mọi** từ, kèm nút **Bài tiếp theo →**) và lỗi chính.
 2. **Từng từ** (ngay trên câu ở giữa màn hình) — từ đúng có ✓ bên dưới; từ cần sửa
    gạch chân cam (lỗi quen thuộc/sai thanh) hoặc đỏ (sai/thiếu/sai vần), bên dưới ghi
-   **từ máy nghe được** ("Think" → nghe “tink”) hoặc "(thiếu)".
+   **từ máy nghe được** ("Think" → nghe “tink”) hoặc "(thiếu)". Tiếng Anh có GOP: từ máy
+   nghe đúng nhưng có âm **lệch rõ** cũng gạch cam, ghi "âm /θ/ lệch" — vẫn tính là từ
+   đúng trong điểm.
 3. **Cần sửa** — tối đa 4 mục: tiếng Việt gom lỗi N/L, sai dấu thanh, sai vần/dấu
    ("lắm" → "lám", kèm cách đọc tách "l + ăm + thanh sắc"); tiếng Anh theo âm vị.
    Mỗi mục có ▶ Mẫu (nếu có file mẫu) và ▶ Bạn đọc (nghe lại đúng từ đó trong bản thu).

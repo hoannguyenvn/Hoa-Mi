@@ -949,6 +949,26 @@ def transcription_screen_states():
                                                                    "0:00"]
 
 
+@case
+def gop_clearly_off_marks_stage_word():
+    # D-35: chữ đúng ("think") nhưng GOP thấy /θ/ lệch rõ → gạch cam trên câu, điểm KHÔNG đổi
+    it = pron_en._issue("TH", "T", "think", 0, 3)
+    it.update(score=12.0, ref_score=70.0, wi=0, ph="TH")
+    it2 = pron_en._issue("DH", "D", "this", 0, 3)
+    it2.update(score=40.0, ref_score=70.0, wi=2, ph="DH")      # hơi lệch → không gạch
+    v = _view_of("Think about this thing.", "think about this thing", "en",
+                 gop={"issues": [it, it2], "has_ref": True})
+    assert v["correct"] == 4 and v["headline"] == "Đúng 4/4 từ", v["headline"]
+    assert v["gop_marks"] == {0: ["θ"]}, v["gop_marks"]
+    w = app.stage_words("Think about this thing.", v)
+    assert w[0] == {"text": "Think", "kind": "warn", "note": "âm /θ/ lệch"}, w[0]
+    assert [x["kind"] for x in w[1:]] == ["ok", "ok", "ok"]
+    # lỗi cấp từ (máy nghe sai chữ) vẫn ưu tiên ghi chú "nghe ‘…’"
+    v2 = _view_of("Think about this thing.", "tink about this thing", "en",
+                  gop={"issues": [it], "has_ref": True})
+    assert app.stage_words("Think about this thing.", v2)[0]["note"] == "nghe “tink”"
+
+
 def main() -> int:
     if hasattr(sys.stdout, "reconfigure"):
         try:

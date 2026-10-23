@@ -311,6 +311,17 @@ về từ cụ thể, khác cách cũ gán một điểm toàn đoạn lên mọ
 **Hệ quả:** mốc từng từ của audio mẫu sinh sẵn bằng `tools/build_lessons.py`; thiếu mốc mẫu
 thì chỉ hiện đánh dấu của người học. Muốn chấm trọng âm phải có quyết định mới + hiệu chuẩn (P4).
 
+### D-35 — Từ đúng chữ nhưng GOP thấy âm "lệch rõ" → gạch cam trên câu (2026-10-23)
+**Quyết định:** khi Whisper nghe **đúng** một từ nhưng GOP (I6) xếp một âm trong từ đó mức
+"lệch rõ" (`GOP_LEVEL_STRONG`), câu trên sân khấu gạch cam từ đó và ghi "âm /θ/ lệch" (tối
+đa 2 âm) thay cho ✓. Mức "hơi lệch" không gạch. Lỗi cấp từ (máy nghe sai chữ) vẫn ưu tiên
+ghi "nghe ‘…’". Điểm **không đổi**: vẫn là số từ đúng (I4), vòng điểm/tiêu đề giữ "Đúng c/t từ".
+**Vì sao:** người dùng thử thật thấy "Think ✓" trên câu nhưng CẦN SỬA báo /θ/ trong "Think"
+lệch rõ — hai tín hiệu trái nhau trên cùng màn. Cảnh báo cam (không trừ điểm) giữ cả hai
+đúng: chữ được nghe đúng, nhưng âm cần luyện.
+**Hệ quả:** `build_result_view` trả `gop_marks` {chỉ số từ tách khoảng trắng: [ipa]} (cùng
+chỉ số `wi` của `gop.score`); `stage_words` dùng nó; test `gop_clearly_off_marks_stage_word`.
+
 ## B. Những cách làm đã bị loại (đừng lặp lại)
 
 Nguồn: `PHASE2-DANH-GIA-DU-AN-CU.md` §2.2 và §6.
