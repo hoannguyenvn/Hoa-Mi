@@ -808,6 +808,11 @@ def shell_helpers():
                               "Microphones) [Windows DirectSound]").endswith("…")
     assert app.short_mic_name("USB Mic [MME]") == "USB Mic"
     assert app.meter_cells(0.0) == 0 and app.meter_cells(1.0) == 20
+    # panel kết quả ≈ nửa vùng nội dung, kẹp 340–640 px × S (yêu cầu: cả kết quả trên một trang)
+    S = 2.5
+    assert app.side_width((1480 - 232) * S, S) == int(0.48 * 1248 * S)
+    assert app.side_width(3000 * S, S) == int(640 * S)
+    assert app.side_width(500 * S, S) == int(340 * S)
     assert 0 < app.meter_cells(0.05) < 20
 
 

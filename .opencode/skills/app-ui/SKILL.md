@@ -194,11 +194,12 @@ subs, embed, sub_lang, mic, geometry
   `_step_lesson(±1)`. Đang thu/chấm: khóa đổi bài/chế độ (trong `_set_prac_state`).
 - Sân khấu: `p_words` xếp từ bằng `place` (`_layout_words`, chạy **sau idle** — đo ngay thì
   mọi từ rộng 1 px; không gọi `update_idletasks` trong vòng đo: gọi lồng làm hủy widget
-  giữa chừng); viên thuốc nghe `_mk_pill`/`_pill_show`; hộp mẹo `p_tip`; nút thu tròn
+  giữa chừng); viên thuốc nghe `_mk_pill`/`_pill_show` (tự xuống dòng bằng `_flow`, như từ); hộp mẹo `p_tip`; nút thu tròn
   `btn_prec` (`_draw_rec_btn`, token `rec*`) + `p_meter` (`meter_cells`) + `lbl_plevel`;
   dòng micro `_update_mic_line` (`short_mic_name`) + "Đổi" → màn Cài đặt; dòng
   `p_status` chỉ chiếm chỗ khi có chữ (`_sync_status_line`).
-- Panel phải `p_side` (400 px, gọn 320): `_scroll_area` (Canvas + Frame + thanh cuộn tự ẩn),
+- Panel phải `p_side`: bề rộng `side_width()` ≈ 48 % vùng nội dung, kẹp 340–640 px × S
+  (đổi theo `_prac_body_resized`) để cả kết quả nằm trên một trang; `_scroll_area` (Canvas + Frame + thanh cuộn tự ẩn),
   cuộn chuột qua `_on_wheel` (bind_all, chỉ panel dưới con trỏ). Mục theo thứ tự cố định
   `_panel_show([...])`: wait · head · heard · unsure · fix · notes · inton · detail.
   Đáy ghim: `p_prog` + `_show_actions(primary, cmd, secondary, cmd)`.

@@ -155,8 +155,8 @@
       "inton_view",
       "progress_summary",
       "App._fill_inton",
-      "App._toggle_inton_more",
-      "App._draw_spark"
+      "App._draw_spark",
+      "side_width"
     ],
     "pron_en.py": [
       "phonemes",

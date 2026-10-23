@@ -170,6 +170,18 @@ def main() -> int:
     A._set_prac_state("idle")
     A._prac_done(result(en_t, en_bad, "en", inton=prosody.compare(ref, slow)))
     shot("03_prac_en_result_light")
+    # trường hợp dài nhất: 6 lỗi GOP (4 dòng CẦN SỬA + "… và 2 lỗi khác") + ngữ điệu
+    worst = result(en_t, "think about the siege stim", "en", inton=prosody.compare(ref, slow))
+    issues = []
+    for exp, got, word, wi, sc in (("TH", "L", "think", 0, 12), ("K", "T", "think", 0, 18),
+                                   ("TH", "ER", "thing", 3, 15), ("DH", "Z", "this", 2, 20),
+                                   ("NG", "N", "thing", 3, 30), ("AW", "AA", "about", 1, 40)):
+        it = pron_en._issue(exp, got, word, 0, 3)
+        it.update(score=sc, ref_score=70.0, wi=wi, ph=exp)
+        issues.append(it)
+    worst["gop"] = {"issues": issues, "has_ref": True}
+    A._prac_done(worst)
+    shot("03c_prac_en_gop_full_light")
     A.prac_mode.set("guide")
     A._prac_mode_changed()
     shot("04_prac_switch_to_guide_light")

@@ -1215,6 +1215,14 @@ def nav_compact(width, scale):
     return width < NAV_COMPACT_W * scale
 
 
+SIDE_FRAC, SIDE_MIN, SIDE_MAX = 0.48, 340, 640   # panel kết quả ≈ nửa vùng nội dung
+
+
+def side_width(content_w, scale):
+    """Bề rộng panel kết quả: rộng ra theo cửa sổ để cả kết quả nằm trong một trang."""
+    return int(max(SIDE_MIN * scale, min(SIDE_MAX * scale, SIDE_FRAC * content_w)))
+
+
 def short_mic_name(name, limit=28):
     """"Microphone Array (Intel® …) [Windows DirectSound]" → "Microphone Array (Intel®…"."""
     base = (name or "").split(" [")[0].strip()
@@ -3091,7 +3099,7 @@ class App(tk.Tk):
         rec = state == "recording"
         for w in (self.p_meter, self.lbl_plevel):
             if rec and not w.winfo_manager():
-                w.pack(pady=(self.px(8), 0), before=self.p_micline)
+                w.pack(pady=(self.px(8), 0), before=self.p_rec_hint)
             elif not rec and w.winfo_manager():
                 w.pack_forget()
         if rec:
@@ -3790,6 +3798,7 @@ class App(tk.Tk):
             side="right", fill="y")
         stage = self._frame(body, bg="card")
         stage.pack(side="left", fill="both", expand=True)
+        body.bind("<Configure>", self._prac_body_resized)
         self._build_stage(stage)
         self._build_side(self.p_side)
         self._clear_prac_result()
@@ -3797,7 +3806,7 @@ class App(tk.Tk):
     # ---------- sân khấu: câu đọc, nghe mẫu, mẹo, nút thu ----------
     def _build_stage(self, st):
         inner = self._frame(st, bg="card")
-        inner.pack(fill="both", expand=True, padx=self.px(48), pady=(self.px(28), self.px(18)))
+        inner.pack(fill="both", expand=True, padx=self.px(32), pady=(self.px(28), self.px(18)))
         self._stage_in = inner
         self.entry_custom = ttk.Entry(inner, textvariable=self.custom_text, font=(self.F, 11))
         self.entry_custom.bind("<KeyRelease>", lambda e: self._refresh_practice())
@@ -3806,7 +3815,8 @@ class App(tk.Tk):
         self.p_words.bind("<Configure>", lambda e: self._layout_words())
         self.p_ipa = self._lbl(inner, "", fg="muted", font=(FONT_IPA, 12))
         self.p_hint = self._lbl(inner, "", fg="muted", font=(FONT_IPA, 9), justify="center")
-        self.p_samples = self._frame(inner, bg="card")
+        self.p_samples = self._frame(inner, bg="card", height=1)
+        self.p_samples.bind("<Configure>", lambda e: self._layout_pills())
         self.p_tip = self._frame(inner, bg="card2")
         ic = self._tw(tk.Canvas(self.p_tip, width=self.px(16), height=self.px(16), bd=0,
                                 highlightthickness=0), bg="card2")
@@ -3831,8 +3841,11 @@ class App(tk.Tk):
         self.p_meter = self._tw(tk.Canvas(rb, width=self.px(260), height=self.px(10), bd=0,
                                           highlightthickness=0), bg="card")
         self.lbl_plevel = self._lbl(rb, "", fg="rec", size=9, weight="bold")
+        # hai dòng ngắn thay một dòng dài: sân khấu hẹp vẫn thấy "Đổi"
+        self.p_rec_hint = self._lbl(rb, "Đọc xong, app tự dừng và chấm", fg="muted", size=9)
+        self.p_rec_hint.pack(pady=(self.px(8), 0))
         self.p_micline = self._frame(rb, bg="card")
-        self.p_micline.pack(pady=(self.px(8), 0))
+        self.p_micline.pack(pady=(self.px(2), 0))
         self.p_mic_lbl = self._lbl(self.p_micline, "", fg="muted", size=9)
         self.p_mic_lbl.pack(side="left")
         self._link_lbl(self.p_micline, "Đổi", lambda: self._show_screen("set"), size=9).pack(
@@ -3864,7 +3877,7 @@ class App(tk.Tk):
             self.p_status_lbl.pack_forget()
 
     def _stage_resized(self, e):
-        w = max(self.px(200), e.width - 2 * self.px(48))
+        w = max(self.px(200), e.width - 2 * self.px(32))
         self.p_how.configure(wraplength=min(self.px(640), w - self.px(60)))
         self.p_hint.configure(wraplength=w)
         self.p_status_lbl.configure(wraplength=w)
@@ -3883,7 +3896,7 @@ class App(tk.Tk):
             self.p_ipa.pack(pady=(self.px(6), 0))
         if hint:
             self.p_hint.pack(pady=(self.px(4), 0))
-        self.p_samples.pack(pady=(self.px(14), 0))
+        self.p_samples.pack(fill="x", pady=(self.px(14), 0))
         if tip:
             self.p_tip.pack(pady=(self.px(14), 0))
 
@@ -3930,16 +3943,27 @@ class App(tk.Tk):
         self.after_idle(self._layout_words)
 
     def _layout_words(self):
-        """Xếp từ thành hàng, căn giữa, tự xuống dòng (Frame + place)."""
-        kids = self.p_words.winfo_children()
-        W = self.p_words.winfo_width()
+        self._words_key = self._flow(self.p_words, self.px(16), self.px(6), self._words_key)
+
+    def _layout_pills(self):
+        self._pills_key = self._flow(self.p_samples, self.px(10), self.px(8),
+                                     getattr(self, "_pills_key", None))
+
+    def _flow(self, box, gx, gy, last_key):
+        """Xếp con của box thành hàng, căn giữa, tự xuống dòng (place). Con có
+        `_hidden = True` bị ẩn. Trả khóa bố cục để bỏ qua lần xếp lại giống hệt."""
+        kids = [k for k in box.winfo_children() if not getattr(k, "_hidden", False)]
+        for k in box.winfo_children():
+            if getattr(k, "_hidden", False):
+                k.place_forget()
+        W = box.winfo_width()
         if W <= 1 or not kids or any(k.winfo_reqwidth() <= 1 for k in kids):
-            return
-        key = (W, len(kids))
-        if key == self._words_key:
-            return
-        self._words_key = key
-        gx, gy = self.px(16), self.px(6)
+            if not kids:
+                box.configure(height=1)
+            return last_key
+        key = (W, tuple(str(k) for k in kids))
+        if key == last_key:
+            return last_key
         rows, row, rw = [], [], 0
         for k in kids:
             kw = k.winfo_reqwidth()
@@ -3958,7 +3982,8 @@ class App(tk.Tk):
                 k.place(x=x, y=y)
                 x += k.winfo_reqwidth() + gx
             y += h + gy
-        self.p_words.configure(height=max(1, y - gy))
+        box.configure(height=max(1, y - gy))
+        return key
 
     # ----- nút nghe dạng viên thuốc (Canvas, góc bo) -----
     def _round_rect(self, c, x0, y0, x1, y1, r, **kw):
@@ -4000,10 +4025,11 @@ class App(tk.Tk):
         self._pills = alive
 
     def _pill_show(self, cv, on):
-        if on and not cv.winfo_manager():
-            cv.pack(side="left", padx=(0, self.px(10)))
-        elif not on and cv.winfo_manager():
-            cv.pack_forget()
+        if getattr(cv, "_hidden", None) is (not on):
+            return
+        cv._hidden = not on
+        self._pills_key = None
+        self.after_idle(self._layout_pills)
 
     # ----- nút thu tròn + thanh mức âm -----
     def _rec_btn_click(self):
@@ -4043,8 +4069,7 @@ class App(tk.Tk):
         if not name or name.startswith("("):
             self.p_mic_lbl.configure(text="Chưa có micro —")
         else:
-            self.p_mic_lbl.configure(text="Đọc xong, app tự dừng và chấm  ·  Micro: %s  ·"
-                                     % short_mic_name(name))
+            self.p_mic_lbl.configure(text="Micro: %s  ·" % short_mic_name(name))
 
     # ----- thanh công cụ: chế độ, bài trước/sau -----
     def _draw_seg(self):
@@ -4075,10 +4100,14 @@ class App(tk.Tk):
             self.cb_prac.current((max(0, self.cb_prac.current()) + d) % n)
             self._refresh_practice()
 
+    def _prac_body_resized(self, e):
+        w = side_width(e.width, self.S)
+        if abs(w - int(self.p_side.cget("width"))) > 2:
+            self.p_side.configure(width=w)
+
     def _prac_compact(self, compact):
-        self.p_side.configure(width=self.px(320 if compact else 400))
         self.cb_prac.configure(width=22 if compact else 30)
-        pad = self.px(20 if compact else 48)
+        pad = self.px(20 if compact else 32)
         self._stage_in.pack_configure(padx=pad, pady=(self.px(16 if compact else 28),
                                                       self.px(12 if compact else 18)))
         self._draw_rec_btn()
@@ -4201,7 +4230,7 @@ class App(tk.Tk):
         self.p_int_cap = self._wrap(self._lbl(self.p_int_card, "", bg="side", size=10,
                                               weight="bold", justify="left", anchor="w"))
         self.p_int_cap.pack(fill="x", pady=(self.px(4), self.px(6)))
-        self.p_int = self._tw(tk.Canvas(self.p_int_card, height=self.px(132), bd=0,
+        self.p_int = self._tw(tk.Canvas(self.p_int_card, height=self.px(118), bd=0,
                                         highlightthickness=0), bg="side")
         self.p_int.pack(fill="x")
         self.p_int.bind("<Configure>", lambda e: self._draw_intonation())
@@ -4209,11 +4238,6 @@ class App(tk.Tk):
                                                  justify="left", anchor="w"))
         self.p_int_speed = self._wrap(self._lbl(self.p_int_card, "", bg="side", fg="muted",
                                                 size=9, justify="left", anchor="w"))
-        self.p_int_more = self._link_lbl(self.p_int_card, "", self._toggle_inton_more,
-                                         bg="side", size=9)
-        self.p_int_detail = self._wrap(self._lbl(self.p_int_card, "", bg="side", fg="muted",
-                                                 size=9, justify="left", anchor="w"))
-        self._show_inton_more = False
         self._iv = None
         self._last_res = None
         self._redraws.append(self._draw_intonation)
@@ -4249,7 +4273,7 @@ class App(tk.Tk):
         first = True
         for n, w in order:
             if n in names:
-                w.pack(fill="x", pady=(0 if first else self.px(18), 0))
+                w.pack(fill="x", pady=(0 if first else self.px(14), 0))
                 first = False
         self._panel_sections = list(names)
 
@@ -4306,7 +4330,6 @@ class App(tk.Tk):
         self._show_details = self._show_heard = False
         self._inton = None
         self._iv = None
-        self._show_inton_more = False
         self._set_stage_words(stage_words(self._p_target, None))
         self._panel_state(getattr(self, "prac_state", "idle")
                           if getattr(self, "prac_state", "idle") not in ("result", "unsure")
@@ -4371,7 +4394,7 @@ class App(tk.Tk):
             p = os.path.join(MAU_DIR, fname)
             pill = self._mk_pill(self.p_samples, "Nghe mẫu" if label == "Cả câu" else label,
                                  lambda p=p: self._play_sample(p), os.path.exists(p))
-            pill.pack(side="left", padx=(0, self.px(10)))
+            self._pill_show(pill, True)
         self.btn_preplay = self._mk_pill(self.p_samples, "Bản thu của bạn", self._prac_replay)
         self._pill_show(self.btn_preplay, self._rec_ctl.get("replay_enabled", False))
 
@@ -4426,7 +4449,7 @@ class App(tk.Tk):
         self.p_int_cap.configure(text=iv["caption"],
                                  fg={"ok": P["ok_fg"], "warn": P["warn_fg"]}.get(
                                      iv["tone"], P["muted"]))
-        for w in (self.p_int_stress, self.p_int_speed, self.p_int_more, self.p_int_detail):
+        for w in (self.p_int_stress, self.p_int_speed):
             w.pack_forget()
         pad = (self.px(6), 0)
         if iv["stress"]:
@@ -4435,18 +4458,7 @@ class App(tk.Tk):
         if iv["speed"]:
             self.p_int_speed.configure(text=iv["speed"])
             self.p_int_speed.pack(fill="x", pady=pad)
-        self.p_int_more.configure(text="Chi tiết số đo " + ("▾" if self._show_inton_more
-                                                             else "▸"))
-        self.p_int_more.pack(anchor="w", pady=pad)
-        if self._show_inton_more:
-            self.p_int_detail.configure(text=self._inton_text(self._inton))
-            self.p_int_detail.pack(fill="x", pady=(self.px(2), 0))
         self.after(60, self._draw_intonation)
-
-    def _toggle_inton_more(self):
-        self._show_inton_more = not self._show_inton_more
-        if self._last_view:
-            self._fill_inton(self._last_view)
 
     def _draw_intonation(self):
         """Hai đường cao độ (bán cung so trung vị mỗi người, I5) trên trục thời gian 0..100 %.
@@ -4960,20 +4972,26 @@ class App(tk.Tk):
                 sections.append("notes")
             if self._inton:
                 sections.append("inton")
-            if v["has_gop"]:
-                # Q-03: số GOP chỉ trong "Chi tiết số đo"; mặc định là mức chữ (I7)
+            if v["has_gop"] or self._inton:
+                # Q-03: mọi con số (GOP, bán cung, độ lệch) chỉ nằm trong MỘT mục "Chi tiết số
+                # đo"; mặc định là chữ (I7, S-5)
                 tog = self._link_lbl(self.pp_detail, "Chi tiết số đo " +
                                      ("▾" if self._show_details else "▸"), self._toggle_details,
                                      bg="side", size=9)
                 tog.pack(anchor="w")
                 self._embeds.append(tog)
                 if self._show_details:
-                    lines = ["%s:  %s" % (c["title"], c["detail"]) for c in v["cards"]
-                             if c.get("detail")]
-                    lines.append("Điểm GOP 0–100 do mô hình âm học chấm, so với bản mẫu cùng câu"
-                                 " — không phải phần trăm phát âm đúng." if v["gop_has_ref"] else
-                                 "Điểm GOP 0–100 do mô hình âm học chấm (ngưỡng tuyệt đối vì "
-                                 "không có bản mẫu) — không phải phần trăm phát âm đúng.")
+                    lines = []
+                    if v["has_gop"]:
+                        lines = ["%s:  %s" % (c["title"], c["detail"]) for c in v["cards"]
+                                 if c.get("detail")]
+                        lines.append(
+                            "Điểm GOP 0–100 do mô hình âm học chấm, so với bản mẫu cùng câu"
+                            " — không phải phần trăm phát âm đúng." if v["gop_has_ref"] else
+                            "Điểm GOP 0–100 do mô hình âm học chấm (ngưỡng tuyệt đối vì "
+                            "không có bản mẫu) — không phải phần trăm phát âm đúng.")
+                    if self._inton:
+                        lines.append("Ngữ điệu — " + self._inton_text(self._inton))
                     for ln in lines:
                         lb = self._wrap(self._lbl(self.pp_detail, ln, bg="side", fg="muted",
                                                   font=(FONT_IPA, 9), justify="left",
@@ -4992,10 +5010,10 @@ class App(tk.Tk):
         self._side_wrap(self._side_body.winfo_width())
 
     def _mk_fix(self, parent, card):
-        """Một dòng CẦN SỬA: chấm màu · tiêu đề + mức · mẹo · ▶ Mẫu / ▶ Bạn đọc."""
+        """Một mục CẦN SỬA: chấm màu · tiêu đề · mức · ▶ Mẫu / ▶ Bạn đọc (cùng hàng) · mẹo."""
         P = self.P
         row = self._frame(parent, bg="side")
-        row.pack(fill="x", pady=(self.px(10), 0))
+        row.pack(fill="x", pady=(self.px(8), 0))
         self._embeds.append(row)
         s = self.px(10)
         dot = self._tw(tk.Canvas(row, width=s, height=s, bd=0, highlightthickness=0), bg="side")
@@ -5004,31 +5022,30 @@ class App(tk.Tk):
         dot.pack(side="left", anchor="n", padx=(0, self.px(12)), pady=(self.px(5), 0))
         col = self._frame(row, bg="side")
         col.pack(side="left", fill="x", expand=True)
+        # hàng đầu: tiêu đề · mức (trái) — ▶ Mẫu / ▶ Bạn đọc (phải): gọn một dòng mỗi lỗi
         top = self._frame(col, bg="side")
         top.pack(fill="x")
-        self._lbl(top, card["level"], bg="side", fg="muted", size=9,
-                  font=(FONT_IPA, 9) if has_ipa(card["level"]) else None).pack(
-            side="right", anchor="n", padx=(self.px(8), 0))
+        links = self._frame(top, bg="side")
+        sample = os.path.join(MAU_DIR, card["sample"]) if card.get("sample") else None
+        if card.get("heard") and self._heard_span(card["heard"]):
+            self._link_lbl(links, "▶ Bạn đọc", lambda h=card["heard"]: self._play_heard(h),
+                           bg="side", size=9).pack(side="right", padx=(self.px(12), 0))
+        if sample and os.path.exists(sample):
+            self._link_lbl(links, "▶ Mẫu", lambda p=sample: self._play_sample(p),
+                           bg="side", size=9).pack(side="right", padx=(self.px(12), 0))
+        links.pack(side="right", anchor="n", pady=(self.px(1), 0))
         title = self._lbl(top, card["title"], bg="side", size=10, weight="bold",
                           font=(FONT_IPA, 10, "bold") if card.get("ipa") else None,
                           justify="left", anchor="w")
-        title.pack(side="left", fill="x")
-        self._wrap(title, self.px(130))
+        title.pack(side="left", anchor="n")
+        self._wrap(title, self.px(150))
+        self._lbl(top, "· " + card["level"], bg="side", fg="muted", size=9,
+                  font=(FONT_IPA, 9) if has_ipa(card["level"]) else None).pack(
+            side="left", anchor="n", padx=(self.px(6), 0), pady=(self.px(1), 0))
         if card.get("tip"):
             self._wrap(self._lbl(col, card["tip"], bg="side", size=10, justify="left", anchor="w",
                                  font=(FONT_IPA, 10) if has_ipa(card["tip"]) else None),
-                       self.px(22)).pack(fill="x", pady=(self.px(3), 0))
-        links = self._frame(col, bg="side")
-        sample = os.path.join(MAU_DIR, card["sample"]) if card.get("sample") else None
-        if sample and os.path.exists(sample):
-            self._link_lbl(links, "▶ Mẫu “%s”" % card["word"],
-                           lambda p=sample: self._play_sample(p), bg="side", size=9).pack(
-                side="left", padx=(0, self.px(14)))
-        if card.get("heard") and self._heard_span(card["heard"]):
-            self._link_lbl(links, "▶ Bạn đọc", lambda h=card["heard"]: self._play_heard(h),
-                           bg="side", size=9).pack(side="left")
-        if links.winfo_children():
-            links.pack(anchor="w", pady=(self.px(4), 0))
+                       self.px(22)).pack(fill="x", pady=(self.px(2), 0))
         return row
 
     def _toggle_details(self):

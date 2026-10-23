@@ -802,3 +802,19 @@ thật; Windows scaling 100/150 %. Người dùng mở app ở cuối phiên tr�
 **Việc tiếp theo:** B5 (UI-PLAN §5): màn Văn bản theo S-8, Cài đặt lưu ngay, V-14, T-04.
 **Cảnh báo:** đừng dùng `initial_prompt` khi nhận dạng bản thu người học (I2); trọng âm/tốc
 độ không được thành điểm (D-34).
+
+## 2026-10-23 (tiếp 4) — Claude Opus 5.5 — Chỉnh bố cục theo thử nghiệm thật của người dùng
+
+**Người dùng thử B4a+B4b với mic thật:** chạy tốt; yêu cầu panel kết quả rộng hơn để thấy
+toàn bộ kết quả trên một trang (không cuộn), sân khấu hẹp lại. Các phần khác "OK".
+
+**Đã làm (`app.py`):** `side_width()` (≈ 48 % vùng nội dung, kẹp 340–640 px × S, đổi theo
+`_prac_body_resized`); lề sân khấu 48 → 32 px; viên thuốc nghe tự xuống dòng (`_flow` dùng
+chung với từ); mục CẦN SỬA gọn một hàng (tiêu đề · mức · ▶ Mẫu / ▶ Bạn đọc); một link
+"Chi tiết số đo" chung cho GOP + ngữ điệu (bỏ `_toggle_inton_more`); dòng micro tách hai dòng;
+khoảng cách panel 18 → 14, biểu đồ 132 → 118 px. `ui_shots.py` thêm trạng thái xấu nhất
+(6 lỗi GOP + ngữ điệu) — vừa một trang ở 1480×940; ở 980×640 panel cuộn như trước.
+
+**Đã kiểm chứng:** smoke 62/62, context_check, ảnh sáng/tối thiểu, script chạy App thật.
+**Quan sát từ ảnh người dùng (chưa sửa, cần quyết định):** câu trên sân khấu ghi "Think ✓"
+(Whisper nghe đúng chữ) trong khi CẦN SỬA (GOP) báo /θ/ và /k/ trong "Think" lệch rõ.

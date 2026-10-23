@@ -94,12 +94,12 @@ Bất kỳ lỗi/thiếu dữ liệu → `None`; UI ẩn thẻ.
   phải clip từ khóa, và không có cho `custom`.
 - Hệ quả: **Học âm** (guide, `sid=None`) và 3 bài Việt `vi1`–`vi3` (không có
   `samples`) **không bao giờ** có biểu đồ — chỉ 14 bài tiếng Anh có.
-- `_prac_done` gọi `_show_intonation(res.get("inton"))`.
 - `_prac_done` đặt `self._inton` (chỉ khi `result`) rồi `_render_result`; mục NGỮ ĐIỆU
   (`p_int_card`) trong panel phải: câu nhận xét `p_int_cap` (xanh ✓ / cam), Canvas `p_int`
-  132 px, `p_int_stress`, `p_int_speed`, "Chi tiết số đo ▸" (`_toggle_inton_more` →
-  `_inton_text`: thời lượng, cuối câu, khoảng cao độ, độ lệch — số chỉ ở đây). Điền bởi
-  `_fill_inton(v)` từ `inton_view`.
+  118 px, `p_int_stress`, `p_int_speed`. Điền bởi `_fill_inton(v)` từ `inton_view`.
+- Số đo (`_inton_text`: thời lượng, cuối câu, khoảng cao độ, độ lệch) chỉ nằm trong mục
+  **chung** "Chi tiết số đo ▸" ở cuối panel (cùng số GOP, `_toggle_details`) — một link duy
+  nhất cho mọi con số.
 - `_draw_intonation` (S-5): **không** trục số — chỉ vạch giữa (trung vị) + "cao"/"thấp";
   chú thích nét đứt "Mẫu" / nét liền "Bạn" ở góc trên; dải `band` sau từ cần sửa; nhãn từ
   dưới đáy; chấm đặc = bạn nhấn, vòng nét đứt = mẫu nhấn. `lim` như cũ; ngắt nét ở `None`.
