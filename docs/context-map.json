@@ -146,7 +146,17 @@
       "App._mk_fix",
       "App._step_lesson",
       "App._scroll_area",
-      "App._fix_sash"
+      "App._fix_sash",
+      "load_sample_word_times",
+      "map_to_target",
+      "inton_caption",
+      "speed_note",
+      "stress_note",
+      "inton_view",
+      "progress_summary",
+      "App._fill_inton",
+      "App._toggle_inton_more",
+      "App._draw_spark"
     ],
     "pron_en.py": [
       "phonemes",
@@ -168,13 +178,16 @@
       "f0_track",
       "contour",
       "contour_cached",
-      "compare"
+      "compare",
+      "stress_from_features",
+      "word_stress"
     ],
     "tools/build_lessons.py": [
       "sentence_ipa",
       "focus_text",
       "make_wav",
-      "main"
+      "main",
+      "build_word_times"
     ],
     "gen_mau.py": [
       "mp3_to_wav16k",

@@ -162,6 +162,10 @@ Lịch sử: `hist_add_try(hist, sid, view, ts)` thêm `tries` (≤ 30), bỏ qu
 - `ph` lấy từ `gop.issues[].ph`, nếu không có GOP thì từ `phon.counts`.
 - Ghi nguyên tử `.tmp` + `os.replace`.
 - "Âm yếu nhất" = âm có tổng đếm lớn nhất trong các bài **cùng ngôn ngữ** (D-30).
+- Đáy panel (S-7, B4b): `progress_summary(h, weak, lang)` (hàm thuần) → `spark` (đúng/tổng
+  của ≤ 10 lần gần nhất, vẽ bằng `_draw_spark`, ẩn khi < 2 lần), `line1` "6 lần · tốt nhất
+  3/4 · lần trước 2/4" (file cũ thiếu `tries` → dạng %), `line2` "Âm hay sai (tiếng Anh): /θ/,
+  4 lần".
 
 ## Khi sửa — checklist
 

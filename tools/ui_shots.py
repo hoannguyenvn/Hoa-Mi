@@ -112,6 +112,16 @@ def main() -> int:
         res["phon"] = (pron_en.analyze_pairs(pairs) if lang == "en" and pairs else
                        {"issues": [], "counts": {}, "top": [], "by_phoneme": {}, "unknown": []})
         res["inton"] = inton
+        if inton and lang == "en":
+            # "bản thu" = câu mẫu chậm; mốc từ = mốc mẫu kéo theo độ dài (đủ để xem bố cục)
+            k = inton["dur_usr"] / max(inton["dur_ref"], 1e-6)
+            heard = res["hyp"].split()
+            res["words_t"] = [{"w": h, "s": w["s"] * k, "e": w["e"] * k}
+                              for h, w in zip(heard, ref_words)]
+            usr_wav = slow if k > 1.05 else ref
+            res["stress"] = {"usr": prosody.word_stress(usr_wav, res["words_t"]),
+                             "ref": prosody.word_stress(ref, ref_words),
+                             "ref_words": ref_words}
         return res
 
     en_t = app.PRACTICE_SETS["en_th"]["target"]
@@ -119,7 +129,12 @@ def main() -> int:
     vi2 = app.PRACTICE_SETS["vi2"]["target"]
     ref = str(Path(app.MAU_DIR) / "en" / "en_th.wav")
     slow = str(Path(app.MAU_DIR) / "en" / "en_th_slow.wav")
+    ref_words = app.load_sample_word_times()["en_th"]
     en_bad = en_t.lower().replace("think", "tink").replace("this", "dis").rstrip(".")
+    # lịch sử giả CHỈ trong bộ nhớ (ghi file đã bị chặn ở trên) để thấy đường xu hướng
+    A.hist["en_th"] = {"n": 6, "best": 75.0, "last": 50.0, "ph": {"TH": 4},
+                       "tries": [{"ts": "x", "c": c, "t": 4, "ph": {}}
+                                 for c in (1, 2, 3, 2, 3, 2)]}
 
     # ---- Chuyển văn bản ----
     theme("light")

@@ -769,3 +769,36 @@ scaling 100/150 %; ▶ Bạn đọc với bản thu thật.
 mốc từ audio mẫu qua `build_lessons.py`), S-7 (sparkline + "âm hay sai").
 **Cảnh báo:** widget tk mới phải qua `_tw`/`_frame`/`_lbl` hoặc thêm hàm vẽ vào `_redraws`,
 nếu không sẽ giữ màu theme cũ; đo kích thước từ sau idle, không `update_idletasks` trong vòng đo.
+
+## 2026-10-23 (tiếp 3) — Claude Opus 5.5 — B4b: ngữ điệu có nhãn từ, trọng âm + tốc độ, đường tiến bộ
+
+**Mục tiêu phiên:** làm B4b theo UI-PLAN (S-5, S-5b/D-34, S-7).
+
+**Đã làm:**
+- `prosody.py`: `stress_from_features`, `word_stress` (cường độ + cao độ theo từ, z-score trong
+  câu của chính người nói); `contour` thêm `span`; `compare` trả `span_ref`/`span_usr`.
+- `app.py`: hàm thuần `load_sample_word_times`, `map_to_target`, `inton_caption`,
+  `speed_note`, `stress_note`, `inton_view`, `progress_summary`; `_w_prac` thêm
+  `res["stress"]`, nhận `ref_words`; `_prac_score` lấy mốc mẫu theo bài; mục NGỮ ĐIỆU mới
+  (`_fill_inton`, `_toggle_inton_more`, `_draw_intonation` viết lại); đáy panel có
+  `_draw_spark` + `progress_summary`; ghi chú bài Việt chưa có biểu đồ.
+- `tools/build_lessons.py --word-times` → `mau/en/word_times.json` (14 bài, Whisper small
+  offline, `initial_prompt` = câu mẫu — chỉ cho audio mẫu).
+- `tools/smoke_test.py` 62 case; `tools/ui_shots.py` dựng trọng âm + lịch sử giả trong bộ nhớ.
+- Tài liệu: UI-PLAN §5.5, PROJECT-STATE, README, FEATURES F3.10/F3.10b/F3.11, ARCHITECTURE
+  (`stress`), skill `app-prosody`, `app-lessons`, `app-pronunciation`, `app-qa-release`,
+  `context-map.json`.
+
+**Quyết định mới:** không (thực hiện D-34).
+
+**Đã kiểm chứng:**
+- [x] `smoke_test` 62/62, `context_check` 44 OK, `py_compile`.
+- [x] Ảnh sáng/tối/tối thiểu đã xem; script chạy `App` thật với kết quả có biểu đồ
+  (bật/tắt chi tiết, đổi theme, đổi bài) — 0 lỗi callback.
+
+**Chưa kiểm chứng:** trọng âm trên bản thu người thật (ngưỡng chưa hiệu chuẩn — P4); mic
+thật; Windows scaling 100/150 %. Người dùng mở app ở cuối phiên trước nhưng chưa báo kết quả.
+
+**Việc tiếp theo:** B5 (UI-PLAN §5): màn Văn bản theo S-8, Cài đặt lưu ngay, V-14, T-04.
+**Cảnh báo:** đừng dùng `initial_prompt` khi nhận dạng bản thu người học (I2); trọng âm/tốc
+độ không được thành điểm (D-34).

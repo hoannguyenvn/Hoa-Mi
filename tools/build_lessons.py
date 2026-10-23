@@ -3,6 +3,8 @@
 Chạy 1 lần (cần mạng cho edge-tts):
     C:\\Users\\ADMIN\\miniforge3\\python.exe tools\\build_lessons.py [--force]
 Khi chạy lại: bỏ qua file đã có, trừ khi --force.
+Chỉ sinh mốc từng từ của audio mẫu (offline, model Whisper đã có trong cache):
+    C:\\Users\\ADMIN\\miniforge3\\python.exe tools\\build_lessons.py --word-times
 """
 import asyncio
 import io
@@ -236,9 +238,51 @@ def make_wav(text, name, rate, force):
     return True
 
 
+TIMES_PATH = os.path.join(OUT_DIR, "word_times.json")
+TIMES_MODEL = "small"
+
+
+def build_word_times(force=False):
+    """Mốc từng từ của câu mẫu (Whisper trên audio mẫu) → mau/en/word_times.json (S-5b).
+
+    Dùng cho dấu trọng âm của MẪU trên biểu đồ ngữ điệu. Chạy offline với model đã có
+    trong cache; bài đã có mốc thì bỏ qua, trừ khi --force.
+    """
+    old = {}
+    if os.path.exists(TIMES_PATH) and not force:
+        with io.open(TIMES_PATH, encoding="utf-8") as f:
+            old = (json.load(f) or {}).get("lessons") or {}
+    todo = [L for L in LESSONS if L["id"] not in old
+            and os.path.exists(os.path.join(OUT_DIR, L["id"] + ".wav"))]
+    if not todo:
+        print("mốc từ mẫu: đã đủ", len(old), "bài")
+        return 0
+    from faster_whisper import WhisperModel
+    import prosody
+    model = WhisperModel(TIMES_MODEL, device="cpu", compute_type="int8")
+    for L in todo:
+        # đưa mảng 16 kHz thay vì đường dẫn: tránh bộ giải mã PyAV (bản av mới lệch API)
+        audio, _sr = prosody.read_wav(os.path.join(OUT_DIR, L["id"] + ".wav"))
+        segs, _ = model.transcribe(audio, language="en", initial_prompt=L["target"],
+                                   beam_size=5, word_timestamps=True,
+                                   condition_on_previous_text=False)
+        words = [{"w": w.word.strip(), "s": round(float(w.start), 3),
+                  "e": round(float(w.end), 3)}
+                 for s in segs for w in (s.words or []) if w.word.strip()]
+        old[L["id"]] = words
+        print("mốc từ:", L["id"], " ".join(w["w"] for w in words))
+    with io.open(TIMES_PATH, "w", encoding="utf-8", newline="\n") as f:
+        json.dump({"version": 1, "model": TIMES_MODEL, "lessons": old}, f,
+                  ensure_ascii=False, indent=1)
+    return len(todo)
+
+
 def main():
     force = "--force" in sys.argv
     os.makedirs(OUT_DIR, exist_ok=True)
+    if "--word-times" in sys.argv:          # chỉ sinh mốc từ, không cần mạng
+        build_word_times(force)
+        return
 
     out = {"version": 1, "lessons": []}
     words = {}
@@ -264,6 +308,7 @@ def main():
         print("TTS từ:", w)
         n_new += make_wav(w + ".", "w_" + w, "+0%", force)
 
+    build_word_times(force)
     print("xong. file mới:", n_new)
     print("tổng file trong mau/en:", len(os.listdir(OUT_DIR)))
 

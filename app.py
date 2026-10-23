@@ -1257,6 +1257,156 @@ def stage_words(target, view=None):
     return out
 
 
+# ---------- ngữ điệu, trọng âm, tốc độ: chỉ mô tả, không chấm (S-5 / S-5b, D-10 / D-34) ----------
+SAMPLE_TIMES_PATH = os.path.join(MAU_DIR, "en", "word_times.json")
+INTON_FLAT = 0.35         # |độ dốc cuối câu| (bán cung / 10 % câu) nhỏ hơn → "đi ngang"
+INTON_FLAT_RANGE = 0.5    # khoảng cao độ của bạn < 50 % của mẫu → "giọng hơi đều"
+SPEED_SAME = 0.15         # chênh tốc độ ≤ 15 % → "gần giống mẫu"
+
+
+def load_sample_word_times(path=SAMPLE_TIMES_PATH):
+    """Mốc từng từ của audio mẫu (sinh sẵn bằng tools/build_lessons.py) → {id: [{w,s,e}]}."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        les = data.get("lessons") if isinstance(data, dict) else None
+        return les if isinstance(les, dict) else {}
+    except Exception:
+        return {}
+
+
+def map_to_target(target, heard):
+    """Từ máy nghe (theo thứ tự) → chỉ số từ mẫu đã chuẩn hóa (None nếu là từ thừa)."""
+    tw = norm_words(target or "")
+    hw = [(norm_words(w) or [""])[0] for w in heard]
+    out = [None] * len(hw)
+    sm = difflib.SequenceMatcher(None, tw, hw, autojunk=False)
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        if tag in ("equal", "replace"):
+            for k in range(min(i2 - i1, j2 - j1)):
+                out[j1 + k] = i1 + k
+    return out
+
+
+def _slope_dir(v):
+    if v is None:
+        return None
+    return "flat" if abs(v) < INTON_FLAT else ("down" if v < 0 else "up")
+
+
+def inton_caption(d):
+    """MỘT câu nhận xét ngữ điệu (S-5), không điểm → (câu, tone "ok" | "warn" | None)."""
+    say = {"down": "xuống giọng", "up": "lên giọng", "flat": "đi ngang"}
+    fr, fu = _slope_dir(d.get("final_ref")), _slope_dir(d.get("final_usr"))
+    rr, ru = d.get("range_ref"), d.get("range_usr")
+    if fr and fu and fr != fu:
+        mine = "giữ giọng ngang" if fu == "flat" else say[fu]
+        return "Cuối câu mẫu %s, bạn lại %s" % (say[fr], mine), "warn"
+    if rr and ru is not None and ru < INTON_FLAT_RANGE * rr:
+        return "Giọng bạn hơi đều — thử nhấn mạnh từ khoá hơn", "warn"
+    if fr and fu:
+        return "Cuối câu bạn %s giống mẫu ✓" % say[fu], "ok"
+    return "Chưa đủ dữ liệu cao độ để nhận xét", None
+
+
+def _vn_num(v):
+    return ("%.1f" % v).replace(".", ",")
+
+
+def speed_note(span_ref, span_usr):
+    """Một dòng về tốc độ đọc (S-5b) — đọc chậm khi luyện là bình thường, không phải lỗi."""
+    if not span_ref or not span_usr or span_ref <= 0 or span_usr <= 0:
+        return None
+    r = span_usr / float(span_ref)
+    if abs(r - 1.0) <= SPEED_SAME:
+        return "Tốc độ gần giống mẫu (%s s / %s s)" % (_vn_num(span_usr), _vn_num(span_ref))
+    pct = int(round(abs(r - 1.0) * 100 / 5.0) * 5)
+    return "Bạn đọc %s hơn mẫu ~%d %% (%s s / %s s)" % (
+        "chậm" if r > 1 else "nhanh", pct, _vn_num(span_usr), _vn_num(span_ref))
+
+
+def stress_note(ref_top, usr_top, words):
+    """Câu về từ được nhấn (S-5b). ref_top None = bài không có mốc mẫu → chỉ nói về bạn."""
+    if not usr_top:
+        return None
+    q = lambda idx: "“%s”" % words[idx]
+    if ref_top is None:
+        return "Bạn nhấn mạnh nhất: " + ", ".join(q(i) for i in usr_top)
+    if not ref_top:
+        return None
+    if set(ref_top) & set(usr_top):
+        return "Bạn nhấn đúng từ như mẫu ✓ (%s)" % q(ref_top[0])
+    return "Mẫu nhấn %s, bạn nhấn %s" % (q(ref_top[0]), q(usr_top[0]))
+
+
+def inton_view(res, view):
+    """Dữ liệu vẽ + chữ cho mục NGỮ ĐIỆU. Hàm thuần; None nếu không có so sánh cao độ.
+
+    labels: nhãn từ đặt theo mốc của BẠN trên trục thời gian chuẩn hóa (gần đúng với
+    đường mẫu vì mẫu được kéo cùng 0..100 %); err = từ đó cần sửa (dải màu nhạt);
+    su / sr = bạn / mẫu nhấn từ này (chấm đặc / vòng nét đứt).
+    """
+    d = res.get("inton")
+    if not d or (view or {}).get("state") != "result":
+        return None
+    target = res.get("target", "")
+    tw = norm_words(target)
+    chips = (view or {}).get("chips") or []
+    words_t = res.get("words_t") or []
+    dur = float(d.get("dur_usr") or 0.0)
+    idx = map_to_target(target, [w["w"] for w in words_t])
+    st = res.get("stress") or {}
+    usr_top = None
+    if st.get("usr") and len(st["usr"].get("prom") or []) == len(words_t):
+        usr_top = sorted({idx[i] for i in st["usr"]["top"] if idx[i] is not None})
+    ref_top = None
+    ref_words = st.get("ref_words") or []
+    if st.get("ref") and len(st["ref"].get("prom") or []) == len(ref_words):
+        ridx = map_to_target(target, [w["w"] for w in ref_words])
+        ref_top = sorted({ridx[i] for i in st["ref"]["top"] if ridx[i] is not None})
+    labels = []
+    if dur > 0:
+        for w, ti in zip(words_t, idx):
+            if ti is None:
+                continue
+            kind = chips[ti]["kind"] if ti < len(chips) else "ok"
+            labels.append({"x0": max(0.0, w["s"] / dur), "x1": min(1.0, w["e"] / dur),
+                           "text": tw[ti], "err": kind != "ok",
+                           "su": bool(usr_top and ti in usr_top),
+                           "sr": bool(ref_top and ti in ref_top)})
+    enough = len(labels) >= prosody.STRESS_MIN_WORDS
+    cap, tone = inton_caption(d)
+    span_usr = ((words_t[-1]["e"] - words_t[0]["s"]) if len(words_t) >= 2
+                else d.get("span_usr"))
+    span_ref = ((ref_words[-1]["e"] - ref_words[0]["s"]) if len(ref_words) >= 2
+                else d.get("span_ref"))
+    return {"labels": labels if enough else [], "caption": cap, "tone": tone,
+            "stress": stress_note(ref_top, usr_top, tw) if enough else None,
+            "speed": speed_note(span_ref, span_usr)}
+
+
+def progress_summary(h, weak=None, lang=None, n=10):
+    """Tiến bộ một bài (S-7): đường xu hướng c/t của n lần gần nhất + hai dòng chữ."""
+    if not h:
+        return {"spark": [], "line1": "Chưa luyện bài này.", "line2": ""}
+    tries = [t for t in (h.get("tries") or []) if t.get("t")]
+    if tries:
+        best = max(tries, key=lambda t: t["c"] / float(t["t"]))
+        last = tries[-1]
+        line1 = "%d lần · tốt nhất %d/%d · lần trước %d/%d" % (
+            h.get("n", len(tries)), best["c"], best["t"], last["c"], last["t"])
+    else:
+        line1 = "%d lần · tốt nhất %.0f%%" % (h.get("n", 0), h.get("best") or 0)
+        if h.get("last") is not None:
+            line1 += " · lần trước %.0f%%" % h["last"]
+    line2 = ""
+    if weak:
+        name = {"en": "tiếng Anh", "vi": "tiếng Việt"}.get(lang)
+        line2 = "Âm hay sai%s: %s, %d lần" % (" (%s)" % name if name else "", weak[0], weak[1])
+    return {"spark": [t["c"] / float(t["t"]) for t in tries[-n:]],
+            "line1": line1, "line2": line2}
+
+
 def gop_level(score):
     """Mức chữ cho điểm GOP (I7: không hiện như % đúng)."""
     return "lệch rõ" if float(score) < GOP_LEVEL_STRONG else "hơi lệch"
@@ -2000,6 +2150,7 @@ class App(tk.Tk):
         self._mic_combos = []
         self._mic_hints = []
         self.hist = self._load_hist()
+        self.sample_times = load_sample_word_times()   # mốc từ của audio mẫu (S-5b)
         self._inton = None
 
         self._apply_theme()
@@ -3975,9 +4126,16 @@ class App(tk.Tk):
         # đáy ghim: tiến bộ + nút chính
         foot = self._frame(side, bg="side")
         foot.pack(side="bottom", fill="x", padx=pad, pady=(self.px(8), self.px(20)))
-        self.p_prog = self._lbl(foot, "", bg="side", fg="muted", size=9, justify="left",
+        prow = self._frame(foot, bg="side")
+        prow.pack(fill="x", pady=(0, self.px(10)))
+        self.p_spark = self._tw(tk.Canvas(prow, width=self.px(96), height=self.px(28), bd=0,
+                                          highlightthickness=0), bg="side")
+        self.p_prog = self._lbl(prow, "", bg="side", fg="muted", size=9, justify="left",
                                 anchor="w")
-        self.p_prog.pack(fill="x", pady=(0, self.px(10)))
+        self.p_prog.pack(side="right", fill="x", expand=True)
+        self._spark = []
+        self._side_wraps = [(self.p_prog, self.px(110))]   # chừa chỗ cho đường xu hướng
+        self._redraws.append(self._draw_spark)
         self.p_actions = self._frame(foot, bg="side")
         self.btn_pmain = ttk.Button(self.p_actions, text="Thử lại", style="Accent.TButton")
         self.btn_pmain.pack(side="left", fill="x", expand=True)
@@ -3987,7 +4145,6 @@ class App(tk.Tk):
         body = self._frame(inner, bg="side")
         body.pack(fill="both", expand=True, padx=pad, pady=(pad, 0))
         self._side_body = body
-        self._side_wraps = []
         inner.bind("<Configure>", lambda e: self._side_wrap(e.width - 2 * pad), add="+")
 
         # chờ / hướng dẫn (idle, đang thu, đang chấm, lỗi)
@@ -4038,17 +4195,27 @@ class App(tk.Tk):
         self.pp_unsure = self._frame(body, bg="side")
         self.pp_detail = self._frame(body, bg="side")
 
-        # NGỮ ĐIỆU (B4b sẽ thêm nhãn từ, trọng âm, tốc độ — S-5/S-5b)
+        # NGỮ ĐIỆU (S-5 / S-5b): một câu nhận xét · biểu đồ có nhãn từ · trọng âm · tốc độ
         self.p_int_card = self._frame(body, bg="side")
-        self._caps(self.p_int_card, "NGỮ ĐIỆU").pack(fill="x", pady=(0, self.px(6)))
-        self.p_int = self._tw(tk.Canvas(self.p_int_card, height=self.px(110), bd=0,
+        self._caps(self.p_int_card, "NGỮ ĐIỆU").pack(fill="x")
+        self.p_int_cap = self._wrap(self._lbl(self.p_int_card, "", bg="side", size=10,
+                                              weight="bold", justify="left", anchor="w"))
+        self.p_int_cap.pack(fill="x", pady=(self.px(4), self.px(6)))
+        self.p_int = self._tw(tk.Canvas(self.p_int_card, height=self.px(132), bd=0,
                                         highlightthickness=0), bg="side")
         self.p_int.pack(fill="x")
         self.p_int.bind("<Configure>", lambda e: self._draw_intonation())
-        self.p_int_note = self._lbl(self.p_int_card, "", bg="side", fg="muted", size=9,
-                                    justify="left", anchor="w")
-        self.p_int_note.pack(fill="x", pady=(self.px(4), 0))
-        self._wrap(self.p_int_note)
+        self.p_int_stress = self._wrap(self._lbl(self.p_int_card, "", bg="side", size=9,
+                                                 justify="left", anchor="w"))
+        self.p_int_speed = self._wrap(self._lbl(self.p_int_card, "", bg="side", fg="muted",
+                                                size=9, justify="left", anchor="w"))
+        self.p_int_more = self._link_lbl(self.p_int_card, "", self._toggle_inton_more,
+                                         bg="side", size=9)
+        self.p_int_detail = self._wrap(self._lbl(self.p_int_card, "", bg="side", fg="muted",
+                                                 size=9, justify="left", anchor="w"))
+        self._show_inton_more = False
+        self._iv = None
+        self._last_res = None
         self._redraws.append(self._draw_intonation)
         self._redraws.append(lambda: self._last_view is None or self._draw_ring(
             self._last_view["ring"]))
@@ -4138,6 +4305,8 @@ class App(tk.Tk):
         self._last_view = None
         self._show_details = self._show_heard = False
         self._inton = None
+        self._iv = None
+        self._show_inton_more = False
         self._set_stage_words(stage_words(self._p_target, None))
         self._panel_state(getattr(self, "prac_state", "idle")
                           if getattr(self, "prac_state", "idle") not in ("result", "unsure")
@@ -4248,7 +4417,44 @@ class App(tk.Tk):
                          "chỉ để tham khảo)." % d["diff"])
         return "  ".join(parts)
 
+    def _fill_inton(self, v):
+        """Chữ quanh biểu đồ: câu nhận xét (màu theo ✓/!), trọng âm, tốc độ, chi tiết số."""
+        P = self.P
+        iv = self._iv = inton_view(self._last_res or {"inton": self._inton}, v)
+        if not iv:
+            return
+        self.p_int_cap.configure(text=iv["caption"],
+                                 fg={"ok": P["ok_fg"], "warn": P["warn_fg"]}.get(
+                                     iv["tone"], P["muted"]))
+        for w in (self.p_int_stress, self.p_int_speed, self.p_int_more, self.p_int_detail):
+            w.pack_forget()
+        pad = (self.px(6), 0)
+        if iv["stress"]:
+            self.p_int_stress.configure(text=iv["stress"])
+            self.p_int_stress.pack(fill="x", pady=pad)
+        if iv["speed"]:
+            self.p_int_speed.configure(text=iv["speed"])
+            self.p_int_speed.pack(fill="x", pady=pad)
+        self.p_int_more.configure(text="Chi tiết số đo " + ("▾" if self._show_inton_more
+                                                             else "▸"))
+        self.p_int_more.pack(anchor="w", pady=pad)
+        if self._show_inton_more:
+            self.p_int_detail.configure(text=self._inton_text(self._inton))
+            self.p_int_detail.pack(fill="x", pady=(self.px(2), 0))
+        self.after(60, self._draw_intonation)
+
+    def _toggle_inton_more(self):
+        self._show_inton_more = not self._show_inton_more
+        if self._last_view:
+            self._fill_inton(self._last_view)
+
     def _draw_intonation(self):
+        """Hai đường cao độ (bán cung so trung vị mỗi người, I5) trên trục thời gian 0..100 %.
+
+        Không trục số (C-03): chỉ vạch giữa + "cao"/"thấp"; chú thích trong biểu đồ (C-04);
+        nhãn từ theo mốc của bạn, dải nhạt ở từ cần sửa (C-01); chấm trên nhãn = từ được
+        nhấn (đặc = bạn, vòng nét đứt = mẫu, S-5b). Chỉ mô tả, không chấm (D-10, D-34).
+        """
         c = self.p_int
         c.delete("all")
         d = self._inton
@@ -4259,12 +4465,15 @@ class App(tk.Tk):
             return
         P = self.P
         c.configure(bg=P["side"])
-        ml, mr, mt, mb = self.px(30), self.px(6), self.px(6), self.px(18)
-        x0, x1 = ml, W - mr
-        y0, y1 = mt, H - mb
+        iv = self._iv or {"labels": []}
+        labels = iv.get("labels") or []
+        f8 = (self.F, 8)
+        ml, mr = self.px(28), self.px(4)
+        mt = self.px(16)                            # dải chú thích phía trên
+        mb = self.px(34) if labels else self.px(8)  # chấm trọng âm + nhãn từ phía dưới
+        x0, x1, y0, y1 = ml, W - mr, mt, H - mb
         if x1 - x0 < 10 or y1 - y0 < 10:
             return
-
         vals = [v for k in ("ref", "usr") for v in (d.get(k) or {}).get("st", [])
                 if v is not None]
         if not vals:
@@ -4277,29 +4486,18 @@ class App(tk.Tk):
         def Y(v):
             return y0 + (lim - v) / (2.0 * lim) * (y1 - y0)
 
-        c.create_rectangle(x0, y0, x1, y1, outline=P["border"])
-        step = 3 if lim <= 9 else 6
-        for k in range(-lim, lim + 1, step):
-            yy = Y(k)
-            c.create_line(x0, yy, x1, yy, fill=P["border"],
-                          dash=() if k == 0 else (self.px(2), self.px(3)))
-            txt = "0" if k == 0 else ("+%d" % k if k > 0 else str(k))
-            c.create_text(x0 - self.px(6), yy, text=txt, anchor="e",
-                          fill=P["muted"], font=(self.F, 8))
-        for pct in (0, 25, 50, 75, 100):
-            xx = X(pct / 100.0)
-            c.create_line(xx, y0, xx, y1, fill=P["border"],
-                          dash=(self.px(2), self.px(3)))
-        for pct in (0, 50, 100):
-            c.create_text(X(pct / 100.0), y1 + self.px(4), text="%d%%" % pct,
-                          anchor="n", fill=P["muted"], font=(self.F, 8))
-
-        for key, color, width, dash in (("ref", P["muted"], 2, (self.px(7), self.px(4))),
+        for lb in labels:                           # dải nhạt ở từ cần sửa
+            if lb["err"]:
+                c.create_rectangle(X(lb["x0"]), y0, X(lb["x1"]), y1, fill=P["band"],
+                                   outline="")
+        c.create_line(x0, Y(0), x1, Y(0), fill=P["border"])
+        c.create_text(x0 - self.px(4), y0, text="cao", anchor="ne", fill=P["muted"], font=f8)
+        c.create_text(x0 - self.px(4), y1, text="thấp", anchor="se", fill=P["muted"], font=f8)
+        for key, color, width, dash in (("ref", P["muted"], 2, (self.px(5), self.px(4))),
                                         ("usr", P["accent"], 3, ())):
             data = d.get(key) or {}
-            ts, sts = data.get("t") or [], data.get("st") or []
             pts = []
-            for t, st in zip(ts, sts):
+            for t, st in zip(data.get("t") or [], data.get("st") or []):
                 if st is None:
                     if len(pts) >= 4:
                         c.create_line(*pts, fill=color, width=self.px(width), dash=dash)
@@ -4308,6 +4506,27 @@ class App(tk.Tk):
                     pts.extend((X(t), Y(st)))
             if len(pts) >= 4:
                 c.create_line(*pts, fill=color, width=self.px(width), dash=dash)
+        # chú thích trong biểu đồ: nét đứt = Mẫu, nét liền = Bạn
+        ly, xr = self.px(6), x1
+        for text, color, width, dash in (("Bạn", P["accent"], 3, ()),
+                                         ("Mẫu", P["muted"], 2, (self.px(4), self.px(3)))):
+            tid = c.create_text(xr, ly, text=text, anchor="e", fill=P["muted"], font=f8)
+            bx = c.bbox(tid)[0] - self.px(4)
+            c.create_line(bx - self.px(18), ly, bx, ly, fill=color, width=self.px(width),
+                          dash=dash)
+            xr = bx - self.px(28)
+        # nhãn từ + chấm trọng âm
+        r = self.px(3)
+        for lb in labels:
+            xm = (X(lb["x0"]) + X(lb["x1"])) / 2.0
+            c.create_text(xm, H - self.px(2), text=lb["text"], anchor="s",
+                          fill=P["fg"] if lb["err"] else P["muted"], font=f8)
+            dy = y1 + self.px(10)
+            if lb["sr"]:
+                c.create_oval(xm - r - self.px(2), dy - r - self.px(2), xm + r + self.px(2),
+                              dy + r + self.px(2), outline=P["muted"], dash=(2, 2))
+            if lb["su"]:
+                c.create_oval(xm - r, dy - r, xm + r, dy + r, fill=P["accent"], outline="")
 
     # ---------- lịch sử luyện (tiến bộ) ----------
     def _load_hist(self):
@@ -4330,18 +4549,33 @@ class App(tk.Tk):
     def _update_prog(self, sid):
         if not sid or sid == "custom":
             self.p_prog.configure(text="")
+            self._spark = []
+            self._draw_spark()
             return
-        h = self.hist.get(sid)
-        if not h:
-            self.p_prog.configure(text="Chưa luyện bài này.")
+        lang = PRACTICE_SETS.get(sid, {}).get("lang")
+        ps = progress_summary(self.hist.get(sid), hist_weakest(self.hist, lang), lang)
+        self.p_prog.configure(text=ps["line1"] + ("\n" + ps["line2"] if ps["line2"] else ""))
+        self._spark = ps["spark"]
+        self._draw_spark()
+
+    def _draw_spark(self):
+        """Đường xu hướng đúng/tổng của ≤ 10 lần gần nhất (S-7); ẩn khi < 2 lần."""
+        c, P = self.p_spark, self.P
+        pts = self._spark
+        if len(pts) < 2:
+            if c.winfo_manager():
+                c.pack_forget()
             return
-        txt = f"Đã luyện {h.get('n', 0)} lần · tốt nhất {h.get('best', 0):.0f}%"
-        if h.get("last") is not None:
-            txt += f" · lần trước {h['last']:.0f}%"
-        weak = hist_weakest(self.hist, PRACTICE_SETS.get(sid, {}).get("lang"))
-        if weak:
-            txt += f"\nÂm hay sai: {weak[0]} ({weak[1]} lần)"
-        self.p_prog.configure(text=txt)
+        if not c.winfo_manager():
+            c.pack(side="left", padx=(0, self.px(12)), before=self.p_prog)
+        c.delete("all")
+        W, H, m = self.px(96), self.px(28), self.px(4)
+        xs = [m + i * (W - 2 * m) / float(len(pts) - 1) for i in range(len(pts))]
+        ys = [H - m - v * (H - 2 * m) for v in pts]
+        c.create_line(*[v for xy in zip(xs, ys) for v in xy], fill=P["accent"],
+                      width=self.px(2.5), joinstyle="round")
+        c.create_oval(xs[-1] - m, ys[-1] - m, xs[-1] + m, ys[-1] + m, fill=P["accent"],
+                      outline="")
 
     def _record_hist(self, sid, res, view=None):
         if not sid or sid == "custom":
@@ -4536,7 +4770,7 @@ class App(tk.Tk):
             return
         self._set_prac_state("scoring")
         self._clear_prac_result(note=False)
-        ref_wav = None
+        ref_wav, ref_words = None, None
         sid = self._current_set_id()
         if sid and sid != "custom":
             samples = PRACTICE_SETS.get(sid, {}).get("samples") or []
@@ -4544,11 +4778,13 @@ class App(tk.Tk):
                 cand = os.path.join(MAU_DIR, samples[0][1])
                 if os.path.exists(cand):
                     ref_wav = cand
+                    ref_words = self.sample_times.get(sid)
         threading.Thread(target=self._w_prac,
-                         args=(wav_path, self.model_name.get(), lang, target, ref_wav),
+                         args=(wav_path, self.model_name.get(), lang, target, ref_wav,
+                               ref_words),
                          daemon=True).start()
 
-    def _w_prac(self, wav_path, model_size, lang, target, ref_wav=None):
+    def _w_prac(self, wav_path, model_size, lang, target, ref_wav=None, ref_words=None):
         try:
             pk = wav_peak(wav_path)
             if pk < MIC_MIN_PEAK:
@@ -4601,11 +4837,20 @@ class App(tk.Tk):
                 res["phon"] = {"issues": [], "counts": {}, "top": [],
                                "by_phoneme": {}, "unknown": []}
             res["inton"] = None
+            res["stress"] = None
             if ref_wav:
                 try:
                     res["inton"] = prosody.compare(ref_wav, wav_path)
                 except Exception:
                     res["inton"] = None
+                # trọng âm từng từ của bạn và của mẫu — chỉ mô tả (S-5b, D-34)
+                try:
+                    res["stress"] = {
+                        "usr": prosody.word_stress(wav_path, words_t),
+                        "ref": prosody.word_stress(ref_wav, ref_words) if ref_words else None,
+                        "ref_words": ref_words or []}
+                except Exception:
+                    res["stress"] = None
             res["gop"] = None
             if (lang == "en" or res.get("det_lang") == "en") and gop.available():
                 try:
@@ -4627,6 +4872,7 @@ class App(tk.Tk):
         self._set_prac_state(v["state"])
         self.p_status.set("")
         self._last_words_t = res.get("words_t") or []
+        self._last_res = res
         self._show_details = self._show_heard = False
         self._inton = res.get("inton") if v["state"] == "result" else None
         self._render_result(v)
@@ -4701,6 +4947,10 @@ class App(tk.Tk):
             if v["low_conf"]:
                 notes.append("Máy nghe chưa chắc (tín hiệu yếu/nhiễu) — phần âm vị chỉ để "
                              "tham khảo.")
+            sid = self._current_set_id()
+            if not self._inton and PRACTICE_SETS.get(sid or "", {}).get("lang") == "vi":
+                notes.append("Biểu đồ ngữ điệu sẽ có cho bài tiếng Việt khi có bản ghi mẫu "
+                             "người thật.")
             for n in notes:
                 lb = self._wrap(self._lbl(self.pp_notes, n, bg="side", size=9, justify="left",
                                           anchor="w", fg="fg" if n.startswith("•") else "muted"))
@@ -4738,8 +4988,7 @@ class App(tk.Tk):
                 self._show_actions("Thử lại", self._prac_record)
         self._panel_show(sections)
         if self._inton:
-            self.p_int_note.configure(text=self._inton_text(self._inton))
-            self.after(60, self._draw_intonation)
+            self._fill_inton(v)
         self._side_wrap(self._side_body.winfo_width())
 
     def _mk_fix(self, parent, card):

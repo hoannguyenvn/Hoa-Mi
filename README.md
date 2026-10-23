@@ -13,7 +13,7 @@ C:\Users\ADMIN\miniforge3\python.exe app.py
 
 ## 2. Có gì mới
 
-**Đang làm mới giao diện (bước B1–B4a, xem `docs/UI-PLAN.md`)**
+**Đang làm mới giao diện (bước B1–B4b, xem `docs/UI-PLAN.md`)**
 
 - **Bố cục mới kiểu ứng dụng**: thanh điều hướng bên trái (Chuyển thành văn bản ·
   Luyện phát âm; dưới cùng: Model · Ngôn ngữ, Giao diện tối/sáng, Cài đặt). Cửa sổ hẹp
@@ -22,6 +22,9 @@ C:\Users\ADMIN\miniforge3\python.exe app.py
   kết quả — từ sai được gạch chân, bên dưới ghi máy nghe thành gì. Nút thu tròn màu đỏ có
   thanh mức âm khi đang thu. Kết quả chi tiết, "Cần sửa" và ngữ điệu nằm ở cột bên phải;
   nút **Thử lại** luôn ở đáy cột. Đổi bài bằng ô chọn bài hoặc **◀ Bài trước / Bài sau ▶**.
+- **Ngữ điệu dễ đọc hơn**: một câu nhận xét thay cho các con số; biểu đồ có nhãn từng từ;
+  thêm **trọng âm** (từ nào được nhấn, bạn so với mẫu) và **tốc độ đọc** — chỉ để tham
+  khảo, không tính điểm. Đáy cột phải có **đường tiến bộ** của 10 lần gần nhất.
 
 - Font **Be Vietnam Pro** (đi kèm app trong `assets/fonts/`, không cần cài vào Windows);
   ký hiệu phiên âm IPA vẫn hiển thị bằng Segoe UI cho đủ ký tự.
@@ -157,11 +160,16 @@ Kết quả gồm:
    "Chi tiết số đo".
    Nếu chưa có model, app quay về cách cũ: so chuỗi âm vị của từ Whisper nghe được
    với chuỗi chuẩn (CMUdict) — cũng hiện `/âm/ → [âm nghe được]`.
-5. **Tiến bộ** — số lần đã luyện, điểm cao nhất, lần trước, âm yếu nhất.
-6. **Ngữ điệu** — biểu đồ đường cao độ của **câu mẫu** (nét đứt) và **bản đọc**
-   (nét liền), trục ngang 0–100% độ dài câu, trục dọc là bán cung (st) so với
-   trung vị giọng mỗi người. Dưới biểu đồ có nhận xét: cuối câu lên/xuống,
-   khoảng cao độ, độ lệch đường cong. Chỉ hiện khi bài có audio mẫu câu.
+5. **Tiến bộ** (đáy cột phải) — đường xu hướng của tối đa 10 lần gần nhất, số lần,
+   tốt nhất / lần trước (theo số từ đúng, vd "3/4"), âm hay sai của ngôn ngữ đó.
+6. **Ngữ điệu** — một câu nhận xét dễ hiểu (vd "Cuối câu bạn xuống giọng giống mẫu ✓",
+   "Cuối câu mẫu xuống giọng, bạn lại lên giọng", "Giọng bạn hơi đều…"), rồi biểu đồ cao
+   độ: nét đứt = mẫu, nét liền = bạn, cao/thấp so với giọng của chính mỗi người; dưới
+   biểu đồ là **nhãn từng từ**, từ cần sửa có nền nhạt. **Trọng âm**: chấm đặc = từ bạn
+   nhấn, vòng nét đứt = từ mẫu nhấn, kèm câu "Mẫu nhấn “think”, bạn nhấn “about”".
+   **Tốc độ**: "Bạn đọc chậm hơn mẫu ~30 %" (đọc chậm khi luyện là bình thường). Tất cả
+   **chỉ mô tả, không tính điểm**; số đo (bán cung, độ lệch) nằm trong "Chi tiết số đo".
+   Hiện cho 14 bài tiếng Anh (có audio mẫu); bài tiếng Việt chờ bản ghi mẫu người thật.
 
 **Máy chưa nghe rõ:** khi máy không chắc (độ tin thấp và đúng < 50 %), nghe ra chuỗi
 dài bất thường, hoặc nghe ra câu Whisper hay tự sinh ("cảm ơn các bạn đã theo dõi"…),

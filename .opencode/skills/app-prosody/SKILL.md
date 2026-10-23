@@ -58,7 +58,8 @@ Không dùng librosa, Praat, torchaudio. Chỉ `wave` + `numpy` (I8).
 
 - `< 6` khung hữu thanh → `None` (không đủ bằng chứng).
 - `st = 12 * log2(f0 / median(f0 hữu thanh))`; khung vô thanh giữ `None`.
-- `t` chuẩn hóa 0..1 theo `times[-1]`; `dur` = độ dài thật (giây).
+- `t` chuẩn hóa 0..1 theo `times[-1]`; `dur` = độ dài thật (giây); `span` = từ khung có
+  giọng đầu tiên tới cuối cùng (bỏ im lặng) — dự phòng cho câu tốc độ khi thiếu mốc từ.
 - `median` (Hz) chỉ để ghi chú, **không** dùng để so hai người (I5).
 
 ### `compare`
@@ -73,7 +74,7 @@ Trả về:
 
 ```python
 {"ref": {"t": [...], "st": [...]}, "usr": {...},
- "dur_ref": 2.31, "dur_usr": 2.05,
+ "dur_ref": 2.31, "dur_usr": 2.05, "span_ref": 1.2, "span_usr": 1.6,
  "med_ref": 182.4, "med_usr": 201.0,
  "range_ref": 5.2, "range_usr": 3.8,
  "final_ref": -0.42, "final_usr": -0.18,
@@ -94,19 +95,35 @@ Bất kỳ lỗi/thiếu dữ liệu → `None`; UI ẩn thẻ.
 - Hệ quả: **Học âm** (guide, `sid=None`) và 3 bài Việt `vi1`–`vi3` (không có
   `samples`) **không bao giờ** có biểu đồ — chỉ 14 bài tiếng Anh có.
 - `_prac_done` gọi `_show_intonation(res.get("inton"))`.
-- `_show_intonation(d)`: lưu `self._inton` rồi vẽ lại panel; mục NGỮ ĐIỆU chỉ hiện khi kết
-  quả là `result` (không khi `unsure`). Canvas `p_int` cao 110 px trong panel phải (B4a);
-  nhãn từ, trọng âm, tốc độ là B4b (UI-PLAN S-5/S-5b, D-34).
-- `_inton_text`: 2–4 câu tiếng Việt (thời lượng, cuối câu, khoảng cao độ, độ lệch).
-- `_draw_intonation`:
-  - trục dọc giới hạn `lim = max(6, min(18, ceil(max|st|/3)*3))`;
-  - nét đứt = mẫu (`P["muted"]`), nét liền = người đọc (`P["accent"]`);
-  - ngắt nét khi gặp `None` (không nối qua khoảng lặng);
-  - lưới ngang mỗi 3 hoặc 6 bán cung, dọc 0/25/50/75/100%.
-- Đổi theme → `_apply_theme` gọi `_draw_intonation()` lại.
-- Đổi bài → `_refresh_practice` đặt `_inton = None` và ẩn thẻ.
+- `_prac_done` đặt `self._inton` (chỉ khi `result`) rồi `_render_result`; mục NGỮ ĐIỆU
+  (`p_int_card`) trong panel phải: câu nhận xét `p_int_cap` (xanh ✓ / cam), Canvas `p_int`
+  132 px, `p_int_stress`, `p_int_speed`, "Chi tiết số đo ▸" (`_toggle_inton_more` →
+  `_inton_text`: thời lượng, cuối câu, khoảng cao độ, độ lệch — số chỉ ở đây). Điền bởi
+  `_fill_inton(v)` từ `inton_view`.
+- `_draw_intonation` (S-5): **không** trục số — chỉ vạch giữa (trung vị) + "cao"/"thấp";
+  chú thích nét đứt "Mẫu" / nét liền "Bạn" ở góc trên; dải `band` sau từ cần sửa; nhãn từ
+  dưới đáy; chấm đặc = bạn nhấn, vòng nét đứt = mẫu nhấn. `lim` như cũ; ngắt nét ở `None`.
+- Đổi theme → `_redraws` vẽ lại. Đổi bài → `_clear_prac_result` đặt `_inton`/`_iv` = None.
+- Bài Việt (chưa có mẫu người thật, Q-07): ghi chú "Biểu đồ ngữ điệu sẽ có…" trong panel.
 
 **Không** đưa `diff` vào `score`, không tô đỏ theo ngưỡng, không xếp hạng.
+
+### Trọng âm từ + tốc độ đọc (B4b, S-5b, D-34) — chỉ mô tả
+
+- `prosody.word_stress(path, words)` (words = `[{"s","e"}]` giây): mỗi từ lấy RMS dB và
+  trung vị bán cung (so trung vị cả câu của **chính** người nói, I5);
+  `stress_from_features(db, st)` quy z-score trong câu, `prom = zL + zP` (từ thiếu cao độ
+  chỉ tính cường độ), trả từ cao nhất + từ thứ hai nếu kém < `STRESS_TIE` (0,5).
+  < `STRESS_MIN_WORDS` (3) từ → `None`. Test `stress_picks_loud_high_word` (WAV tổng hợp).
+- `_w_prac` (khi có `ref_wav`): `res["stress"] = {"usr": word_stress(bản thu, words_t),
+  "ref": word_stress(mẫu, ref_words), "ref_words": ref_words}`; `ref_words` lấy từ
+  `mau/en/word_times.json` (`load_sample_word_times`, sinh bằng
+  `tools/build_lessons.py --word-times`).
+- `inton_view(res, view)` (hàm thuần, app.py) → `labels` (nhãn từ theo mốc của BẠN trên
+  trục 0..1, `err` = từ cần sửa, `su`/`sr` = bạn/mẫu nhấn), `caption` + `tone`
+  (`inton_caption`), `stress` (`stress_note`), `speed` (`speed_note`: ±15 % → "gần giống";
+  không bao giờ là lỗi). Từ máy nghe → từ mẫu qua `map_to_target` (difflib).
+- `None` khi view không phải `result` (D-29) hoặc không có so sánh cao độ.
 
 ## 4. Khi sửa — checklist
 
@@ -118,8 +135,10 @@ Bất kỳ lỗi/thiếu dữ liệu → `None`; UI ẩn thẻ.
    - `final_*` của sine phẳng ≈ 0.
 3. Không thêm dependency nặng (I8).
 4. Không so Hz tuyệt đối giữa mẫu và người đọc (I5).
-5. Nếu đổi khóa `inton`, cập nhật `_inton_text`, `_draw_intonation`,
-   `docs/ARCHITECTURE.md` §3.3.
+5. Nếu đổi khóa `inton`/`stress`, cập nhật `inton_view`, `_inton_text`,
+   `_draw_intonation`, `docs/ARCHITECTURE.md` §3.3.
+7. Trọng âm/tốc độ **không** được thành điểm hay vào lịch sử (D-34); muốn chấm phải có
+   quyết định mới + hiệu chuẩn (P4).
 6. Chạy `py_compile`, `smoke_test.py`, `context_check.py`.
 
 ## 5. Cạm bẫy

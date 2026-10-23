@@ -145,10 +145,13 @@ def contour(path):
     st = 12.0 * np.log2(f0 / med)  # giữ nan
     dur = len(x) / float(sr)
     t = times / max(times[-1], 1e-6)
+    vt = times[ok]
     return {
         "t": [round(float(v), 4) for v in t],
         "st": [None if np.isnan(v) else round(float(v), 2) for v in st],
         "dur": round(dur, 2),
+        # khoảng có giọng (bỏ im lặng đầu/cuối) — dùng cho câu "tốc độ đọc" (S-5b)
+        "span": round(float(vt[-1] - vt[0]), 2),
         "median": round(med, 1),
         "voiced": round(float(ok.mean()), 3),
     }
@@ -232,9 +235,70 @@ def compare(ref_path, usr_path):
         "ref": {"t": ref["t"], "st": ref["st"]},
         "usr": {"t": usr["t"], "st": usr["st"]},
         "dur_ref": ref["dur"], "dur_usr": usr["dur"],
+        "span_ref": ref.get("span"), "span_usr": usr.get("span"),
         "med_ref": ref["median"], "med_usr": usr["median"],
         "range_ref": _range(ref), "range_usr": _range(usr),
         "final_ref": _final_slope(ref), "final_usr": _final_slope(usr),
         "diff": None if diff is None else round(diff, 2),
         "voiced_ref": ref["voiced"], "voiced_usr": usr["voiced"],
     }
+
+
+# ------------------------------------------------------------------ trọng âm từ (S-5b, D-34)
+STRESS_MIN_WORDS = 3     # ít hơn số từ có mốc thời gian này → không nhận xét trọng âm
+STRESS_TIE = 0.5         # từ thứ hai cũng tính là "nhấn" nếu kém từ đầu < 0,5 (đơn vị z)
+
+
+def stress_from_features(db, st):
+    """Từ được nhấn từ cường độ (dB) + cao độ (bán cung) của từng từ. Hàm thuần.
+
+    Mỗi đại lượng quy về z-score TRONG câu của chính người nói (I5); từ thiếu cao độ chỉ
+    tính cường độ. Trả (prominence list, chỉ số từ được nhấn) — tối đa 2 từ.
+    """
+    db = np.asarray(db, dtype=np.float64)
+    if len(db) < STRESS_MIN_WORDS:
+        return [], []
+    zl = (db - db.mean()) / max(1.0, float(db.std()))
+    have = [v for v in st if v is not None]
+    if len(have) >= 2:
+        mu, sd = float(np.mean(have)), max(0.5, float(np.std(have)))
+        zp = np.array([0.0 if v is None else (v - mu) / sd for v in st])
+    else:
+        zp = np.zeros(len(db))
+    prom = zl + zp
+    order = [int(i) for i in np.argsort(-prom)]
+    top = [order[0]]
+    if len(order) > 1 and prom[order[0]] - prom[order[1]] < STRESS_TIE:
+        top.append(order[1])
+    return [round(float(v), 2) for v in prom], top
+
+
+def word_stress(path, words):
+    """words = [{"s", "e"} giây, ...] (mốc Whisper) → {"prom": [...], "top": [chỉ số]} | None.
+
+    Cường độ = RMS dB trên đoạn từ; cao độ = trung vị bán cung (so trung vị cả câu của
+    chính người nói) của các khung có giọng trong đoạn. Chỉ mô tả, không chấm (D-34).
+    """
+    spans = [(float(w["s"]), float(w["e"])) for w in (words or [])
+             if w.get("s") is not None and w.get("e") is not None and w["e"] > w["s"]]
+    if len(spans) < STRESS_MIN_WORDS or len(spans) != len(words):
+        return None
+    x, sr = read_wav(path)
+    times, f0 = f0_track(x, sr)
+    ok = ~np.isnan(f0) if len(f0) else np.array([], dtype=bool)
+    med = float(np.median(f0[ok])) if ok.sum() >= 6 else None
+    db, st = [], []
+    for s, e in spans:
+        seg = x[int(s * sr):max(int(s * sr) + 1, int(e * sr))]
+        rms = float(np.sqrt(np.mean(seg * seg))) if len(seg) else 0.0
+        db.append(20.0 * np.log10(max(rms, 1e-6)))
+        v = None
+        if med:
+            sel = (times >= s) & (times <= e) & ok
+            if sel.sum() >= 2:
+                v = float(np.median(12.0 * np.log2(f0[sel] / med)))
+        st.append(v)
+    prom, top = stress_from_features(db, st)
+    if not top:
+        return None
+    return {"prom": prom, "top": top}

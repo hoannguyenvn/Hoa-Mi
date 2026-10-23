@@ -84,6 +84,7 @@ Các hàm thuần (dễ test, không phụ thuộc UI):
 | `gop` | `dict \| None` | `gop.score(...)` |
 | `inton` | `dict \| None` | `prosody.compare(ref, usr)` |
 | `words_t` | `list[{w, s, e, p}]` | từ Whisper nghe + giây bắt đầu/kết thúc + xác suất (cho nhãn biểu đồ, S-5) |
+| `stress` | `{"usr", "ref", "ref_words"}` \| `None` | trọng âm từng từ (`prosody.word_stress`) của bạn và của mẫu + mốc từ mẫu — chỉ mô tả (S-5b, D-34) |
 
 `build_result_view(res, lesson)` (hàm thuần, D-31) biến `res` thành **view** mà giao diện
 chỉ việc vẽ: `state` (`result` | `unsure` theo `evidence_gate`, D-29) + `gate`, `words`/`chips`

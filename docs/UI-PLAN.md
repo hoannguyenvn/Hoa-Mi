@@ -2,7 +2,7 @@
 
 > Status: **GATE A passed 2026-10-22** — user approved the spec and accepted the default
 > answers for Q-01…Q-07 (§6). **GATE B passed 2026-10-22** (D-29…D-32). **Phase 3 build
-> in progress: B1, B2 done 2026-10-22 (§5.1–5.2), B3 done 2026-10-23 (§5.3), B4a done 2026-10-23 (§5.4), next B4b.** Design
+> in progress: B1, B2 done 2026-10-22 (§5.1–5.2), B3 done 2026-10-23 (§5.3), B4a, B4b done 2026-10-23 (§5.4–5.5), next B5.** Design
 > — canvas: https://claude.ai/artifact/L1oNuJ2Wq89LK7b8dFfRhK (private to the user).
 > Source of the issues: visual audits on
 > 2026-10-22 (`docs/HANDOFF.md` entries "tiếp 10" and "tiếp 11").
@@ -370,7 +370,7 @@ user checks in the real app. Increments are ordered so each one is useful alone.
 | B2 Foundations ✅ | S-1 state model, S-2 `build_result_view` + tests, keep word timings (S-5 data), history `tries` (S-7 data) | A-01, A-02, H-02 (+ H-03 data side) | done |
 | B3 Trust and feedback ✅ | S-3 evidence gate, S-4 Vietnamese wording + `rhyme`, chips + cards drawn from view-model | P-02, P-03, P-04, P-06, P-07, P-09, P-10 | done |
 | B4a App shell ✅ | app-style layout (§4.1, D-28; replaces S-6 columns): nav rail (60 px icon-only at minimum size) replaces header + tabs; practice toolbar, stage (sentence shows the result), details panel, record button + meter, Thử lại / ▶ Mẫu / ▶ Bạn; mic block → Cài đặt › Micro; transcription + settings re-hosted unchanged (restyle in B5) | P-11…P-13, V-09, V-12, V-15 | done |
-| B4b Chart and progress | S-5 chart (word labels, plain caption, legend), S-5b stress markers + speed line, S-7 sparkline + per-language weakest sound | C-01…C-04, H-01, H-03 | 1 d |
+| B4b Chart and progress ✅ | S-5 chart (word labels, plain caption, legend), S-5b stress markers + speed line, S-7 sparkline + per-language weakest sound | C-01…C-04, H-01, H-03 | done |
 | B5 Tab 1 and polish | S-8, V-06, V-14, T-04, settings save-on-change (§4.1), final contrast pass | T-01…T-04, V-06, V-14 | 0,5–1 d |
 
 ### 5.1 B1 result (2026-10-22)
@@ -443,6 +443,26 @@ user checks in the real app. Increments are ordered so each one is useful alone.
   unsure toggle, compact ↔ wide) with no callback errors.
 - Not verified: real microphone through the new button, the rail menu by hand,
   100/150 % scaling, ▶ Bạn đọc with a real recording.
+
+### 5.5 B4b result (2026-10-23)
+
+- S-5 chart (`_draw_intonation`): no numeric axis, mid line + "cao"/"thấp", legend inside
+  (dashed Mẫu, solid Bạn), word labels at the learner's timings, pale band behind words to
+  fix. One caption sentence from `inton_caption` (green ✓ / amber); numbers only under
+  "Chi tiết số đo ▸".
+- S-5b (D-34): `prosody.word_stress` / `stress_from_features` (loudness + pitch per word,
+  z-scored within the speaker's own sentence); dots on labels (filled = you, dashed ring =
+  sample) + `stress_note`; `speed_note` from word spans (fallback: voiced span). Sample word
+  timings: `mau/en/word_times.json` from `tools/build_lessons.py --word-times` (Whisper small,
+  offline, `initial_prompt` = target for the known sample only — never for learner audio,
+  I2); all 14 lessons cover every target word.
+- S-7: `progress_summary` → footer sparkline (≤ 10 tries, `_draw_spark`) + "6 lần · tốt nhất
+  3/4 · lần trước 2/4" + "Âm hay sai (tiếng Anh): /θ/, 4 lần"; old history files fall back
+  to %.
+- Vietnamese lessons: note that the chart comes with real sample recordings (C-05, Q-07).
+- Tests 62/62 (6 new, incl. stress on a synthetic WAV); screenshots reviewed (light, dark,
+  minimum); scripted drive with a chart result (details toggle, theme flip, lesson change).
+- Not verified: stress on real learner recordings (thresholds untested — P4), 100/150 %.
 
 Not in this plan: C-05 (needs real Vietnamese sample recordings — content work, Q-07).
 

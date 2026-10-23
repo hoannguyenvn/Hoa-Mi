@@ -65,6 +65,7 @@ phải trỏ tới file tồn tại trong `mau/en/`.
 | `mau/en/<id>.wav` | cả câu `target` | `+0%` |
 | `mau/en/<id>_slow.wav` | cả câu `target` | `-30%` |
 | `mau/en/w_<word>.wav` | từng từ, đọc `"<word>."` | `+0%` |
+| `mau/en/word_times.json` | mốc từng từ của `<id>.wav` (`{"lessons": {id: [{w,s,e}]}}`) | — |
 
 Tất cả 16 kHz mono PCM (do `gen_mau.mp3_to_wav16k`). Không dùng TTS để **chấm** (D-13).
 
@@ -74,7 +75,14 @@ Tất cả 16 kHz mono PCM (do `gen_mau.mp3_to_wav16k`). Không dùng TTS để 
 $env:PYTHONIOENCODING='utf-8'
 & "C:\Users\ADMIN\miniforge3\python.exe" tools\build_lessons.py          # bỏ qua file đã có
 & "C:\Users\ADMIN\miniforge3\python.exe" tools\build_lessons.py --force  # ghi đè tất cả
+& "C:\Users\ADMIN\miniforge3\python.exe" tools\build_lessons.py --word-times  # chỉ mốc từ (offline)
 ```
+
+- `build_word_times()` (S-5b): Whisper `small` (cache, offline) trên `<id>.wav`, đưa mảng
+  16 kHz (`prosody.read_wav`, tránh lỗi PyAV) và `initial_prompt=target` — chỉ cho audio
+  **mẫu** đã biết câu; **không bao giờ** dùng prompt khi nhận dạng bản thu người học (I2).
+  Chạy ở cuối `main()`; bài đã có mốc thì bỏ qua trừ `--force`. Test
+  `heard_words_map_to_target` kiểm tra 14 bài phủ đủ mọi từ của câu.
 
 - Cần mạng + `edge-tts` (`VOICE = "en-US-AriaNeural"`).
 - `sentence_ipa()` ghép `pron_en.word_ipa()` từng từ; từ lạ giữ chữ thường.
@@ -85,7 +93,7 @@ $env:PYTHONIOENCODING='utf-8'
 - `tts()` thử 4 lần, chờ tăng dần — mạng chập chờn không làm hỏng cả bộ.
 
 **Quan trọng:** sửa `target` mà chạy **không** `--force` sẽ giữ audio cũ → câu mẫu
-và audio lệch nhau. Sửa nội dung câu/từ ⇒ luôn `--force`.
+và audio lệch nhau. Sửa nội dung câu/từ ⇒ luôn `--force` (sinh lại cả `word_times.json`).
 
 ## 3. Thêm một bài — các bước
 

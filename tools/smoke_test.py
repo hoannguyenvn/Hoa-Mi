@@ -811,6 +811,126 @@ def shell_helpers():
     assert 0 < app.meter_cells(0.05) < 20
 
 
+def _write_bursts(path, specs, sr=16000):
+    """Ghi WAV gồm các đoạn sin (hz, biên độ, giây) cách nhau 0,12 s im lặng."""
+    import wave
+    parts = []
+    for hz, amp, sec in specs:
+        t = np.arange(int(sr * sec)) / sr
+        parts += [amp * np.sin(2 * np.pi * hz * t), np.zeros(int(sr * 0.12))]
+    x = (np.concatenate(parts) * 32767).astype("<i2")
+    with wave.open(path, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(sr)
+        w.writeframes(x.tobytes())
+
+
+@case
+def stress_picks_loud_high_word():
+    # S-5b / D-34: từ to + cao hơn hẳn trong câu của CHÍNH người nói là từ được nhấn
+    prom, top = prosody.stress_from_features([60, 70, 60, 61], [0.0, 3.0, 0.0, None])
+    assert top == [1], (prom, top)
+    _p, tie = prosody.stress_from_features([60, 66, 66, 60], [0.0, 1.0, 1.0, 0.0])
+    assert sorted(tie) == [1, 2], tie            # hai từ gần bằng nhau → cả hai
+    assert prosody.stress_from_features([60, 70], [0, 3]) == ([], [])   # < 3 từ
+    path = _tmp_wav("stress_")
+    try:
+        _write_bursts(path, [(140, 0.2, 0.3), (190, 0.6, 0.3), (140, 0.2, 0.3),
+                             (130, 0.2, 0.3)])
+        words = [{"s": 0.00 + i * 0.42, "e": 0.30 + i * 0.42} for i in range(4)]
+        r = prosody.word_stress(path, words)
+        assert r and r["top"] == [1], r
+        c = prosody.contour(path)
+        assert c and 1.3 < c["span"] < 1.7, c and c["span"]   # bỏ im lặng đuôi
+    finally:
+        app.remove_temp(path)
+
+
+@case
+def heard_words_map_to_target():
+    m = app.map_to_target("Think about this thing.", ["Tink", "about", "um", "this", "thing."])
+    assert m == [0, 1, None, 2, 3], m
+    # mốc từ của 14 câu mẫu (build_lessons.py --word-times) phủ đủ mọi từ của câu
+    times = app.load_sample_word_times()
+    assert len(times) == 14, len(times)
+    for lid, words in times.items():
+        target = app.PRACTICE_SETS[lid]["target"]
+        idx = app.map_to_target(target, [w["w"] for w in words])
+        assert sorted(i for i in idx if i is not None) == list(
+            range(len(app.norm_words(target)))), (lid, idx)
+
+
+@case
+def intonation_caption_rules():
+    # S-5: MỘT câu, không số, không điểm (D-10)
+    cap = app.inton_caption
+    assert cap({"final_ref": -1.3, "final_usr": -1.4, "range_ref": 13, "range_usr": 12}) == (
+        "Cuối câu bạn xuống giọng giống mẫu ✓", "ok")
+    assert cap({"final_ref": -1.0, "final_usr": 0.9, "range_ref": 10, "range_usr": 9})[0] == \
+        "Cuối câu mẫu xuống giọng, bạn lại lên giọng"
+    assert cap({"final_ref": -1.0, "final_usr": 0.1, "range_ref": 10, "range_usr": 9})[0] == \
+        "Cuối câu mẫu xuống giọng, bạn lại giữ giọng ngang"
+    assert cap({"final_ref": -1.0, "final_usr": -1.0, "range_ref": 10, "range_usr": 4}) == (
+        "Giọng bạn hơi đều — thử nhấn mạnh từ khoá hơn", "warn")
+    assert cap({})[1] is None
+    for text, _t in (cap({"final_ref": -1, "final_usr": 1}), cap({})):
+        assert "st" not in text.split() and "DTW" not in text
+
+
+@case
+def speed_and_stress_sentences():
+    assert app.speed_note(1.2, 1.6) == "Bạn đọc chậm hơn mẫu ~35 % (1,6 s / 1,2 s)"
+    assert app.speed_note(1.6, 1.2).startswith("Bạn đọc nhanh hơn mẫu ~25 %")
+    assert app.speed_note(1.2, 1.3) == "Tốc độ gần giống mẫu (1,3 s / 1,2 s)"
+    assert app.speed_note(None, 1.2) is None
+    w = ["think", "about", "this", "thing"]
+    assert app.stress_note(None, [1], w) == "Bạn nhấn mạnh nhất: “about”"
+    assert app.stress_note([0], [0, 2], w) == "Bạn nhấn đúng từ như mẫu ✓ (“think”)"
+    assert app.stress_note([0], [1], w) == "Mẫu nhấn “think”, bạn nhấn “about”"
+    assert app.stress_note([0], [], w) is None
+
+
+@case
+def intonation_view_labels_and_markers():
+    v = _view_of("Think about this thing.", "tink about dis thing", "en")
+    words_t = [{"w": "tink", "s": 0.1, "e": 0.4}, {"w": "about", "s": 0.45, "e": 0.8},
+               {"w": "dis", "s": 0.85, "e": 1.0}, {"w": "thing", "s": 1.05, "e": 1.4}]
+    ref_words = [{"w": "Think", "s": 0.0, "e": 0.3}, {"w": "about", "s": 0.3, "e": 0.6},
+                 {"w": "this", "s": 0.6, "e": 0.8}, {"w": "thing.", "s": 0.8, "e": 1.2}]
+    res = {"target": "Think about this thing.", "words_t": words_t,
+           "inton": {"dur_usr": 1.6, "final_ref": -1.3, "final_usr": -1.4,
+                     "range_ref": 13, "range_usr": 12},
+           "stress": {"usr": {"prom": [0, 2, 0, 0], "top": [1]},
+                      "ref": {"prom": [2, 0, 0, 0], "top": [0]}, "ref_words": ref_words}}
+    iv = app.inton_view(res, v)
+    assert [l["text"] for l in iv["labels"]] == ["think", "about", "this", "thing"]
+    assert [l["err"] for l in iv["labels"]] == [True, False, True, False]
+    assert [l["su"] for l in iv["labels"]] == [False, True, False, False]
+    assert [l["sr"] for l in iv["labels"]] == [True, False, False, False]
+    assert iv["stress"] == "Mẫu nhấn “think”, bạn nhấn “about”"
+    # tốc độ theo mốc từ (bỏ im lặng): bạn 0,1→1,4 s, mẫu 0→1,2 s
+    assert iv["speed"] == "Tốc độ gần giống mẫu (1,3 s / 1,2 s)", iv["speed"]
+    assert iv["caption"].endswith("✓") and iv["tone"] == "ok"
+    # bài không có mốc mẫu → chỉ nói về bạn; "chưa nghe rõ" → không có mục ngữ điệu
+    res["stress"] = {"usr": {"prom": [0, 2, 0, 0], "top": [1]}, "ref": None, "ref_words": []}
+    assert app.inton_view(res, v)["stress"] == "Bạn nhấn mạnh nhất: “about”"
+    assert app.inton_view(res, dict(v, state="unsure")) is None
+
+
+@case
+def progress_summary_lines():
+    # S-7: phân số theo từ, đường xu hướng ≤ 10 lần; file cũ không có "tries" vẫn hiện được
+    h = {"n": 6, "tries": [{"c": c, "t": 4} for c in (1, 2, 3, 2, 3, 2)]}
+    ps = app.progress_summary(h, ("/θ/", 4), "en")
+    assert ps["line1"] == "6 lần · tốt nhất 3/4 · lần trước 2/4", ps
+    assert ps["line2"] == "Âm hay sai (tiếng Anh): /θ/, 4 lần"
+    assert ps["spark"] == [0.25, 0.5, 0.75, 0.5, 0.75, 0.5]
+    old = app.progress_summary({"n": 2, "best": 75.0, "last": 50.0})
+    assert old["line1"] == "2 lần · tốt nhất 75% · lần trước 50%" and old["spark"] == []
+    assert app.progress_summary(None)["line1"] == "Chưa luyện bài này."
+
+
 def main() -> int:
     if hasattr(sys.stdout, "reconfigure"):
         try:
