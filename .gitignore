@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+
+# Tải về từ YouTube / file người dùng (AGENTS §8)
+downloads/
+
+# Dữ liệu cá nhân, tự tạo khi chạy (I12, I16)
+config.json
+practice_history.json
+
+# Model, file tạm
+*.tmp
+*.bin
+*.onnx
+.cache/
+
+# OS / editor
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/

@@ -1,0 +1,14 @@
+faster-whisper==1.2.1
+av==19.0.1
+sounddevice>=0.4
+numpy>=1.24
+yt-dlp>=2024.8.6
+imageio-ffmpeg>=0.5.1
+cmudict>=0.1.3
+# Chấm âm vị GOP (không bắt buộc) — cài torch CPU trước:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+# Model tự tải về khi chấm lần đầu (~1.2 GB).
+torch>=2.6
+transformers>=4.40
+# Chỉ cần khi tạo lại audio mẫu / bài học: tools/build_lessons.py, gen_mau.py
+edge-tts>=7.3.1

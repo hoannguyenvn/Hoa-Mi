@@ -1,0 +1,4468 @@
+import os
+os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")  # tắt cảnh báo symlink dài dòng của huggingface trên Windows
+
+try:  # chữ nét hơn trên màn hình DPI cao (Windows)
+    import ctypes
+    ctypes.windll.shcore.SetProcessDpiAwareness(1)
+except Exception:
+    pass
+
+import difflib
+import json
+import math
+import queue
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import tkinter as tk
+import wave
+from tkinter import filedialog, messagebox, ttk
+from datetime import timedelta
+
+import gop  # chấm âm vị bằng model acoustic (wav2vec2 CTC) — tùy chọn
+import pron_en  # phân tích âm vị tiếng Anh (CMUdict + căn chỉnh âm vị)
+import prosody  # phân tích ngữ điệu (cao độ) bằng numpy
+
+APP_TITLE = "Oriole"
+VERSION = "2.3"
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MAU_DIR = os.path.join(BASE_DIR, "mau")  # thư viện âm mẫu giọng bản ngữ (offline)
+HISTORY_PATH = os.path.join(BASE_DIR, "practice_history.json")
+LESSONS_PATH = os.path.join(BASE_DIR, "lessons_en.json")
+
+SUPPORTED = [
+    ("Audio/Video", "*.mp3 *.wav *.m4a *.flac *.ogg *.wma *.mp4 *.mov *.avi *.mkv *.webm"),
+    ("Tất cả file", "*.*"),
+]
+
+# ---------- tải video YouTube (yt-dlp + ffmpeg) ----------
+YT_DIR_DEFAULT = os.path.join(BASE_DIR, "downloads")
+YT_FORMATS = [("video", "Video MP4"), ("audio", "Chỉ audio MP3")]
+YT_QUALITIES = [("best", "Tốt nhất (mp4)"), ("1080", "1080p"), ("720", "720p"),
+                ("480", "480p"), ("360", "360p")]
+YT_FMT_BY_NAME = {n: c for c, n in YT_FORMATS}
+YT_QUAL_BY_NAME = {n: c for c, n in YT_QUALITIES}
+YT_SUB_LANGS = [("auto", "Tự động (ưu tiên tiếng Việt)"), ("vi", "Tiếng Việt"),
+                ("en", "Tiếng Anh")]
+YT_SUB_LANG_NAMES = [n for _, n in YT_SUB_LANGS]
+YT_SUB_LANG_BY_NAME = {n: c for c, n in YT_SUB_LANGS}
+YT_HINT = ("Dán link YouTube (dạng youtu.be/... hoặc watch?v=...). Tải về rồi xem offline; "
+           "chọn “Chỉ audio MP3” để nạp thẳng vào tab 1 (chuyển audio → text).")
+
+MODELS = ["tiny", "base", "small", "medium"]
+MODEL_HINT = "tiny: nhanh nhất  •  base: nhanh  •  small: chuẩn (khuyên dùng cho tiếng Việt)  •  medium: chuẩn nhất, chậm nhất"
+LANGS = ["auto", "vi", "en", "zh", "ja", "ko", "fr", "de"]
+# Tên hiển thị cho ô Ngôn ngữ (V-13); biến self.lang vẫn giữ mã ("auto", "vi"…).
+LANG_LABELS = [("auto", "Tự động"), ("vi", "Tiếng Việt"), ("en", "Tiếng Anh"),
+               ("zh", "Tiếng Trung"), ("ja", "Tiếng Nhật"), ("ko", "Tiếng Hàn"),
+               ("fr", "Tiếng Pháp"), ("de", "Tiếng Đức")]
+LANG_NAMES = [n for _, n in LANG_LABELS]
+LANG_BY_NAME = {n: c for c, n in LANG_LABELS}
+LANG_NAME = {c: n for c, n in LANG_LABELS}
+
+# ---------- font giao diện (D-28) ----------
+FONTS_DIR = os.path.join(BASE_DIR, "assets", "fonts")
+UI_FONT_FILES = ("BeVietnamPro-Regular.ttf", "BeVietnamPro-SemiBold.ttf",
+                 "BeVietnamPro-Bold.ttf")
+UI_FONT_PREFS = ("Be Vietnam Pro", "Segoe UI Variable Text", "Segoe UI")
+# Be Vietnam Pro thiếu 21/43 ký tự IPA (θ ŋ ə ɪ ʃ ˈ…): Tk mượn glyph font khác nên
+# dòng IPA lẫn cỡ chữ. IPA và nhãn âm vị luôn dùng Segoe UI (đủ 43/43).
+FONT_IPA = "Segoe UI"
+
+REC_RATE = 16000          # đích sau khi resample (Whisper cần 16k mono)
+REC_MAX_SEC = 180
+REC_TARGET_PEAK = 0.70  # -3dB: đủ to mà không rè/vỡ khi phát lại
+REC_FADE_MS = 8         # fade đầu/cuối chống "tách" khi cắt im lặng
+REC_GAIN_MAX = 16.0     # +24dB: đủ kéo micro array yếu lên mức Whisper nghe được
+MIC_MIN_PEAK = 0.008    # -42dB: sàn "có tín hiệu"; nền nhiễu mic thường < 0,1%
+MIC_GOOD_PEAK = 0.03    # dưới mức này: cảnh báo "đầu vào hơi nhỏ"
+
+PRACTICE_SETS = {
+    "vi1": {"name": "Việt 1 — Câu ngắn (n/l)", "lang": "vi",
+            "target": "Lan năm nay lên lớp, nói năng lưu loát lắm.",
+            "hint": "Đọc chậm, phân biệt rõ n và l ở đầu mỗi chữ."},
+    "vi2": {"name": "Việt 2 — Câu dài (n/l)", "lang": "vi",
+            "target": "Nắng lên, lúa non lên xanh. Lan lo làm nương, Nam lo nấu nướng.",
+            "hint": "Chú ý các chữ: nắng, non, Lan, lo, làm, nương, Nam, nấu, nướng."},
+    "vi3": {"name": "Việt 3 — Cặp tối thiểu na/la…", "lang": "vi",
+            "target": "na la, năm lăm, nên lên, no lo, ni li, nu lu",
+            "hint": "Đọc từng cặp, ngắt nhịp rõ giữa hai chữ."},
+    "en1": {"name": "Anh 1 — Âm th", "lang": "en",
+            "target": "Think about this: three thousand thanks.",
+            "hint": "Đặt đầu lưỡi giữa hai răng cho âm th."},
+    "en2": {"name": "Anh 2 — s và sh", "lang": "en",
+            "target": "She sells seashells by the seashore.",
+            "hint": "Phân biệt s (xì nhẹ) và sh (chu môi, xì mạnh)."},
+    "en3": {"name": "Anh 3 — Âm cuối", "lang": "en",
+            "target": "I like cats and dogs, big and small.",
+            "hint": "Bật rõ phụ âm cuối: -ke, -ts, -gs, -g, -ll."},
+    "custom": {"name": "Tùy chỉnh — tự gõ câu", "lang": "auto",
+               "target": "",
+               "hint": "Gõ câu của bạn vào ô bên dưới (Việt hoặc Anh)."},
+}
+_VI_IDS = ["vi1", "vi2", "vi3"]
+
+
+def load_en_lessons():
+    """Nạp lessons_en.json vào PRACTICE_SETS; trả list id (rỗng nếu lỗi)."""
+    try:
+        with open(LESSONS_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        return []
+    ids = []
+    for L in data.get("lessons") or []:
+        lid = L.get("id")
+        if not lid:
+            continue
+        words = L.get("words") or []
+        samples = [("Cả câu", "en/%s.wav" % lid),
+                   ("Chậm", "en/%s_slow.wav" % lid)]
+        samples += [(w, "en/w_%s.wav" % w) for w in words[:2]]
+        hint = L.get("hint") or ""
+        if L.get("focus_ipa"):
+            hint = ("Âm trọng tâm: %s." % L["focus_ipa"]) + \
+                   (("  " + hint) if hint else "")
+        pairs = L.get("pairs") or []
+        if pairs:
+            hint += "  ·  Cặp dễ lẫn: " + ", ".join(
+                "%s–%s" % (a, b) for a, b in pairs[:3])
+        PRACTICE_SETS[lid] = {
+            "name": L.get("title") or lid, "lang": "en",
+            "target": L.get("target") or "", "hint": hint.strip(),
+            "ipa": L.get("ipa") or "", "tips": L.get("tips") or [],
+            "samples": samples, "id": lid,
+        }
+        ids.append(lid)
+    return ids
+
+
+SET_IDS = _VI_IDS + load_en_lessons() + ["custom"]
+SET_NAMES = [PRACTICE_SETS[k]["name"] for k in SET_IDS]
+
+GUIDES = {
+    "n": {"name": "Âm N — tiếng Việt", "lang": "vi", "target": "na năm nên",
+          "instruction": ("1. Đầu lưỡi đặt CHẶT vào lợi trên (gờ cứng ngay sau chân răng cửa hàm trên), "
+                          "bít kín đường miệng.\n"
+                          "2. Dồn hơi lên MŨI, tiếng thoát ra bằng mũi. Cổ họng rung.\n"
+                          "3. Tự kiểm tra: BỊT MŨI rồi đọc “na” — đúng âm N thì tiếng nghẹt hẳn.\n"
+                          "Lỗi hay gặp: đặt lưỡi hờ, hơi thoát ra miệng → thành L (“năm” thành “lăm”)."),
+          "samples": [("na", "vi_na.wav"), ("năm", "vi_nam.wav"), ("nên", "vi_nen.wav")]},
+    "l": {"name": "Âm L — tiếng Việt", "lang": "vi", "target": "la lăm lên",
+          "instruction": ("1. Đầu lưỡi chạm NHẸ vào lợi trên (đúng chỗ của N nhưng chạm hờ, không bít kín).\n"
+                          "2. Hai bên mép lưỡi hạ xuống, hơi thoát ra HAI BÊN (qua miệng, không qua mũi). "
+                          "Cổ họng rung.\n"
+                          "3. Tự kiểm tra: BỊT MŨI rồi đọc “la” — tiếng vẫn ra bình thường.\n"
+                          "Lỗi hay gặp: ấn lưỡi quá chặt + đẩy hơi lên mũi → thành N (“lên” thành “nên”)."),
+          "samples": [("la", "vi_la.wav"), ("lăm", "vi_lam.wav"), ("lên", "vi_len.wav")]},
+    "nl": {"name": "So sánh N – L", "lang": "vi", "target": "na la năm lăm nên lên",
+           "instruction": ("Đọc xen kẽ từng cặp, giữ nguyên vị trí lưỡi, chỉ đổi đường thoát hơi "
+                           "(mũi/miệng): na–la, năm–lăm, nên–lên.\n"
+                           "Mẹo nhớ: BỊT MŨI — N thì nghẹt, L thì vẫn ra.\n"
+                           "Bấm “Thu âm & kiểm tra” rồi xem máy nghe ra chữ nào."),
+           "samples": [("na", "vi_na.wav"), ("la", "vi_la.wav"), ("câu mẫu", "vi_cau.wav")]},
+    "th": {"name": "Âm TH — tiếng Anh", "lang": "en", "target": "think this three thanks",
+           "instruction": ("1. Đặt ĐẦU LƯỠI GIỮA hai răng cửa, thổi hơi ra ngoài.\n"
+                           "2. “think” (không rung) và “this” (rung cổ họng).\n"
+                           "Lỗi người Việt hay gặp: rụt lưỡi vào trong → thành t/d (“think” thành “tink”)."),
+           "samples": [("think", "en_think.wav"), ("this", "en_this.wav")]},
+    "sh": {"name": "S và SH — tiếng Anh", "lang": "en", "target": "she sea sells seashells",
+           "instruction": ("“s” (sea): lưỡi gần lợi, môi bình thường, xì nhẹ.\n"
+                           "“sh” (she): CHU MÔI tròn, lưỡi lùi lại, xì mạnh.\n"
+                           "Lỗi hay gặp: đọc “sh” thành “s” (“she” thành “see”)."),
+           "samples": [("she", "en_she.wav"), ("sea", "en_sea.wav"), ("câu mẫu", "en_cau.wav")]},
+}
+GUIDE_IDS = ["n", "l", "nl", "th", "sh"]
+GUIDE_NAMES = [GUIDES[k]["name"] for k in GUIDE_IDS]
+
+
+def format_time(s):
+    return str(timedelta(seconds=int(s)))
+
+
+# ---------- phụ đề: mốc thời gian, SRT/VTT -> SRT chuẩn ----------
+def clock_time(sec):
+    """00:01:23 — dùng để hiển thị/xuất text kèm mốc thời gian."""
+    sec = max(0, int(sec or 0))
+    h, rem = divmod(sec, 3600)
+    m, s = divmod(rem, 60)
+    return f"{h:02d}:{m:02d}:{s:02d}"
+
+
+def srt_time(sec):
+    """00:01:23,456 — chuẩn SubRip (dấu phẩy cho phần mili giây)."""
+    ms = max(0, int(round(float(sec or 0) * 1000)))
+    h, rem = divmod(ms, 3600000)
+    m, rem = divmod(rem, 60000)
+    s, ms = divmod(rem, 1000)
+    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+
+_TS_RE = re.compile(r"(?:(\d+):)?(\d{1,3}):(\d{2})(?:[.,](\d{1,3}))?")
+_SUB_TAG_RE = re.compile(r"<[^>]*>")
+_SUB_BRACE_RE = re.compile(r"\{\\[^}]*\}")
+_HTML_ENTS = {"&nbsp;": " ", "&amp;": "&", "&lt;": "<", "&gt;": ">",
+              "&quot;": '"', "&#39;": "'", "&apos;": "'"}
+
+
+def _parse_ts(txt):
+    """Đọc '00:01:02,500' / '01:02.500' / '62.5' -> giây (float)."""
+    txt = (txt or "").strip()
+    m = _TS_RE.search(txt)
+    if not m:
+        try:
+            return float(txt)
+        except ValueError:
+            return 0.0
+    h = int(m.group(1) or 0)
+    mi = int(m.group(2))
+    s = int(m.group(3))
+    frac = (m.group(4) or "0").ljust(3, "0")[:3]
+    return h * 3600 + mi * 60 + s + int(frac) / 1000.0
+
+
+def _clean_cue(s):
+    s = _SUB_TAG_RE.sub("", s or "")
+    s = _SUB_BRACE_RE.sub("", s)
+    for k, v in _HTML_ENTS.items():
+        s = s.replace(k, v)
+    return " ".join(s.split())
+
+
+def _parse_sub_text(text):
+    """Đọc nội dung .srt hoặc .vtt -> [(start, end, text)] (chưa lọc trùng)."""
+    norm = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+    norm = norm.replace("\ufeff", "")
+    cues = []
+    start = None
+    end = 0.0
+    body = []
+
+    def flush():
+        nonlocal start, end, body
+        if start is not None:
+            tx = _clean_cue(" ".join(body))
+            if tx:
+                cues.append((start, end, tx))
+        start, end, body = None, 0.0, []
+
+    for ln in norm.split("\n"):
+        if "-->" in ln:
+            flush()
+            left, _, right = ln.partition("-->")
+            start = _parse_ts(left)
+            end = _parse_ts(right.strip().split()[0] if right.strip() else "")
+            continue
+        if start is None:          # WEBVTT / NOTE / số thứ tự SRT…
+            continue
+        if not ln.strip():         # dòng trắng: YouTube chèn ngay sau mốc giờ
+            if body:
+                flush()
+            continue
+        body.append(ln)
+    flush()
+    return cues
+
+
+def _parse_json3(text):
+    """Phụ đề json3 của YouTube (chỉ dùng khi không có vtt/srt)."""
+    cues = []
+    try:
+        data = json.loads(text)
+    except Exception:
+        return cues
+    for ev in data.get("events") or []:
+        body = _clean_cue("".join(s.get("utf8") or "" for s in (ev.get("segs") or [])))
+        if not body:
+            continue
+        st = (ev.get("tStartMs") or 0) / 1000.0
+        du = (ev.get("dDurationMs") or 0) / 1000.0
+        cues.append((st, st + du, body))
+    return cues
+
+
+def _dedupe_cues(cues):
+    """Gộp phụ đề tự động của YouTube (dạng chạy chữ, lặp lại từng dòng)."""
+    out = []
+    for st, en, tx in cues:
+        tx = " ".join((tx or "").split())
+        if not tx:
+            continue
+        if out:
+            pst, pen, ptx = out[-1]
+            if tx == ptx:
+                out[-1] = (pst, max(pen, en), ptx)
+                continue
+            if ptx.endswith(tx):        # dòng cũ đã chứa trọn dòng mới
+                out[-1] = (pst, max(pen, en), ptx)
+                continue
+            if tx.startswith(ptx):      # dòng mới dài hơn: giữ bản đầy đủ
+                out[-1] = (pst, max(pen, en), tx)
+                continue
+        out.append((st, en, tx))
+    return out
+
+
+def _fix_cues(cues, min_dur=0.4):
+    """Bỏ cue rỗng, đảm bảo end > start và thứ tự thời gian hợp lệ."""
+    out = []
+    for st, en, tx in cues:
+        tx = " ".join((tx or "").split())
+        if not tx:
+            continue
+        st = max(0.0, float(st or 0))
+        en = float(en or 0)
+        if en <= st:
+            en = st + min_dur
+        if out and st < out[-1][0]:
+            st = out[-1][0]
+        if en <= st:
+            en = st + min_dur
+        out.append((st, en, tx))
+    return out
+
+
+def split_long_cues(cues, max_chars=92):
+    """Chia câu quá dài thành nhiều dòng phụ đề dễ đọc (chia theo từ)."""
+    out = []
+    for st, en, tx in cues:
+        words = (tx or "").split()
+        if not words:
+            continue
+        chunks, cur = [], []
+        for w in words:
+            if cur and len(" ".join(cur + [w])) > max_chars:
+                chunks.append(" ".join(cur))
+                cur = [w]
+            else:
+                cur.append(w)
+        if cur:
+            chunks.append(" ".join(cur))
+        if len(chunks) <= 1:
+            out.append((st, en, " ".join(words)))
+            continue
+        dur = max(float(en) - float(st), 0.1)
+        total = sum(len(c) for c in chunks) or 1
+        t = float(st)
+        for c in chunks:
+            d = dur * len(c) / total
+            out.append((t, min(t + d, float(en)), c))
+            t += d
+    return out
+
+
+def cues_to_srt(cues):
+    """Xuất SRT chuẩn: số thứ tự, mốc thời gian, dòng trống giữa các cue."""
+    blocks = []
+    for i, (st, en, tx) in enumerate(cues, 1):
+        blocks.append(f"{i}\n{srt_time(st)} --> {srt_time(en)}\n{tx}\n")
+    return "\n".join(blocks) + ("\n" if blocks else "")
+
+
+def cues_to_txt(cues, with_time=True):
+    lines = []
+    for st, en, tx in cues:
+        lines.append(f"[{clock_time(st)}] {tx}" if with_time else tx)
+    return "\n".join(lines).strip() + "\n"
+
+
+def read_subtitle_file(path):
+    """Đọc file phụ đề tải về (.srt/.vtt/.json3) -> cues đã làm sạch."""
+    with open(path, "r", encoding="utf-8", errors="replace") as f:
+        text = f.read()
+    if path.lower().endswith(".json3"):
+        cues = _parse_json3(text)
+    else:
+        cues = _parse_sub_text(text)
+    return _fix_cues(split_long_cues(_dedupe_cues(cues)))
+
+
+def pick_subtitle_source(info, pref="auto"):
+    """Chọn phụ đề tốt nhất: (mã ngôn ngữ, 'manual'|'auto') hoặc (None, None)."""
+    info = _yt_first_info(info)
+    manual = [k for k in (info.get("subtitles") or {}) if k]
+    auto = [k for k in (info.get("automatic_captions") or {}) if k]
+    orig = (info.get("language") or "").strip().lower()
+
+    def find(codes, want):
+        want = (want or "").lower()
+        if not want:
+            return None
+        for c in codes:
+            if c.lower() == want:
+                return c
+        for c in codes:
+            if c.lower().startswith(want + "-") or c.lower().startswith(want + "_"):
+                return c
+        return None
+
+    if pref and pref != "auto":
+        wants = [pref]
+    else:
+        wants = [orig, "vi", "en"] if orig else ["vi", "en"]
+    wants = [w for w in wants if w]
+    for kind, codes in (("manual", manual), ("auto", auto)):
+        for w in wants:
+            hit = find(codes, w)
+            if hit:
+                return hit, kind
+    if orig:
+        for kind, codes in (("manual", manual), ("auto", auto)):
+            hit = find(codes, orig)
+            if hit:
+                return hit, kind
+    if manual:
+        return manual[0], "manual"
+    if auto:
+        return auto[0], "auto"
+    return None, None
+
+
+def _yt_first_info(info):
+    """Nếu là playlist/entries thì lấy video đầu tiên."""
+    if not info:
+        return {}
+    entries = info.get("entries")
+    if entries:
+        for e in entries:
+            if e:
+                return e
+    return info
+
+
+MEDIA_EXTS = (".mp4", ".mkv", ".webm", ".mp3", ".m4a", ".mov", ".opus", ".ogg", ".flac")
+
+
+def pick_downloaded_file(info, out_dir, vid="", since=0.0):
+    """Tìm đúng file media vừa tải.
+
+    Ưu tiên đường dẫn do yt-dlp báo (filepath/requested_downloads), vì file có thể
+    đã tồn tại từ lần tải trước (yt-dlp bỏ qua tải -> mtime cũ, không dò theo giờ được).
+    """
+    cands = []
+    for key in ("filepath", "_filename"):
+        p = info.get(key)
+        if p:
+            cands.append(p)
+    for rd in (info.get("requested_downloads") or []):
+        if not isinstance(rd, dict):
+            continue
+        for key in ("filepath", "_filename"):
+            p = rd.get(key)
+            if p:
+                cands.append(p)
+    found = []
+    for p in cands:
+        stem = os.path.splitext(p)[0]
+        for q in (p, stem + ".mp4", stem + ".mkv", stem + ".webm",
+                  stem + ".mp3", stem + ".m4a", stem + ".opus"):
+            if os.path.isfile(q) and os.path.getsize(q) > 0:
+                found.append(q)
+    if found:
+        return max(set(found), key=os.path.getsize)
+
+    # Dự phòng: quét thư mục, ưu tiên file có [video_id] trong tên
+    try:
+        names = [os.path.join(out_dir, n) for n in os.listdir(out_dir)]
+    except OSError:
+        return None
+    names = [x for x in names if os.path.isfile(x) and x.lower().endswith(MEDIA_EXTS)
+             and os.path.getsize(x) > 0]
+    if vid:
+        hit = [x for x in names if f"[{vid}]" in os.path.basename(x)]
+        if hit:
+            return max(hit, key=os.path.getsize)
+    recent = [x for x in names if os.path.getmtime(x) >= since - 2]
+    if recent:
+        return max(recent, key=os.path.getsize)
+    return None
+
+
+def find_subtitle_file(out_dir, media_path, lang, since):
+    """Tìm file phụ đề đã tải (.srt/.vtt/.json3) trong thư mục đích.
+
+    Ưu tiên file khớp đúng tên video + ngôn ngữ — kể cả file có sẵn từ lần tải
+    trước, vì yt-dlp bỏ qua tải lại nên mtime có thể cũ. Sau đó mới tới file mới.
+    """
+    base = os.path.splitext(media_path)[0] if media_path else ""
+    base_l = os.path.normcase(base)
+    exact = None
+    best = None
+    try:
+        names = os.listdir(out_dir)
+    except OSError:
+        return None
+    for name in names:
+        low = name.lower()
+        if not low.endswith((".srt", ".vtt", ".json3")):
+            continue
+        p = os.path.join(out_dir, name)
+        if not os.path.isfile(p):
+            continue
+        try:
+            fresh = os.path.getmtime(p) >= since - 2
+        except OSError:
+            fresh = False
+        near = bool(base_l) and os.path.normcase(p).startswith(base_l + ".")
+        lang_ok = bool(lang) and f".{str(lang).lower()}." in low
+        if near and lang_ok:
+            if exact is None or os.path.getmtime(p) > os.path.getmtime(exact):
+                exact = p
+        if not fresh:
+            continue
+        if near or lang_ok:
+            if best is None or os.path.getmtime(p) > os.path.getmtime(best):
+                best = p
+    return exact or best
+
+
+_SUB_CODEC = {"mp4": "mov_text", "m4v": "mov_text", "mov": "mov_text",
+              "mkv": "srt", "webm": "webvtt"}
+_LANG3 = {"vi": "vie", "en": "eng", "ja": "jpn", "ko": "kor", "zh": "chi",
+          "fr": "fra", "de": "deu", "th": "tha", "es": "spa", "id": "ind"}
+
+
+def mux_subtitles_into_video(video_path, srt_path, ffmpeg_exe, lang_code="vi"):
+    """Nhúng phụ đề mềm (chọn/bật tắt được) vào MP4/MKV. Trả (path|None, lỗi|None)."""
+    ext = os.path.splitext(video_path)[1].lower().lstrip(".")
+    codec = _SUB_CODEC.get(ext)
+    if not codec:
+        return None, f"định dạng .{ext} chưa hỗ trợ nhúng phụ đề"
+    tmp = os.path.splitext(video_path)[0] + ".subtmp." + ext
+    cmd = [ffmpeg_exe, "-y", "-nostdin", "-hide_banner", "-loglevel", "error",
+           "-i", video_path, "-i", srt_path,
+           # chỉ lấy hình+tiếng của video gốc để không nhân đôi phụ đề khi chạy lại
+           "-map", "0:v?", "-map", "0:a?", "-map", "1:0",
+           "-c", "copy", "-c:s", codec]
+    if codec in ("mov_text", "webvtt"):
+        iso = _LANG3.get(str(lang_code).split("-")[0].lower(), "und")
+        cmd += ["-metadata:s:s:0", f"language={iso}"]
+    cmd.append(tmp)
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True,
+                           encoding="utf-8", errors="replace")
+    except Exception as e:
+        return None, str(e)
+    if r.returncode != 0 or not os.path.exists(tmp):
+        msg = (r.stderr or "").strip().splitlines()
+        return None, (msg[-1] if msg else "ffmpeg báo lỗi")
+    try:
+        os.replace(tmp, video_path)
+    except Exception as e:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        return None, str(e)
+    return video_path, None
+
+
+# ---------- dùng chung cho nhận diện ----------
+def ensure_av_patched():
+    """Vá tương thích faster-whisper 1.2.1 + PyAV>=15 (bỏ tham số metadata_errors)."""
+    try:
+        import av as _av
+        if not getattr(_av.open, "_patched_no_metadata_errors", False):
+            _orig_open = _av.open
+
+            def _patched_open(*args, **kwargs):
+                kwargs.pop("metadata_errors", None)
+                return _orig_open(*args, **kwargs)
+
+            _patched_open._patched_no_metadata_errors = True
+            _av.open = _patched_open
+    except Exception:
+        pass
+
+
+def load_model(model_size):
+    ensure_av_patched()
+    from faster_whisper import WhisperModel
+    return WhisperModel(model_size, device="cpu", compute_type="int8")
+
+
+# ---------- tải video YouTube (yt-dlp + ffmpeg) ----------
+class _YtCancelled(Exception):
+    pass
+
+
+def yt_ffmpeg_location():
+    """Đường dẫn file ffmpeg (dùng gói imageio-ffmpeg kèm sẵn). None nếu chưa có."""
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        return None
+
+
+def yt_build_opts(out_dir, fmt_key, quality, ffmpeg_loc, hook, sub_lang=None):
+    """Dựng tùy chọn cho yt-dlp: chất lượng + merge ra mp4 (hoặc chỉ audio mp3)."""
+    if fmt_key == "audio":
+        fmt = "ba/b"
+    elif quality == "best":
+        fmt = "bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b"
+    else:
+        h = quality
+        fmt = (f"bv*[ext=mp4][height<={h}]+ba[ext=m4a]/"
+               f"bv*[height<={h}]+ba/b[height<={h}]")
+    opts = {
+        "format": fmt,
+        "outtmpl": os.path.join(out_dir, "%(title).80s [%(id)s].%(ext)s"),
+        "noplaylist": True,
+        "windowsfilenames": True,
+        "continuedl": True,
+        "quiet": True,
+        "no_warnings": True,
+        "progress_hooks": [hook],
+        "merge_output_format": None if fmt_key == "audio" else "mp4",
+        "ffmpeg_location": ffmpeg_loc,
+    }
+    if sub_lang:
+        opts.update({
+            "writesubtitles": True,
+            "writeautomaticsub": True,
+            "subtitleslangs": [sub_lang],
+            "subtitlesformat": "srt/vtt/best",
+        })
+    if fmt_key == "audio":
+        opts["postprocessors"] = [{"key": "FFmpegExtractAudio",
+                                   "preferredcodec": "mp3",
+                                   "preferredquality": "192"}]
+    return {k: v for k, v in opts.items() if v is not None}
+
+
+def yt_progress_fraction(d):
+    """Tiến độ 0..1 từ progress hook của yt-dlp; None nếu chưa biết tổng dung lượng."""
+    total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
+    if not total:
+        return None
+    done = d.get("downloaded_bytes") or 0
+    return max(0.0, min(1.0, float(done) / float(total)))
+
+
+# ---------- chấm phát âm (hàm thuần, dễ test) ----------
+def norm_words(s):
+    return re.sub(r"[^\w']", " ", s.lower(), flags=re.UNICODE).split()
+
+
+def _rest_sim(a, b):
+    if not a or not b:
+        return 1.0 if a == b else 0.0
+    return difflib.SequenceMatcher(None, a, b).ratio()
+
+
+_TONE_MARKS = {"\u0300", "\u0301", "\u0303", "\u0309", "\u0323"}  # huyền sắc ngã hỏi nặng
+
+
+def strip_tone_vi(w):
+    """Bỏ DẤU THANH nhưng giữ nguyên chữ cái (â/ă/ê/ô/ơ/ư vẫn khác a/e/o/u)."""
+    import unicodedata
+    return "".join(c for c in unicodedata.normalize("NFD", w) if c not in _TONE_MARKS)
+
+
+def strip_marks_vi(w):
+    """Bỏ MỌI dấu (thanh + mũ/trăng/móc, đ→d) — chỉ còn chữ cái gốc: "lắm" → "lam"."""
+    import unicodedata
+    base = "".join(c for c in unicodedata.normalize("NFD", w)
+                   if not unicodedata.combining(c))
+    return base.replace("đ", "d").replace("Đ", "D")
+
+
+# ---------- mic + nâng chất lượng bản thu ----------
+def list_input_mics():
+    """Liệt kê micro khả dụng: [(index, tên, hostapi, samplerate)]. Lỗi -> []."""
+    try:
+        import sounddevice as sd
+        apis = sd.query_hostapis()
+        out = []
+        for i, d in enumerate(sd.query_devices()):
+            if d.get("max_input_channels", 0) > 0:
+                try:
+                    api = apis[d["hostapi"]]["name"]
+                except Exception:
+                    api = "?"
+                try:
+                    sr = int(d.get("default_samplerate", 44100) or 44100)
+                except Exception:
+                    sr = 44100
+                out.append((i, d["name"], api, sr))
+        return out
+    except Exception:
+        return []
+
+
+def list_usable_mics(mics=None):
+    """Micro có thể thu liên tục: loại host API WDM-KS.
+
+    PortAudio không hỗ trợ blocking read trên WDM-KS nên Recorder (InputStream +
+    stream.read) luôn lỗi 'Blocking API not supported'. Vì vậy WDM-KS không được
+    đưa vào ô chọn micro — nếu không người dùng sẽ chọn đúng thiết bị luôn hỏng.
+    Máy chỉ có WDM-KS: trả lại danh sách gốc để không bỏ trắng ô chọn.
+    """
+    mics = list_input_mics() if mics is None else mics
+    ok = [m for m in mics if "WDM-KS" not in str(m[2] or "").upper()]
+    return ok or list(mics)
+
+
+def rescan_audio_devices():
+    """Nạp lại danh sách thiết bị của PortAudio (thấy mic vừa cắm/kết nối).
+
+    PortAudio chỉ liệt kê thiết bị tại thời điểm khởi tạo; sounddevice không tự
+    cập nhật khi người dùng bật tai nghe Bluetooth, AirPods hay cắm mic USB **sau**
+    khi mở app. Gọi `_terminate` + `_initialize` để đọc lại. Chỉ gọi khi không có
+    stream nào đang chạy (thu âm/phát mẫu), nếu không sẽ làm đứt stream.
+    """
+    try:
+        import sounddevice as sd
+        sd._terminate()
+        sd._initialize()
+        return True
+    except Exception:
+        return False
+
+
+# Từ khoá nhận ra thiết bị NGHE là tai nghe/loa bluetooth (không tính loa máy).
+_HEADPHONE_HINTS = ("airpod", "headset", "hands-free", "handsfree", "bluetooth",
+                    "buds", "jabra", "logitech", "beats", "soundcore", "wh-1000",
+                    "galaxy buds", "freebuds")
+# Từ chung chung không dùng làm khoá nhận dạng thiết bị.
+_GENERIC_WORDS = {
+    "headphones", "headset", "speakers", "speaker", "primary", "sound", "mapper",
+    "driver", "output", "input", "audio", "realtek", "digital", "stereo", "hands",
+    "free", "microphone", "microphones", "array", "find", "wireless", "bluetooth",
+}
+
+
+def _device_brand_key(name):
+    """Từ khoá nhận dạng thiết bị: nội dung trong ngoặc, bỏ từ chung chung."""
+    import re
+    m = re.search(r"\(([^)]*)\)", name or "")
+    text = (m.group(1) if m else (name or "")).lower()
+    text = text.replace("-", " ").replace("®", " ").replace("(r)", " ")
+    words = [w for w in re.split(r"[^a-z0-9]+", text)
+             if len(w) >= 4 and w not in _GENERIC_WORDS]
+    if not words:
+        return None
+    return max(words, key=len)
+
+
+def headset_mic_missing(devices=None):
+    """Tai nghe đang chỉ có chiều NGHE (Windows chưa mở micro) -> trả tên, không thì None.
+
+    AirPods/headset Bluetooth thường hiện 2 mục: "Headphones (X)" chỉ để nghe và
+    "Headset (X Hands-Free AG Audio)" có micro. Nếu chỉ thấy mục nghe, micro chưa
+    được bật (profile Hands-Free/Telephony tắt) và app không thể chọn được.
+    """
+    try:
+        import sounddevice as sd
+        devs = sd.query_devices() if devices is None else devices
+    except Exception:
+        return None
+    ins, outs = [], []
+    for d in devs:
+        n = str(d.get("name") or "")
+        if d.get("max_input_channels", 0) > 0:
+            ins.append(n.lower())
+        if d.get("max_output_channels", 0) > 0:
+            outs.append(n)
+    for out in outs:
+        low = out.lower()
+        if not any(h in low for h in _HEADPHONE_HINTS):
+            continue
+        key = _device_brand_key(out)
+        if key and not any(key in i for i in ins):
+            return out
+    return None
+
+
+def pick_default_mic(mics):
+    """Ưu tiên: micro thật > thiết bị alias; DirectSound > WASAPI > MME > khác.
+
+    Vì sao DirectSound trên WASAPI: đo trên máy hiện tại (Microphone Array
+    Intel SST, người dùng đọc cùng câu) cho thấy DirectSound ~2,0% còn WASAPI
+    ~0,3% đỉnh tín hiệu cho CÙNG một mic vật lý — WASAPI rơi vào nhánh xử lý
+    của driver làm tín hiệu nhỏ đi, dễ bị cổng "mic im lặng" chặn oan.
+    """
+    if not mics:
+        return None
+    best, best_score = mics[0][0], -999
+    for item in mics:
+        idx, name, api = item[0], item[1], item[2]
+        n = name.lower()
+        s = 0
+        if "stereo mix" in n or "loopback" in n or "what u hear" in n:
+            s -= 10
+        if "sound mapper" in n or "primary sound" in n:
+            s -= 3          # thiết bị alias, không phải micro thật
+        if "micro" in n or "mic" in n:
+            s += 2
+        au = api.upper()
+        if "DIRECT" in au:
+            s += 2
+        elif "WASAPI" in au:
+            s += 1
+        elif "MME" in au:
+            s += 0
+        else:  # WDM-KS thường liệt kê nhiều sub-device gây nhiễu
+            s -= 1
+        if s > best_score:
+            best, best_score = idx, s
+    return best
+
+
+def query_mic_rate(device_idx, fallback=44100):
+    """Tần số gốc của mic. Thu đúng tần số gốc rồi resample mềm về 16k
+    sẽ sạch hơn nhiều so với ép InputStream chạy 16k (PortAudio resample thô)."""
+    try:
+        import sounddevice as sd
+        sr = sd.query_devices(device_idx).get("default_samplerate", fallback)
+        sr = int(sr or fallback)
+        return sr if 8000 <= sr <= 192000 else fallback
+    except Exception:
+        return fallback
+
+
+def probe_input_levels(dur=0.5, limit=12):
+    """Thu thử từng micro thật (bỏ loopback), trả về [(idx, tên, hostapi, đỉnh)]
+    giảm dần theo đỉnh. Dùng để phát hiện micro đang tắt tiếng trên máy."""
+    try:
+        import numpy as np
+        import sounddevice as sd
+    except Exception:
+        return []
+    rows = []
+    for idx, name, api, sr in list_input_mics()[:limit]:
+        n = name.lower()
+        if ("stereo mix" in n or "loopback" in n or "what u hear" in n
+                or "sound mapper" in n):
+            continue
+        if "WDM-KS" in api.upper():
+            # WDM-KS không hỗ trợ blocking read -> Recorder không thu được.
+            continue
+        try:
+            sr = int(sr or 44100)
+            data = sd.rec(int(sr * dur), samplerate=sr, channels=1,
+                          dtype="int16", device=idx)
+            sd.wait()
+            x = data.astype(np.float32).flatten() / 32768.0
+            peak = float(np.max(np.abs(x))) if len(x) else 0.0
+            rows.append((idx, name, api, peak))
+        except Exception:
+            continue
+    rows.sort(key=lambda t: -t[3])
+    return rows
+
+
+def best_input_mic(dur=1.0):
+    rows = probe_input_levels(dur)
+    return rows[0] if rows else None
+
+
+def resample_to_16k(samples, src_rate, dst_rate=16000):
+    """Resample tuyến tính bằng numpy (không cần scipy). Đủ tốt cho voice."""
+    import numpy as np
+    x = np.asarray(samples).flatten().astype(np.float32)
+    if len(x) == 0 or src_rate == dst_rate:
+        return x
+    ratio = dst_rate / float(src_rate)
+    n_out = max(1, int(round(len(x) * ratio)))
+    old_idx = np.linspace(0, len(x) - 1, len(x))
+    new_idx = np.linspace(0, len(x) - 1, n_out)
+    return np.interp(new_idx, old_idx, x).astype(np.float32)
+
+
+def enhance_audio(samples, rate=16000):
+    """Lọc DC + high-pass mềm (~75Hz) + giới hạn mềm + chuẩn hóa về -3dB
+    + fade + cắt im lặng đầu/cuối. Trả về (int16, info). Hàm thuần, dễ test."""
+    import numpy as np
+    x = np.asarray(samples).flatten().astype(np.float32) / 32768.0
+    if len(x) == 0:
+        return np.asarray(samples).flatten().astype(np.int16), {
+            "peak0": 0.0, "peak1": 0.0, "quiet": True,
+            "clipped": False, "trimmed": 0.0}
+    peak_raw = float(np.max(np.abs(x))) if len(x) else 0.0
+    clipped = peak_raw >= 0.99
+    x = x - float(np.mean(x))  # bỏ DC (ù, lệch mic)
+    # High-pass 1 cực ~75Hz: y[n] = x[n]-x[n-1] + a*y[n-1], mềm, không ringing
+    # như FFT brick-wall cũ (nguyên nhân gây "rè kim loại").
+    if len(x) > 1 and rate > 0:
+        fc = 75.0
+        import math
+        rc = 1.0 / (2.0 * math.pi * fc)
+        dt = 1.0 / float(rate)
+        a = rc / (rc + dt)
+        y = np.empty_like(x)
+        y[0] = x[0]
+        for n in range(1, len(x)):
+            y[n] = (x[n] - x[n - 1]) + a * y[n - 1]
+        x = y
+    peak0 = float(np.max(np.abs(x))) if len(x) else 0.0
+    if peak0 > 1e-6:
+        # Chuẩn hóa về -3dB; nếu đầu vào đã vỡ thì HẠ xuống chứ không khuếch đại thêm.
+        target = REC_TARGET_PEAK
+        if clipped and peak0 > 0:
+            gain = min(1.0, target / peak0)
+        else:
+            # Giới hạn +24dB (REC_GAIN_MAX): micro array laptop cho đỉnh 1–3% vẫn
+            # lên được mức Whisper nghe rõ mà không kéo nền nhiễu quá mức.
+            gain = min(REC_GAIN_MAX, target / max(peak0, 1e-4))
+        x = x * gain
+    # Soft-clip nhẹ chống vỡ đầu ra
+    x = np.tanh(x * 1.0)
+    x = np.clip(x, -1.0, 1.0)
+    peak1 = float(np.max(np.abs(x))) if len(x) else 0.0
+    # Cắt im lặng đầu/cuối có hysteresis + fade chống "tách"
+    trimmed = 0.0
+    mag = np.abs(x)
+    thr = max(0.015, peak1 * 0.04)
+    idx = np.where(mag > thr)[0]
+    if len(idx):
+        pad = max(1, int(rate * 0.08))  # giữ 80ms ngữ cảnh
+        s = max(0, int(idx[0]) - pad)
+        e = min(len(x), int(idx[-1]) + pad)
+        trimmed = ((int(idx[0]) - s) + (e - int(idx[-1]))) / rate
+        x = x[s:e]
+    f = max(1, int(rate * REC_FADE_MS / 1000.0))
+    if len(x) > 2 * f:
+        ramp = np.linspace(0.0, 1.0, f, dtype=np.float32)
+        x[:f] = x[:f] * ramp
+        x[-f:] = x[-f:] * ramp[::-1]
+    out = (x * 32767).astype(np.int16)
+    return out, {"peak0": peak_raw, "peak1": peak1, "quiet": peak_raw < 0.05,
+                 "clipped": clipped, "trimmed": trimmed}
+
+
+def flag_pair(t, h, lang):
+    """Trả về (mã, gợi ý) nếu nghi phát âm sai mẫu quen thuộc, else None."""
+    if not t or not h or t == h:
+        return None
+    # Lời nhắc viết như người nói (S-4): "“lan” nghe thành “nan” — âm L bị đọc thành N"
+    if lang in ("vi", "auto"):
+        if len(t) > 1 and len(h) > 1 and {t[0], h[0]} == {"n", "l"} \
+                and _rest_sim(t[1:], h[1:]) >= 0.5:
+            return ("nl", "“%s” nghe thành “%s” — âm %s bị đọc thành %s"
+                    % (t, h, t[0].upper(), h[0].upper()))
+    if lang in ("en", "auto"):
+        if t.startswith("th") and h[:1] in "tdsz" and not h.startswith("th") \
+                and _rest_sim(t[2:], h[1:]) >= 0.5:
+            return ("th", "“%s” nghe thành “%s” — âm th bị đọc thành %s" % (t, h, h[0]))
+        for p1, p2 in (("sh", "s"), ("s", "sh")):
+            if t.startswith(p1) and h.startswith(p2) \
+                    and _rest_sim(t[len(p1):], h[len(p2):]) >= 0.5:
+                return ("sh", "“%s” nghe thành “%s” — lẫn s và sh" % (t, h))
+        if len(t) > 2 and t[-1] in "tdkpgbs" and h == t[:-1]:
+            return ("final", "“%s” nghe thành “%s” — nuốt âm cuối %s" % (t, h, t[-1]))
+        if len(t) > 3 and t.endswith("e") and h == t[:-2] + "e" and t[-2] in "tdkpgbsxz":
+            return ("final", "“%s” nghe thành “%s” — nuốt âm cuối %s" % (t, h, t[-2]))
+    return None
+
+
+def score_pronunciation(target, hyp, lang):
+    """Căn chỉnh từng từ mục tiêu vs máy nghe được. Trả về dict kết quả."""
+    tw, hw = norm_words(target), norm_words(hyp)
+    # Lượt 1 (theo vị trí đọc): cùng vị trí i thì từ i của bài vs từ i bạn đọc
+    # là cặp so sánh đúng nhất (vd: mục tiêu "nam lam", đọc "lam lam" -> nam/lam).
+    pos_flag = {}
+    for i, t in enumerate(tw):
+        h = hw[i] if i < len(hw) else None
+        fl = flag_pair(t, h, lang)
+        if fl:
+            pos_flag[i] = fl[1]
+    sm = difflib.SequenceMatcher(None, tw, hw)
+    # Gộp cặp delete+insert kề nhau thành replace: cùng vị trí đọc thì
+    # "thiếu chữ A + thừa chữ B" thực chất là "đọc A thành B" (vd: nam->lam).
+    ops, i = [], 0
+    raw = sm.get_opcodes()
+    while i < len(raw):
+        tag, i1, i2, j1, j2 = raw[i]
+        if i + 1 < len(raw):
+            nt, ni1, ni2, nj1, nj2 = raw[i + 1]
+            if tag == "delete" and nt == "insert":
+                ops.append(("replace", i1, i2, nj1, nj2))
+                i += 2
+                continue
+            if tag == "insert" and nt == "delete":
+                ops.append(("replace", ni1, ni2, j1, j2))
+                i += 2
+                continue
+        ops.append((tag, i1, i2, j1, j2))
+        i += 1
+    items = []  # (từ_mục_tiêu|None, trạng_thái, từ_bạn_đọc|None, gợi_ý|None)
+    ti = 0  # chỉ số từ mục tiêu (để tra gợi ý theo vị trí đọc ở lượt 1)
+    for tag, i1, i2, j1, j2 in ops:
+        if tag == "equal":
+            for w in tw[i1:i2]:
+                items.append((w, "ok", w, None))
+                ti += 1
+        else:
+            ts, hs = tw[i1:i2], hw[j1:j2]
+            for k in range(max(len(ts), len(hs))):
+                t = ts[k] if k < len(ts) else None
+                h = hs[k] if k < len(hs) else None
+                if t and h:
+                    fl = flag_pair(t, h, lang)
+                    if fl:
+                        items.append((t, "warn", h, fl[1]))
+                    elif lang in ("vi", "auto") and strip_tone_vi(t) == strip_tone_vi(h):
+                        items.append((t, "tone", h,
+                                      "“%s” nghe thành “%s” — sai dấu thanh" % (t, h)))
+                    elif lang in ("vi", "auto") and strip_marks_vi(t) == strip_marks_vi(h):
+                        # cùng chữ cái gốc, khác dấu phụ (ă/â/ê/ô/ơ/ư/đ) ± dấu thanh:
+                        # "lắm" → "lám". Vẫn là từ sai (không tính đúng), chỉ đặt tên rõ (S-4).
+                        items.append((t, "rhyme", h,
+                                      "“%s” nghe thành “%s” — sai vần/dấu" % (t, h)))
+                    elif ti in pos_flag:
+                        items.append((t, "warn", h, pos_flag[ti]))
+                    else:
+                        items.append((t, "bad", h, None))
+                    ti += 1
+                elif t:
+                    if ti in pos_flag:
+                        items.append((t, "warn", h, pos_flag[ti]))
+                    else:
+                        items.append((t, "bad", None, "Thiếu từ “%s”" % t))
+                    ti += 1
+                else:
+                    items.append((None, "extra", h, None))
+    total = len(tw)
+    correct = sum(1 for it in items if it[1] == "ok")
+    warns = sum(1 for it in items if it[1] == "warn")
+    tones = sum(1 for it in items if it[1] == "tone")
+    rhymes = sum(1 for it in items if it[1] == "rhyme")
+    score = round(100.0 * correct / total, 1) if total else 0.0
+    return {"items": items, "score": score, "correct": correct,
+            "total": total, "warns": warns, "tones": tones, "rhymes": rhymes,
+            "hyp": " ".join(hw)}
+
+
+GOP_LEVEL_STRONG = 25   # điểm GOP dưới mức này → "lệch rõ"; còn lại trong issues → "hơi lệch"
+VI_SOUND_CODES = {"nl": "N/L", "tone": "dấu thanh", "rhyme": "vần/dấu"}  # "âm hay sai" bài Việt
+
+# ---------- cổng bằng chứng (D-29): không hiện điểm khi máy không chắc ----------
+UNSURE_RATIO = 0.5        # low_conf + đúng < 50 % số từ → chưa chấm
+GARBAGE_RATIO = 1.6       # nghe ≥ 1,6 × số từ mẫu + điểm < GARBAGE_SCORE → chuỗi bịa
+GARBAGE_SCORE = 35
+# Câu Whisper hay tự sinh trên bản thu nhỏ/nhiễu (học từ video YouTube). Chỉ tính khi
+# câu mẫu KHÔNG chứa cụm đó.
+HALLUCINATION_PHRASES = ("cảm ơn các bạn đã theo dõi", "hẹn gặp lại các bạn",
+                         "đăng ký kênh", "ghiền mì gõ", "subscribe",
+                         "thanks for watching", "thank you for watching")
+UNSURE_TIPS = ("Để micro cách miệng 10–20 cm, đọc to và chậm.",
+               "Tránh chỗ ồn; tắt quạt hoặc nhạc nền.",
+               "Đọc tiếng Việt: chọn Model “small”.")
+
+
+def evidence_gate(res):
+    """None nếu đủ bằng chứng để chấm; ngược lại lý do: hallucination | garbage | low_conf."""
+    hyp = " ".join(norm_words(res.get("hyp", "")))
+    tgt = " ".join(norm_words(res.get("target", "")))
+    for ph in HALLUCINATION_PHRASES:
+        p = " ".join(norm_words(ph))
+        if p in hyp and p not in tgt:
+            return "hallucination"
+    hw_n, tw_n = len(hyp.split()), len(tgt.split())
+    if tw_n and hw_n >= GARBAGE_RATIO * tw_n and res.get("score", 0) < GARBAGE_SCORE:
+        return "garbage"
+    total = res.get("total") or 0
+    ratio = (res.get("correct", 0) / float(total)) if total else 0.0
+    if res.get("low_conf") and ratio < UNSURE_RATIO:
+        return "low_conf"
+    return None
+
+
+# ---------- lời khuyên tiếng Việt (S-4) ----------
+_VI_TIPS = {
+    "L": ("Lưỡi chỉ chạm nhẹ lợi trên, để hơi thoát hai bên miệng. "
+          "Bịt mũi: tiếng vẫn ra là đúng L.", "vi_la.wav"),
+    "N": ("Đầu lưỡi bít kín lợi trên, đẩy hơi lên mũi. "
+          "Bịt mũi: tiếng nghẹt hẳn là đúng N.", "vi_na.wav"),
+}
+_VI_INITIALS = ("ngh", "ng", "nh", "ch", "gh", "gi", "kh", "ph", "qu", "th", "tr",
+                "b", "c", "d", "đ", "g", "h", "k", "l", "m", "n", "p", "r", "s", "t", "v", "x")
+_TONE_NAMES = {"̀": "huyền", "́": "sắc", "̉": "hỏi", "̃": "ngã",
+               "̣": "nặng"}
+
+
+def vi_spell(word):
+    """Tách âm tiết tiếng Việt: "lắm" → "l + ăm + thanh sắc". Hàm thuần."""
+    import unicodedata
+    w = (word or "").lower()
+    tone = "ngang"
+    for c in unicodedata.normalize("NFD", w):
+        if c in _TONE_NAMES:
+            tone = _TONE_NAMES[c]
+    base = unicodedata.normalize("NFC", strip_tone_vi(w))
+    init = next((i for i in _VI_INITIALS if base.startswith(i) and len(base) > len(i)), "")
+    rhyme = base[len(init):]
+    return (init + " + " if init else "") + rhyme + " + thanh " + tone
+
+
+def _vi_cards(chips):
+    """Thẻ lỗi bài Việt: gom N/L theo chiều, mỗi lỗi thanh/vần một thẻ."""
+    cards, groups = [], {}
+    for c in chips:
+        if c["code"] == "nl":
+            key = c["target"][:1].upper()            # L→N hay N→L
+            groups.setdefault(key, []).append(c)
+    for key, cs in groups.items():
+        other = "N" if key == "L" else "L"
+        tip, sample = _VI_TIPS.get(key, ("", None))
+        cards.append({
+            "title": "%s đọc thành %s — %s" % (key, other, ", ".join("“%s”" % c["target"] for c in cs)),
+            "level": "%d lần" % len(cs), "tip": tip, "kind": "warn", "ipa": False,
+            "word": cs[0]["target"], "sample": sample, "heard": cs[0]["heard"]})
+    for c in chips:
+        if c["code"] in ("tone", "rhyme"):
+            what = "sai dấu thanh" if c["code"] == "tone" else "sai vần/dấu"
+            cards.append({
+                "title": "“%s” nghe thành “%s”" % (c["target"], c["heard"]),
+                "level": what, "kind": "bad" if c["code"] == "rhyme" else "warn", "ipa": False,
+                "tip": "Đọc tách: %s, rồi ghép lại liền một hơi." % vi_spell(c["target"]),
+                "word": c["target"], "sample": None, "heard": c["heard"]})
+    return cards
+
+
+HIST_TRIES_MAX = 30   # D-30: giữ 30 lần luyện gần nhất mỗi bài
+
+
+def hist_add_try(hist, sid, view, ts):
+    """Ghi một lần luyện vào dict lịch sử (D-30). Hàm thuần — không ghi file.
+
+    Lần "chưa nghe rõ" (view state "unsure", D-29) không được lưu. File cũ thiếu
+    "tries" vẫn đọc được (coi như danh sách rỗng).
+    """
+    if view.get("state") == "unsure":
+        return hist
+    h = hist.setdefault(sid, {"n": 0, "best": 0.0, "last": None, "ph": {}})
+    h["n"] = int(h.get("n", 0)) + 1
+    h["last"] = round(float(view.get("score", 0)), 1)
+    h["best"] = max(float(h.get("best") or 0), h["last"])
+    h["ts"] = ts
+    ph = h.get("ph") if isinstance(h.get("ph"), dict) else {}
+    for k, n in (view.get("sounds") or {}).items():
+        ph[k] = ph.get(k, 0) + int(n)
+    h["ph"] = ph
+    tries = h.get("tries") if isinstance(h.get("tries"), list) else []
+    tries.append({"ts": ts, "c": view.get("correct", 0), "t": view.get("total", 0),
+                  "ph": dict(view.get("sounds") or {})})
+    h["tries"] = tries[-HIST_TRIES_MAX:]
+    return hist
+
+
+def hist_weakest(hist, lang):
+    """Âm hay sai nhất, CHỈ trong các bài cùng ngôn ngữ (D-30) → (nhãn, số lần) | None.
+
+    EN: mã ARPAbet → "/θ/". VI: mã VI_SOUND_CODES → "N/L". Bỏ qua dữ liệu cũ lẫn
+    ngôn ngữ (vd âm vị tiếng Anh ghi vào bài Việt khi Whisper nhận nhầm ngôn ngữ).
+    """
+    tot = {}
+    for sid, h in hist.items():
+        if not isinstance(h, dict) or PRACTICE_SETS.get(sid, {}).get("lang") != lang:
+            continue
+        for ph, n in (h.get("ph") or {}).items():
+            if (ph in VI_SOUND_CODES) != (lang == "vi"):
+                continue
+            tot[ph] = tot.get(ph, 0) + int(n)
+    if not tot:
+        return None
+    ph = max(tot, key=tot.get)
+    label = VI_SOUND_CODES[ph] if lang == "vi" else "/%s/" % pron_en.ARPABET_IPA.get(ph, ph.lower())
+    return label, tot[ph]
+
+
+STT_STATES = ("idle", "recording", "processing", "result", "error")
+PRAC_STATES = ("idle", "recording", "scoring", "result", "unsure", "error")
+
+
+def stt_controls(state, idle_label):
+    """Nút/thanh tiến trình của tab Chuyển văn bản theo trạng thái (D-31). Hàm thuần."""
+    return {
+        "run_enabled": state != "processing",
+        "run_text": {"processing": "Đang xử lý…",
+                     "recording": "■  Dừng & chuyển thành văn bản"}.get(state, idle_label),
+        "cancel_enabled": state in ("processing", "recording"),
+        "show_pbar": state == "processing",
+    }
+
+
+def prac_controls(state, has_replay):
+    """Nút/thanh tiến trình của tab Luyện theo trạng thái (D-31). Hàm thuần."""
+    return {
+        "rec_enabled": state != "scoring",
+        "rec_text": "■  Dừng & chấm" if state == "recording" else "●  Thu âm & chấm",
+        "replay_enabled": has_replay and state not in ("recording", "scoring"),
+        "show_pbar": state == "scoring",
+    }
+
+
+def gop_level(score):
+    """Mức chữ cho điểm GOP (I7: không hiện như % đúng)."""
+    return "lệch rõ" if float(score) < GOP_LEVEL_STRONG else "hơi lệch"
+
+
+def build_result_view(res, lesson=None):
+    """Kết quả chấm → nội dung hiển thị (D-31, spec S-2). Hàm thuần, không Tk.
+
+    `_prac_done` chỉ VẼ những gì hàm này trả; mọi quyết định "nói gì" nằm ở đây để
+    test được. lesson: {"lang": ...} của bài (None với Học âm / Tùy chỉnh).
+    Khóa ổn định: state, target, words, chips, extras_total, notes, mismatches,
+    is_en, gop, phon_cards, phon_more, perfect, headline, summary, score_line,
+    status_line, flags (low_conf, garbage), sounds (đếm âm cho lịch sử).
+    """
+    items = res.get("items") or []
+    is_en = res.get("det_lang") == "en"
+    lang = res.get("det_lang") or (lesson or {}).get("lang") or "auto"
+    g = res.get("gop")
+    phon = res.get("phon") or {}
+    issues = phon.get("issues") or []
+
+    words, chips = [], []
+    for tw, st, hw, note in items:
+        kind = "missing" if (st == "bad" and not hw) else st
+        code = None
+        if st == "warn" and tw and hw:
+            fl = flag_pair(tw, hw, lang if lang in ("vi", "en") else "auto")
+            code = fl[0] if fl else None
+        elif st in ("tone", "rhyme"):
+            code = st
+        w = {"target": tw, "heard": hw, "kind": kind, "note": note, "code": code}
+        words.append(w)
+        if tw is not None:
+            chips.append(w)
+    extras = [w["heard"] for w in words if w["kind"] == "extra"]
+    extras_total = len(extras)
+
+    n_iss = 0
+    if is_en:
+        n_iss = len(g.get("issues") or []) if g else len(issues)
+
+    # ---- thẻ "Cần sửa" (S-2/S-4): tối đa 4, phụ âm trước nguyên âm ----
+    cards, covered = [], set()
+    if is_en and g:
+        for it in g.get("issues") or []:
+            wi = it.get("wi")
+            covered.add(wi)
+            heard = chips[wi]["heard"] if isinstance(wi, int) and 0 <= wi < len(chips) else None
+            lv = gop_level(it["score"])
+            cards.append({"title": "/%s/ trong “%s”" % (it.get("ipa_exp") or it.get("ph", ""), it["word"]),
+                          "level": lv, "kind": "bad" if lv == "lệch rõ" else "warn",
+                          "tip": it["tip"], "ipa": True, "word": it["word"],
+                          "sample": "en/w_%s.wav" % it["word"].lower(), "heard": heard,
+                          "detail": "%d%%%s" % (round(it["score"]), (" · mẫu %d%%" % round(it["ref_score"]))
+                                               if it.get("ref_score") is not None else "")})
+    elif is_en and issues:
+        seen = set()
+        for it in issues:
+            covered.add(it.get("i"))
+            key = (it["exp"], it["got"], it["word"])
+            if key in seen:
+                continue
+            seen.add(key)
+            got = it.get("ipa_got")
+            level = ("nghe thành [%s]" % got) if got else "bị mất"
+            if it.get("approx"):
+                level += " · đoán theo chữ"
+            cards.append({"title": "/%s/ trong “%s”" % (it.get("ipa_exp") or it["exp"], it["word"]),
+                          "level": level, "kind": "warn", "tip": it["tip"], "ipa": True,
+                          "word": it["word"], "sample": "en/w_%s.wav" % it["word"].lower(),
+                          "heard": it.get("heard_word"), "detail": None,
+                          "vowel": it.get("kind") == "vowel"})
+    elif not is_en:
+        cards = _vi_cards(chips)
+        covered = {i for i, w in enumerate(chips) if w["code"] in ("nl", "tone", "rhyme")}
+    cards_more = max(0, len(cards) - 4)
+    cards = cards[:4]
+
+    # ghi chú mức từ chưa có thẻ nào giải thích (vd "Thiếu từ …")
+    notes = [w["note"] for i, w in enumerate(chips)
+             if w["kind"] in ("warn", "tone", "rhyme", "bad", "missing") and w["note"]
+             and i not in covered]
+
+    score, correct, total = res.get("score", 0), res.get("correct", 0), res.get("total", 0)
+    perfect = (score >= 95 and not extras_total and not notes and not n_iss and not cards
+               and not res.get("warns") and not res.get("tones"))
+    gate = evidence_gate(res)
+    state = "unsure" if gate else "result"
+
+    if state == "unsure":
+        headline = "Máy chưa nghe rõ bài đọc"
+        summary = ("Lần này chưa chấm điểm và không lưu vào tiến bộ — thường do micro nhỏ "
+                   "hoặc phòng ồn.")
+    elif perfect:
+        headline = f"Hoàn hảo — đúng cả {total} từ"
+        summary = "Đọc rõ từng từ. Thử bài tiếp theo hoặc đọc nhanh hơn một chút."
+    else:
+        headline = f"Đúng {correct}/{total} từ"
+        first = cards[0]["title"] if cards else (notes[0] if notes else "")
+        summary = ("Lỗi chính: " + first) if first else ""
+    heard_note = ""
+    if gate == "hallucination":
+        heard_note = ("Câu này thường do máy tự sinh khi bản thu quá nhỏ hoặc nhiễu, "
+                      "không phải lời bạn đọc.")
+    elif gate == "garbage":
+        heard_note = "Máy nghe ra chuỗi dài bất thường so với câu mẫu — có thể là tiếng ồn."
+    hyp_show = res.get("hyp", "")
+    if len(hyp_show) > 160:
+        hyp_show = hyp_show[:160].rstrip() + " …"
+    status_line = "" if state == "unsure" else (
+        f"Máy nghe bạn đọc là: “{hyp_show}”"
+        + ("  (máy nghe chưa chắc)" if res.get("low_conf") else ""))
+
+    # đếm "âm hay sai" theo NGÔN NGỮ CỦA BÀI (D-30): EN = âm vị ARPAbet, VI = mã n/l/thanh/vần
+    sounds = {}
+    lesson_lang = (lesson or {}).get("lang")
+    if state == "result" and lesson_lang == "en" and is_en:
+        if g:
+            for it in g.get("issues") or []:
+                if it.get("ph"):
+                    sounds[it["ph"]] = sounds.get(it["ph"], 0) + 1
+        else:
+            for ph, n in (phon.get("counts") or {}).items():
+                sounds[ph] = sounds.get(ph, 0) + int(n)
+    elif state == "result" and lesson_lang == "vi" and not is_en:
+        for w in chips:
+            if w["code"] in VI_SOUND_CODES:
+                sounds[w["code"]] = sounds.get(w["code"], 0) + 1
+
+    if state == "unsure":
+        ring = {"frac": 0.0, "text": "?", "tone": "muted"}
+    else:
+        frac = (correct / float(total)) if total else 0.0
+        ring = {"frac": frac, "text": "✓" if perfect else f"{correct}/{total}",
+                "tone": "ok" if perfect or frac >= 1 else ("warn" if frac >= 0.5 else "bad")}
+
+    return {
+        "state": state, "gate": gate,
+        "target": res.get("target", ""), "words": words, "chips": chips,
+        "extras": extras, "extras_total": extras_total, "notes": notes,
+        "is_en": is_en, "cards": cards, "cards_more": cards_more, "has_gop": bool(is_en and g),
+        "gop_has_ref": bool(g and g.get("has_ref")),
+        "n_issues": n_iss, "perfect": perfect, "correct": correct, "total": total,
+        "score": score, "ring": ring, "headline": headline, "summary": summary,
+        "score_line": "" if state == "unsure" else f"{correct}/{total} từ",
+        "status_line": status_line,
+        "heard_text": res.get("hyp", ""), "heard_note": heard_note,
+        "tips": list(UNSURE_TIPS) if state == "unsure" else [],
+        "low_conf": bool(res.get("low_conf")), "garbage": bool(res.get("garbage")),
+        "sounds": sounds,
+    }
+
+# ======================================================================
+#  GIAO DIỆN v2.0
+#  3 tab: Chuyển thành văn bản (File / YouTube / Ghi âm) · Luyện phát âm · Cài đặt
+# ======================================================================
+
+CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
+DEFAULT_CFG = {
+    "model": "base",
+    "lang": "auto",
+    "out_dir": "",
+    "theme": "light",
+    "yt_kind": "video",
+    "yt_quality": "best",
+    "subs": True,
+    "embed": True,
+    "sub_lang": "auto",
+    "mic": "",
+    "geometry": "1200x830",
+}
+
+THEMES = {
+    "light": {
+        "bg": "#EDF0F4", "card": "#FFFFFF", "card2": "#F5F7FA", "border": "#D8DEE6",
+        "fg": "#17212B", "muted": "#5D6B7A", "accent": "#0B6BCB", "accent2": "#0958A8",
+        "field": "#FFFFFF", "sel": "#CFE3F7",
+        "ok_bg": "#DCF3DD", "bad_bg": "#FFDCDC", "warn_bg": "#FFE7B8",
+        "ok_fg": "#1B5E20", "bad_fg": "#A8001B", "log_bg": "#F7F9FB",
+        "btn": "#F2F5F8", "btn_hover": "#E3E9F0", "disabled": "#E7EBF0",
+        # token D-32 cho kết quả luyện (B3): chữ cảnh báo, vòng điểm, hộp thông tin
+        "warn_fg": "#7A4B00", "accent_fg": "#0A5DB0", "info_bg": "#E7F0FB",
+        "track": "#E3E8EE", "ring_ok": "#2E7D32", "ring_warn": "#C77700",
+        "ring_bad": "#C62828",
+    },
+    "dark": {
+        "bg": "#191B1F", "card": "#24272C", "card2": "#2B2F35", "border": "#3A4048",
+        "fg": "#E8EBEF", "muted": "#9BA5B0", "accent": "#3B82F6", "accent2": "#2F6FD0",
+        "field": "#1E2126", "sel": "#2F4A6B",
+        "ok_bg": "#1D3A25", "bad_bg": "#482025", "warn_bg": "#453A1C",
+        "ok_fg": "#9BE3A5", "bad_fg": "#FF9AA2", "log_bg": "#1E2126",
+        "btn": "#2E333A", "btn_hover": "#3A4048", "disabled": "#2A2E34",
+        "warn_fg": "#F5C76B", "accent_fg": "#8AB6FF", "info_bg": "#1E2F48",
+        "track": "#33383F", "ring_ok": "#4CAF50", "ring_warn": "#E0A030",
+        "ring_bad": "#E57373",
+    },
+}
+
+YT_KINDS = [("subs", "Chỉ transcript (.srt/.txt)"),
+            ("video", "Video MP4 (+ phụ đề)"),
+            ("audio", "Audio MP3 (+ phụ đề)")]
+YT_KIND_NAMES = [n for _, n in YT_KINDS]
+YT_KIND_BY_NAME = {n: c for c, n in YT_KINDS}
+YT_KIND_NAME = {c: n for c, n in YT_KINDS}
+
+REC_LONG_SEC = 900          # giới hạn ghi âm ở tab chuyển văn bản (15 phút)
+
+
+def load_config():
+    cfg = dict(DEFAULT_CFG)
+    try:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            for k, v in data.items():
+                if k in cfg:
+                    cfg[k] = v
+    except Exception:
+        pass
+    return cfg
+
+
+def save_config(cfg):
+    try:
+        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
+def safe_stem(title, vid=""):
+    """Tên file an toàn trên Windows từ tiêu đề video."""
+    s = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", str(title or "")).strip().strip(".")
+    s = re.sub(r"\s+", " ", s)[:80].strip()
+    if not s:
+        s = "transcript"
+    return f"{s} [{vid}]" if vid else s
+
+
+def quality_note(info):
+    # peak1 là đỉnh SAU khi chuẩn hóa (luôn ~70%) -> phải dùng peak0 (đỉnh gốc).
+    p0 = float(info.get("peak0", 0.0) or 0.0)
+    parts = ["đỉnh vào %.0f%%" % (min(p0, 1.0) * 100)]
+    if info.get("trimmed", 0) > 0.2:
+        parts.append("cắt %.1fs im lặng" % info["trimmed"])
+    if info.get("clipped"):
+        parts.append("đầu vào bị VỠ — lần sau để mic xa hơn / giảm volume")
+    elif p0 < 0.03:
+        parts.append("đầu vào hơi NHỎ — để mic gần hơn (10–20cm)")
+    elif p0 < 0.05:
+        parts.append("đầu vào hơi nhỏ — đọc to hơn một chút")
+    return "Đã xử lý: " + ", ".join(parts) + "."
+
+
+def wav_peak(path):
+    """Đỉnh biên độ (0..1) của file wav — để phát hiện file gần như im lặng."""
+    try:
+        import wave
+        import numpy as np
+        with wave.open(path, "rb") as w:
+            sw = w.getsampwidth()
+            raw = w.readframes(w.getnframes())
+        if sw == 2:
+            x = np.frombuffer(raw, dtype="<i2").astype(np.float32) / 32768.0
+        elif sw == 1:
+            x = (np.frombuffer(raw, dtype=np.uint8).astype(np.float32) - 128.0) / 128.0
+        elif sw == 4:
+            x = np.frombuffer(raw, dtype="<i4").astype(np.float32) / 2147483648.0
+        else:
+            return 1.0
+        return float(np.max(np.abs(x))) if len(x) else 0.0
+    except Exception:
+        return 1.0
+
+
+def register_ui_fonts(font_dir=FONTS_DIR):
+    """Đăng ký font đóng gói cho riêng tiến trình (FR_PRIVATE, không cài vào Windows).
+
+    Gọi TRƯỚC khi tạo cửa sổ Tk. Trả số file đăng ký được (0 nếu thiếu file / không
+    phải Windows) — khi đó pick_ui_font tự lùi về font hệ thống.
+    """
+    try:
+        import ctypes
+        add = ctypes.windll.gdi32.AddFontResourceExW
+    except Exception:
+        return 0
+    n = 0
+    for name in UI_FONT_FILES:
+        p = os.path.join(font_dir, name)
+        if not os.path.isfile(p):
+            continue
+        try:
+            if add(p, 0x10, 0) > 0:  # 0x10 = FR_PRIVATE
+                n += 1
+        except Exception:
+            pass
+    return n
+
+
+def pick_ui_font(families, prefs=UI_FONT_PREFS):
+    """Font đầu tiên trong prefs mà Tk thấy; không có thì 'Segoe UI'."""
+    have = set(families)
+    for f in prefs:
+        if f in have:
+            return f
+    return "Segoe UI"
+
+
+def _hex_rgb(c):
+    c = c.lstrip("#")
+    return tuple(int(c[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def _mix(fg, bg, a):
+    f, b = _hex_rgb(fg), _hex_rgb(bg)
+    return "#%02x%02x%02x" % tuple(int(round(b[i] + (f[i] - b[i]) * a)) for i in range(3))
+
+
+def _seg_dist(px_, py_, ax, ay, bx, by):
+    dx, dy = bx - ax, by - ay
+    t = max(0.0, min(1.0, ((px_ - ax) * dx + (py_ - ay) * dy) / float(dx * dx + dy * dy)))
+    return math.hypot(px_ - (ax + t * dx), py_ - (ay + t * dy))
+
+
+def _raster(size, layers, bg, ss=3):
+    """Vẽ các lớp hình (màu, hàm inside(x,y) trên toạ độ 0..1) có khử răng cưa.
+
+    Trả list hàng, mỗi hàng là list '#rrggbb' hoặc None (trong suốt). Hàm thuần.
+    """
+    rows = []
+    step = 1.0 / (size * ss)
+    for y in range(size):
+        row = []
+        for x in range(size):
+            col, cov_any = None, 0.0
+            for color, inside in layers:
+                hit = 0
+                for sy in range(ss):
+                    for sx in range(ss):
+                        if inside((x * ss + sx + 0.5) * step, (y * ss + sy + 0.5) * step):
+                            hit += 1
+                a = hit / float(ss * ss)
+                if a > 0:
+                    col = _mix(color, col or bg, a) if col or a < 1 else color
+                    cov_any = max(cov_any, a)
+            row.append(col if cov_any > 0 else None)
+        rows.append(row)
+    return rows
+
+
+def indicator_rows(kind, on, size, colors):
+    """Ảnh chỉ báo radio/checkbox theo theme (V-01, V-02). Hàm thuần, dễ test.
+
+    kind: "radio" | "check"; colors: {"box","fill","accent","mark","bg"}.
+    Checkbox chọn = nền accent + dấu ✓ trắng (không còn dấu "✕" của theme clam).
+    """
+    edge = colors["accent"] if on else colors["box"]
+    if kind == "radio":
+        layers = [(edge, lambda x, y: (x - .5) ** 2 + (y - .5) ** 2 <= .45 ** 2),
+                  (colors["fill"], lambda x, y: (x - .5) ** 2 + (y - .5) ** 2 <= .33 ** 2)]
+        if on:
+            layers.append((colors["accent"],
+                           lambda x, y: (x - .5) ** 2 + (y - .5) ** 2 <= .2 ** 2))
+    else:
+        def rbox(r, pad):
+            def inside(x, y):
+                qx = max(abs(x - .5) - (.5 - pad - r), 0)
+                qy = max(abs(y - .5) - (.5 - pad - r), 0)
+                return qx * qx + qy * qy <= r * r
+            return inside
+        layers = [(edge, rbox(.16, .06))]
+        if on:
+            layers.append((colors["mark"], lambda x, y: min(
+                _seg_dist(x, y, .26, .52, .43, .69), _seg_dist(x, y, .43, .69, .75, .33)) <= .075))
+        else:
+            layers.append((colors["fill"], rbox(.1, .14)))
+    return _raster(size, layers, colors["bg"])
+
+
+def logo_rows(size, accent="#0B6BCB"):
+    """Biểu tượng cửa sổ Oriole (V-08): vòng tròn xanh + chim vàng. Hàm thuần."""
+    bird = [(9, 19), (11, 15.5), (14, 13), (18, 11.4), (23, 12), (21, 13.2), (20, 15),
+            (20, 17.2), (18.6, 19.8), (16, 21.6), (13, 22), (10.8, 21.2)]
+    bird = [(x / 32.0, y / 32.0) for x, y in bird]
+
+    def in_poly(x, y):
+        hit, j = False, len(bird) - 1
+        for i in range(len(bird)):
+            xi, yi = bird[i]
+            xj, yj = bird[j]
+            if (yi > y) != (yj > y) and x < (xj - xi) * (y - yi) / (yj - yi) + xi:
+                hit = not hit
+            j = i
+        return hit
+    return _raster(size, [
+        (accent, lambda x, y: (x - .5) ** 2 + (y - .5) ** 2 <= (15 / 32.0) ** 2),
+        ("#F5B82E", in_poly),
+        ("#17212B", lambda x, y: (x - 19 / 32.0) ** 2 + (y - 13.5 / 32.0) ** 2 <= (1.4 / 32.0) ** 2),
+    ], "#FFFFFF")
+
+
+def rows_to_photo(img, rows):
+    """Đổ kết quả _raster vào tk.PhotoImage (pixel None = trong suốt)."""
+    img.blank()
+    img.put(" ".join("{" + " ".join(c or "#000000" for c in r) + "}" for r in rows))
+    for y, r in enumerate(rows):
+        for x, c in enumerate(r):
+            if c is None:
+                img.transparency_set(x, y, True)
+    return img
+
+
+def remove_temp(path):
+    """Xóa file tạm, bỏ qua lỗi (đã xóa / đang bị khóa). True nếu file không còn."""
+    if not path:
+        return True
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
+    except OSError:
+        return False
+    return True
+
+
+def save_frames_wav(frames, prefix, src_rate):
+    """Ghép frame int16 -> lọc ù/chuẩn hóa/cắt im lặng -> file wav 16k mono."""
+    import numpy as np
+    raw = np.concatenate(frames, axis=0).flatten().astype(np.float32) / 32768.0
+    y16 = resample_to_16k(raw, src_rate, REC_RATE)
+    audio_i16 = (np.clip(y16, -1.0, 1.0) * 32767).astype(np.int16)
+    audio, info = enhance_audio(audio_i16, REC_RATE)
+    fd, path = tempfile.mkstemp(prefix=prefix, suffix=".wav")
+    os.close(fd)
+    with wave.open(path, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(REC_RATE)
+        w.writeframes(audio.tobytes())
+    return path, len(audio) / REC_RATE, info
+
+
+_IPA_RANGES = ((0x0250, 0x02AF), (0x02B0, 0x02FF), (0x03B8, 0x03B8), (0x014B, 0x014B),
+               (0x00F0, 0x00F0))
+
+
+def has_ipa(text):
+    """Chuỗi có ký tự IPA (θ ð ŋ ɪ ˈ…) → phải vẽ bằng FONT_IPA (D-28)."""
+    return any(lo <= ord(ch) <= hi for ch in (text or "") for lo, hi in _IPA_RANGES)
+
+
+def wav_segment_bounds(n_frames, rate, start, end, pad=0.12):
+    """Khung [a, b) cho đoạn start..end giây, nới pad giây hai đầu, kẹp trong file."""
+    a = max(0, int((float(start) - pad) * rate))
+    b = min(int(n_frames), int(round((float(end) + pad) * rate)))
+    return a, max(a, b)
+
+
+def play_wav_segment(path, start, end):
+    """Phát một đoạn của file wav (vd một từ trong bản thu — nút "▶ Bạn đọc")."""
+    import numpy as np
+    import sounddevice as sd
+    with wave.open(path, "rb") as w:
+        n, fr, ch = w.getnframes(), w.getframerate(), w.getnchannels()
+        a, b = wav_segment_bounds(n, fr, start, end)
+        w.setpos(a)
+        data = np.frombuffer(w.readframes(b - a), dtype=np.int16).astype(np.float32) / 32768.0
+        if ch > 1:
+            data = data.reshape(-1, ch).mean(axis=1)
+    peak = float(np.max(np.abs(data))) if len(data) else 0.0
+    if peak > 1e-6:
+        data = data * min(1.0, 0.7 / peak)
+    sd.play(data, fr)
+    sd.wait()
+
+
+def play_wav_file(path):
+    """Phát file wav (chuẩn hóa -3dB cho đều tai). Ném lỗi nếu không phát được."""
+    import numpy as np
+    import sounddevice as sd
+    with wave.open(path, "rb") as w:
+        n, fr, ch = w.getnframes(), w.getframerate(), w.getnchannels()
+        data = np.frombuffer(w.readframes(n), dtype=np.int16).astype(np.float32) / 32768.0
+        if ch > 1:
+            data = data.reshape(-1, ch).mean(axis=1)
+    peak = float(np.max(np.abs(data))) if len(data) else 0.0
+    if peak > 1e-6:
+        data = data * min(1.0, 0.7 / peak)
+    sd.play(data, fr)
+    sd.wait()
+
+
+class Recorder:
+    """Thu âm dùng chung: tab chuyển văn bản + tab luyện phát âm."""
+
+    def __init__(self):
+        self.frames = []
+        self.level = 0.0
+        self.rate = REC_RATE
+        self.t0 = 0.0
+        self.active = False
+        self.speech_seen = False
+        self.voice_t = 0.0
+        self.stop_reason = None
+        self._blocks = queue.Queue()
+
+    def start(self, device, rate, max_sec, on_autostop, on_error,
+              auto_stop=None):
+        """Thu âm.
+
+        auto_stop={"silence": 1.3, "min_speech": 0.4, "start_timeout": 7.0}
+        -> tự dừng khi đọc xong (im lặng sau khi đã nói) hoặc khi không nghe
+        thấy giọng. on_autostop(reason) với reason = "max" | "silence" | "nospeech".
+        """
+        import numpy as np
+        import sounddevice as sd
+
+        self.frames = []
+        self.level = 0.0
+        self.rate = rate
+        self.t0 = time.time()
+        self.active = True
+        self.speech_seen = False
+        self.voice_t = 0.0
+        self.stop_reason = None
+        cap = int(max_sec * rate)
+        step = max(1, int(rate * 0.1))
+        cfg = dict(auto_stop or {})
+        silence = float(cfg.get("silence", 0.0) or 0.0)
+        min_speech = float(cfg.get("min_speech", 0.35) or 0.0)
+        start_timeout = float(cfg.get("start_timeout", 0.0) or 0.0)
+        calib = []      # 0,5 s đầu: đo nền nhiễu
+        noise = 0.003
+
+        def finish(reason):
+            self.stop_reason = reason
+            self.active = False
+            on_autostop(reason)
+
+        blocks = self._blocks
+        while not blocks.empty():      # bỏ block cũ của lần thu trước
+            try:
+                blocks.get_nowait()
+            except queue.Empty:
+                break
+
+        def _on_block(indata, frames_n, t_info, status):
+            if self.active:
+                blocks.put(indata.copy())
+
+        def run():
+            nonlocal noise
+            got = 0
+            try:
+                # Callback mode, KHÔNG dùng stream.read: trên máy này DirectSound
+                # trả toàn số 0 với blocking read (lỗi driver/PortAudio) trong khi
+                # callback vẫn thu bình thường -> trước đây app báo "mic im lặng".
+                with sd.InputStream(device=device, samplerate=rate, channels=1,
+                                    dtype="int16", blocksize=step,
+                                    callback=_on_block) as stream:
+                    while self.active:
+                        try:
+                            data = blocks.get(timeout=0.25)
+                        except queue.Empty:
+                            continue
+                        if data is None or len(data) == 0:
+                            continue
+                        self.frames.append(np.asarray(data, dtype=np.int16).copy())
+                        got += len(data)
+                        blk = np.asarray(data, dtype=np.float32) / 32768.0
+                        rms = float(np.sqrt(np.mean(blk * blk)))
+                        self.level = rms
+                        now = time.time()
+
+                        # 0,5 s đầu đo nền nhiễu; sau đó ngưỡng bật/tắt có hysteresis
+                        # để người nói nhỏ vẫn không bị cắt giữa chừng.
+                        if now - self.t0 < 0.5:
+                            calib.append(rms)
+                            noise = float(np.median(calib))
+                        elif not self.speech_seen:
+                            # Sàn thấp (0,4% RMS): micro array laptop cho đỉnh ~2%
+                            # (RMS ~0,5%) vẫn phải bật được, nếu không app báo oan
+                            # "không nghe thấy giọng". Trần 2,4% chặn phòng ồn.
+                            thr = max(0.004, min(0.024, noise * 2.2))
+                            if rms > thr:
+                                self.speech_seen = True
+                                self.voice_t = now
+                            else:
+                                noise = 0.9 * noise + 0.1 * rms
+                        else:
+                            thr = max(0.0025, min(0.022, noise * 1.2))
+                            if rms > thr:
+                                self.voice_t = now
+                            elif rms < thr * 0.7:
+                                noise = 0.98 * noise + 0.02 * rms
+
+                        if now - self.t0 > max_sec or got >= cap:
+                            finish("max")
+                            break
+                        if auto_stop:
+                            if (not self.speech_seen and start_timeout > 0
+                                    and now - self.t0 > start_timeout):
+                                finish("nospeech")
+                                break
+                            if (self.speech_seen and silence > 0
+                                    and now - self.voice_t > silence
+                                    and now - self.t0 > min_speech):
+                                finish("silence")
+                                break
+            except Exception as e:
+                self.active = False
+                msg = str(e)
+                if "Blocking API not supported" in msg:
+                    msg = ("Micro WDM-KS không hỗ trợ thu liên tục trong app. "
+                           "Hãy chọn micro cùng tên ở [Windows WASAPI] hoặc [MME].")
+                elif "WdmSyncIoctl" in msg or "Unanticipated host error" in msg:
+                    msg = ("Không mở được micro — thiết bị đang bận hoặc driver lỗi. "
+                           "Đóng ứng dụng khác đang dùng micro (Zoom/Teams/trình duyệt), "
+                           "rút ra cắm lại tai nghe, rồi bấm Quét lại và thử lại.")
+                on_error(f"Lỗi thu âm: {msg}\nThử chọn micro khác hoặc bấm Quét lại.")
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def stop(self):
+        self.active = False
+        time.sleep(0.15)
+        # Vớt nốt các block còn trong hàng đợi (callback có thể nhanh hơn vòng xử lý).
+        while True:
+            try:
+                d = self._blocks.get_nowait()
+            except queue.Empty:
+                break
+            if d is not None and len(d):
+                self.frames.append(d.copy())
+        return list(self.frames), self.rate
+
+    def level_bar(self):
+        import math
+        peak = max(self.level, 1e-6)
+        db = 20 * math.log10(peak)
+        n = int(round(10 * min(1.0, max(0.0, (db + 50) / 44))))
+        state = "TỐT" if -30 <= db <= -6 else ("NHỎ" if db < -30 else "TO/VỠ")
+        return "[" + "#" * n + "·" * (10 - n) + f"]  {db:.0f} dB  ({state})"
+
+class App(tk.Tk):
+    def __init__(self):
+        register_ui_fonts()  # phải trước khi tạo cửa sổ để Tk thấy Be Vietnam Pro (D-28)
+        super().__init__()
+        import tkinter.font as tkfont
+        self.F = pick_ui_font(tkfont.families(self))
+        self.cfg = load_config()
+        self.title(f"{APP_TITLE} v{VERSION}")
+        # Tỉ lệ DPI: 100% -> 1.0, 150% -> 1.5, 250% -> 2.5. Mọi số đo pixel đều nhân tỉ lệ này
+        # để giao diện không bị bóp nhỏ / chữ quá to trên màn hình HiDPI.
+        try:
+            self.S = max(1.0, min(3.0, self.winfo_fpixels("1i") / 96.0))
+        except Exception:
+            self.S = 1.0
+        sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
+        w = min(int(1480 * self.S), int(sw * 0.94))
+        h = min(int(940 * self.S), int(sh * 0.92))
+        ge = str(self.cfg.get("geometry") or "")
+        m = re.match(r"^(\d+)x(\d+)", ge)
+        if m:
+            gw, gh = int(m.group(1)), int(m.group(2))
+            if gw >= int(900 * self.S) and gh >= int(600 * self.S):
+                w, h = min(gw, int(sw * 0.96)), min(gh, int(sh * 0.94))
+        self.geometry(f"{w}x{h}")
+        self.minsize(int(980 * self.S), int(640 * self.S))
+
+        # ----- biến dùng chung -----
+        self.model_name = tk.StringVar(value=self.cfg.get("model", "base"))
+        self.lang = tk.StringVar(value=self.cfg.get("lang", "auto"))
+        # ô Ngôn ngữ hiển thị tên tiếng Việt; hai biến tự đồng bộ (V-13)
+        self.lang_label = tk.StringVar(value=LANG_NAME.get(self.lang.get(), LANG_NAMES[0]))
+        self.lang_label.trace_add("write", lambda *_: self._lang_from_label())
+        self.lang.trace_add("write", lambda *_: self._lang_to_label())
+        self.out_dir = tk.StringVar(value=self.cfg.get("out_dir") or YT_DIR_DEFAULT)
+        self.theme_name = tk.StringVar(value=self.cfg.get("theme", "light"))
+        self.status = tk.StringVar(value="Sẵn sàng — chọn nguồn rồi bấm Bắt đầu.")
+        self.stats = tk.StringVar(value="")
+
+        # ----- nguồn -----
+        self.src = tk.StringVar(value="file")
+        self.file_path = tk.StringVar()
+        self.yt_url = tk.StringVar()
+        self.yt_kind = tk.StringVar(
+            value=YT_KIND_NAME.get(self.cfg.get("yt_kind"), YT_KIND_NAMES[1]))
+        self.yt_quality = tk.StringVar(
+            value={c: n for c, n in YT_QUALITIES}.get(self.cfg.get("yt_quality"),
+                                                      YT_QUALITIES[0][1]))
+        self.y_subs = tk.BooleanVar(value=bool(self.cfg.get("subs", True)))
+        self.y_embed = tk.BooleanVar(value=bool(self.cfg.get("embed", True)))
+        self.yt_sub_lang = tk.StringVar(
+            value={c: n for c, n in YT_SUB_LANGS}.get(self.cfg.get("sub_lang"),
+                                                       YT_SUB_LANG_NAMES[0]))
+
+        self.show_time = tk.BooleanVar(value=False)
+        self.busy = False          # = stt_state == "processing" (đặt trong _set_stt_state)
+        self.stt_state = "idle"    # D-31
+        self.cancel_flag = False
+        self._queue = queue.Queue()
+        self._texts = []          # (widget, role) để đổi màu khi đổi theme
+        self.last_cues = []
+        self.last_payload = {}
+        self.last_media = None
+        self.last_srt = None
+        self.last_txt = None
+
+        # ----- thu âm -----
+        self.recorder = Recorder()
+        self.recording = False
+        self.rec_owner = None     # "stt" (tab 1) | "prac" (tab 2): ai đang dùng recorder
+        self.last_wav = None      # bản ghi luyện gần nhất (Nghe lại) — xóa khi thay/đóng app
+        self.playing = False
+
+        # ----- luyện phát âm -----
+        self.prac_mode = tk.StringVar(value="set")
+        self.prac_pick = tk.StringVar(value=SET_NAMES[0])
+        self.set_id = tk.StringVar(value="vi1")
+        self.guide_id = tk.StringVar(value="n")
+        self.custom_text = tk.StringVar(value="")
+        self.p_status = tk.StringVar(value="Chọn bài (hoặc âm), bấm Thu âm rồi đọc to, rõ.")
+        self.p_score = tk.StringVar(value="")
+        self.p_working = False     # = prac_state == "scoring" (đặt trong _set_prac_state)
+        self.prac_state = "idle"   # D-31
+        self.mic_var = tk.StringVar()
+        self.mic_ids = []
+        self._mic_probing = False
+        self._mic_names = []
+        self._mic_combos = []
+        self._mic_hints = []
+        self.hist = self._load_hist()
+        self._inton = None
+
+        self._apply_theme()
+        self._build_ui()
+        self.yt_kind.trace_add("write", lambda *_: self._yt_subs_changed())
+        self._yt_subs_changed()
+        self._refresh_mics()
+        self._src_changed()
+        self._refresh_practice()
+        self._poll()  # vòng lặp nhận cập nhật từ worker (tự lặp lại mỗi 80ms)
+        self._log("Sẵn sàng. Chọn file, dán link YouTube hoặc thu âm rồi bấm Bắt đầu.")
+        self._render_preview()
+        self._set_icon()
+        self.update_idletasks()
+        self._init_sash()
+        self.after_idle(self._init_sash)
+
+        self.bind("<Control-o>", lambda e: self._pick_file())
+        self.bind("<Control-s>", lambda e: self._save_txt())
+        self.bind("<Control-Return>", lambda e: self._primary())
+        self.bind("<Escape>", lambda e: self._cancel())
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    # ================= giao diện chung =================
+    def px(self, v):
+        """Đổi số đo thiết kế (px ở 100%) sang pixel thật theo DPI."""
+        return int(round(float(v) * self.S))
+
+    def _set_icon(self):
+        """Biểu tượng cửa sổ/taskbar vẽ bằng code, không cần file ảnh (V-08)."""
+        try:
+            self._icons = [rows_to_photo(tk.PhotoImage(master=self, width=n, height=n),
+                                         logo_rows(n)) for n in (64, 32)]
+            self.iconphoto(True, *self._icons)
+        except Exception:
+            pass
+
+    def _lang_from_label(self):
+        code = LANG_BY_NAME.get(self.lang_label.get())
+        if code and code != self.lang.get():
+            self.lang.set(code)
+
+    def _lang_to_label(self):
+        name = LANG_NAME.get(self.lang.get())
+        if name and name != self.lang_label.get():
+            self.lang_label.set(name)
+
+    def _apply_theme(self):
+        P = THEMES.get(self.theme_name.get(), THEMES["light"])
+        self.P = P
+        st = ttk.Style(self)
+        try:
+            st.theme_use("clam")
+        except tk.TclError:
+            pass
+        F = self.F
+        st.configure(".", font=(F, 10), background=P["bg"], foreground=P["fg"],
+                     fieldbackground=P["field"], bordercolor=P["border"],
+                     lightcolor=P["card"], darkcolor=P["card"], insertcolor=P["fg"])
+        st.configure("App.TFrame", background=P["bg"])
+        st.configure("Card.TFrame", background=P["card"], bordercolor=P["border"],
+                     relief="solid", borderwidth=1)
+        st.configure("CardInner.TFrame", background=P["card"], borderwidth=0, relief="flat")
+        st.configure("Card2.TFrame", background=P["card2"])
+        st.configure("Header.TFrame", background=P["card"])
+
+        st.configure("TLabel", background=P["bg"], foreground=P["fg"])
+        st.configure("Card.TLabel", background=P["card"], foreground=P["fg"])
+        st.configure("Card2.TLabel", background=P["card2"], foreground=P["fg"])
+        st.configure("H1.TLabel", background=P["card"], foreground=P["fg"],
+                     font=(F, 17, "bold"))
+        st.configure("Sub.TLabel", background=P["card"], foreground=P["muted"], font=(F, 9))
+        st.configure("Card.Title.TLabel", background=P["card"], foreground=P["accent"],
+                     font=(F, 11, "bold"))
+        st.configure("Card.Hint.TLabel", background=P["card"], foreground=P["muted"],
+                     font=(F, 9))
+        st.configure("Card.Mono.TLabel", background=P["card"], foreground=P["fg"],
+                     font=("Consolas", 10))
+        st.configure("Card.Big.TLabel", background=P["card"], foreground=P["fg"],
+                     font=(F, 13, "bold"))
+        st.configure("Card.Headline.TLabel", background=P["card"], foreground=P["fg"],
+                     font=(F, 16, "bold"))
+        st.configure("Muted.TLabel", background=P["bg"], foreground=P["muted"], font=(F, 9))
+        st.configure("Rec.TLabel", background=P["card"], foreground="#E5484D",
+                     font=(F, 10, "bold"))
+
+        if hasattr(self, "p_int"):
+            self.p_int.configure(bg=P["card2"])
+            self._draw_intonation()
+
+        st.configure("TButton", background=P["btn"], foreground=P["fg"],
+                     bordercolor=P["border"], focuscolor=P["btn"], padding=(self.px(12), self.px(6)),
+                     relief="flat")
+        st.map("TButton",
+               background=[("active", P["btn_hover"]), ("disabled", P["disabled"])],
+               foreground=[("disabled", P["muted"])])
+        st.configure("Accent.TButton", background=P["accent"], foreground="#FFFFFF",
+                     bordercolor=P["accent2"], padding=(self.px(16), self.px(8)), font=(F, 10, "bold"))
+        st.map("Accent.TButton",
+               background=[("active", P["accent2"]), ("disabled", P["disabled"])],
+               foreground=[("disabled", P["muted"])])
+        st.configure("Ghost.TButton", background=P["btn"], foreground=P["fg"],
+                     bordercolor=P["border"], padding=(self.px(10), self.px(5)))
+        st.map("Ghost.TButton",
+               background=[("active", P["btn_hover"]), ("disabled", P["disabled"])],
+               foreground=[("disabled", P["muted"])])
+
+        st.configure("TEntry", fieldbackground=P["field"], foreground=P["fg"],
+                     bordercolor=P["border"], insertcolor=P["fg"], padding=6)
+        st.map("TEntry", bordercolor=[("focus", P["accent"])],
+               fieldbackground=[("disabled", P["disabled"])],
+               foreground=[("disabled", P["muted"])])
+        st.configure("TCombobox", fieldbackground=P["field"], background=P["btn"],
+                     foreground=P["fg"], arrowcolor=P["muted"], padding=5,
+                     arrowsize=self.px(13))
+        # "disabled" phải đứng trước "readonly": ô readonly bị tắt trước đây trông như đang bật (V-03)
+        st.map("TCombobox",
+               fieldbackground=[("disabled", P["disabled"]), ("readonly", P["field"])],
+               foreground=[("disabled", P["muted"])],
+               arrowcolor=[("disabled", P["border"])],
+               bordercolor=[("focus", P["accent"])])
+        self.option_add("*TCombobox*Listbox.background", P["field"])
+        self.option_add("*TCombobox*Listbox.foreground", P["fg"])
+        self.option_add("*TCombobox*Listbox.selectBackground", P["accent"])
+        self.option_add("*TCombobox*Listbox.selectForeground", "#FFFFFF")
+
+        # Radio/checkbox: chỉ báo vẽ bằng ảnh theo theme (V-01: radio tối bị ngược,
+        # V-02: checkbox clam vẽ dấu "✕"). Ảnh được vẽ lại mỗi lần đổi theme.
+        self._theme_indicators(P, st)
+        for name, bg in (("TCheckbutton", P["bg"]), ("Card.TCheckbutton", P["card"]),
+                         ("Card2.TCheckbutton", P["card2"]),
+                         ("TRadiobutton", P["bg"]), ("Card.TRadiobutton", P["card"]),
+                         ("Card2.TRadiobutton", P["card2"])):
+            st.configure(name, background=bg, foreground=P["fg"], borderwidth=0,
+                         relief="flat", padding=(0, self.px(2)))
+            st.map(name, background=[("active", bg)], foreground=[("disabled", P["muted"])])
+
+        # Tab: clam đặt padding riêng cho tab đang chọn nên chữ bị tụt xuống và tab
+        # không chọn trông như nút nổi (V-04). Cùng padding, viền phẳng theo nền.
+        tab_pad = (self.px(18), self.px(9))
+        st.configure("TNotebook", background=P["bg"], borderwidth=0, tabmargins=(0, 4, 0, 0))
+        st.configure("TNotebook.Tab", background=P["bg"], foreground=P["muted"],
+                     padding=tab_pad, borderwidth=0, font=(F, 10),
+                     bordercolor=P["bg"], lightcolor=P["bg"], darkcolor=P["bg"])
+        st.map("TNotebook.Tab",
+               background=[("selected", P["card"])],
+               foreground=[("selected", P["accent2"] if self.theme_name.get() != "dark"
+                            else P["accent"])],
+               lightcolor=[("selected", P["accent"])],
+               bordercolor=[("selected", P["border"])],
+               darkcolor=[("selected", P["card"])],
+               padding=[("selected", tab_pad)],
+               expand=[("selected", (0, 0, 0, 0))])
+        st.configure("TProgressbar", background=P["accent"], troughcolor=P["card2"],
+                     bordercolor=P["card2"], lightcolor=P["accent"], darkcolor=P["accent"],
+                     thickness=self.px(8))
+        st.configure("Card.TNotebook", background=P["card"], borderwidth=0,
+                     tabmargins=(0, self.px(3), 0, 0))
+        ctab_pad = (self.px(14), self.px(7))
+        st.configure("Card.TNotebook.Tab", background=P["card2"], foreground=P["muted"],
+                     padding=ctab_pad, borderwidth=0, font=(F, 10),
+                     bordercolor=P["card2"], lightcolor=P["card2"], darkcolor=P["card2"])
+        st.map("Card.TNotebook.Tab",
+               background=[("selected", P["card"])],
+               foreground=[("selected", P["accent"])],
+               lightcolor=[("selected", P["accent"])],
+               bordercolor=[("selected", P["border"])],
+               darkcolor=[("selected", P["card"])],
+               padding=[("selected", ctab_pad)],
+               expand=[("selected", (0, 0, 0, 0))])
+        st.configure("TSeparator", background=P["border"])
+        st.configure("TPanedwindow", background=P["bg"], sashwidth=self.px(8))
+        # thanh cuộn mảnh theo theme cho mọi tk.Text (V-07)
+        st.configure("Vertical.TScrollbar", background=P["border"], troughcolor=P["card"],
+                     bordercolor=P["card"], lightcolor=P["border"], darkcolor=P["border"],
+                     arrowcolor=P["muted"], gripcount=0, arrowsize=self.px(11))
+        st.map("Vertical.TScrollbar", background=[("active", P["muted"])])
+        st.configure("Card.Ipa.TLabel", background=P["card"], foreground=P["fg"],
+                     font=(FONT_IPA, 12))
+        st.configure("Card.HintIpa.TLabel", background=P["card"], foreground=P["muted"],
+                     font=(FONT_IPA, 9))
+
+        # tk.Text và tk.Frame thuần
+        for w, role in list(self._texts):
+            try:
+                self._style_text(w, role)
+            except tk.TclError:
+                pass
+        if hasattr(self, "btn_theme"):
+            self.btn_theme.configure(text="Chế độ: Sáng" if self.theme_name.get() == "dark"
+                                     else "Chế độ: Tối")
+        # chip/thẻ nhúng trong ô kết quả vẽ bằng màu cũ → vẽ lại theo theme mới
+        if getattr(self, "_last_view", None):
+            self._render_result(self._last_view)
+        self.after(200, self._set_titlebar)
+        self.bind("<Map>", lambda e: self.after(120, self._set_titlebar), add="+")
+
+    def _set_titlebar(self):
+        """Tô thanh tiêu đề Windows theo theme (DWM attribute 20/19)."""
+        try:
+            import ctypes
+            try:
+                fid = self.wm_frame()
+                hwnd = int(fid, 16) if isinstance(fid, str) else int(fid)
+            except Exception:
+                hwnd = ctypes.windll.user32.GetParent(self.winfo_id())
+            if not hwnd:
+                return
+            v = ctypes.c_int(1 if self.theme_name.get() == "dark" else 0)
+            for attr in (20, 19):
+                ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                    hwnd, attr, ctypes.byref(v), ctypes.sizeof(v))
+            ctypes.windll.user32.SetWindowPos(hwnd, 0, 0, 0, 0, 0, 0x0027)
+        except Exception:
+            pass
+
+    def _style_text(self, w, role):
+        P = self.P
+        bg = P["card"] if role == "out" else (P["log_bg"] if role == "log" else P["card"])
+        w.configure(background=bg, foreground=P["fg"], insertbackground=P["fg"],
+                    selectbackground=P["sel"], highlightbackground=P["border"],
+                    highlightcolor=P["accent"], highlightthickness=self.px(1), borderwidth=0,
+                    relief="flat")
+        w.tag_configure("ok", background=P["ok_bg"], foreground=P["ok_fg"])
+        w.tag_configure("bad", background=P["bad_bg"], foreground=P["bad_fg"])
+        w.tag_configure("warn", background=P["warn_bg"])
+        w.tag_configure("note", foreground=P["muted"])
+        w.tag_configure("err", foreground="#E5484D")
+        w.tag_configure("big", font=(self.F, 12, "bold"))
+        w.tag_configure("ipa", font=(FONT_IPA, 10))
+
+    def _mk_text(self, parent, role="out", scroll=False, **kw):
+        """tk.Text theo theme. scroll=True: đặt trong khung có thanh cuộn (V-07) —
+        khi đó nơi gọi pack/grid `w.holder` thay vì chính `w`."""
+        kw.setdefault("wrap", "word")
+        kw.setdefault("width", 1)
+        kw.setdefault("font", (self.F, 10))
+        kw.setdefault("padx", 10)
+        kw.setdefault("pady", 8)
+        if scroll:
+            holder = ttk.Frame(parent, style="CardInner.TFrame")
+            w = tk.Text(holder, **kw)
+            sb = ttk.Scrollbar(holder, orient="vertical", command=w.yview)
+            w.configure(yscrollcommand=sb.set)
+            sb.pack(side="right", fill="y")
+            w.pack(side="left", fill="both", expand=True)
+            w.holder = holder
+        else:
+            w = tk.Text(parent, **kw)
+            w.holder = w
+        self._texts.append((w, role))
+        self._style_text(w, role)
+        return w
+
+    def _theme_indicators(self, P, st):
+        """Vẽ (lại) ảnh chỉ báo radio/checkbox theo theme; lần đầu tạo element + layout."""
+        size = max(12, self.px(15))
+        norm = {"box": P["muted"], "fill": P["field"], "accent": P["accent"],
+                "mark": "#FFFFFF", "bg": P["card"]}
+        dis = {"box": P["border"], "fill": P["disabled"], "accent": P["border"],
+               "mark": P["muted"], "bg": P["card"]}
+        specs = {
+            "chk_off": ("check", False, norm), "chk_on": ("check", True, norm),
+            "chk_doff": ("check", False, dis), "chk_don": ("check", True, dis),
+            "rad_off": ("radio", False, norm), "rad_on": ("radio", True, norm),
+            "rad_doff": ("radio", False, dis), "rad_don": ("radio", True, dis),
+        }
+        # khoảng cách tới chữ nằm luôn trong ảnh (cột trong suốt bên phải): element ảnh
+        # của ttk bỏ qua -padding nên chỉ báo dính sát nhãn
+        gap = self.px(7)
+        first = not hasattr(self, "_ind")
+        if first:
+            self._ind = {k: tk.PhotoImage(master=self, width=size + gap, height=size)
+                         for k in specs}
+        for k, (kind, on, colors) in specs.items():
+            rows = [r + [None] * gap for r in indicator_rows(kind, on, size, colors)]
+            rows_to_photo(self._ind[k], rows)
+        if not first:
+            return
+        I = self._ind
+        for el, off, on, doff, don in (("Oriole.Check.indicator", "chk_off", "chk_on",
+                                        "chk_doff", "chk_don"),
+                                       ("Oriole.Radio.indicator", "rad_off", "rad_on",
+                                        "rad_doff", "rad_don")):
+            st.element_create(el, "image", I[off],
+                              ("disabled", "selected", I[don]), ("disabled", I[doff]),
+                              ("selected", I[on]), sticky="")
+        for cls, el in (("Checkbutton", "Oriole.Check.indicator"),
+                        ("Radiobutton", "Oriole.Radio.indicator")):
+            st.layout("T" + cls, [(cls + ".padding", {"sticky": "nswe", "children": [
+                (el, {"side": "left", "sticky": ""}),
+                (cls + ".focus", {"side": "left", "sticky": "w", "children": [
+                    (cls + ".label", {"sticky": "nswe"})]})]})])
+
+    def _card(self, parent, title=None, expand=False, pady=None, style="Card.TFrame"):
+        if pady is None:
+            pady = (0, self.px(12))
+        outer = ttk.Frame(parent, style=style, padding=(self.px(16), self.px(14)))
+        outer.pack(fill="both" if expand else "x", expand=expand, pady=pady)
+        if title:
+            ttk.Label(outer, text=title, style="Card.Title.TLabel").pack(
+                anchor="w", pady=(self.px(0), self.px(8)))
+        return outer
+
+    def _mk_mic_row(self, parent, style="CardInner.TFrame"):
+        fr = ttk.Frame(parent, style=style)
+        fr.pack(fill="x", pady=(self.px(10), self.px(0)))
+        ttk.Label(fr, text="Micro", style="Card.TLabel").pack(anchor="w")
+        cb = ttk.Combobox(fr, textvariable=self.mic_var, width=1, state="readonly")
+        cb.pack(fill="x", pady=(self.px(4), self.px(0)))
+        btns = ttk.Frame(fr, style=style)
+        btns.pack(fill="x", pady=(self.px(6), self.px(0)))
+        ttk.Button(btns, text="Quét lại", style="Ghost.TButton",
+                   command=lambda: self._refresh_mics(rescan=True)).pack(side="left")
+        ttk.Button(btns, text="Kiểm tra", style="Ghost.TButton",
+                   command=self._test_mic).pack(side="left", padx=(self.px(8), self.px(0)))
+        ttk.Button(btns, text="Âm thanh Windows", style="Ghost.TButton",
+                   command=self._open_sound_settings).pack(side="left",
+                                                           padx=(self.px(8), self.px(0)))
+        hint = ttk.Label(fr, text="", style="Card.Hint.TLabel",
+                         wraplength=self.px(430), justify="left")
+        hint.pack(anchor="w", pady=(self.px(6), self.px(0)))
+        self._mic_hints.append(hint)
+        self._mic_combos.append(cb)
+        return cb
+
+    def _build_ui(self):
+        root = ttk.Frame(self, style="App.TFrame")
+        root.pack(fill="both", expand=True)
+
+        # dải màu nhấn trên cùng
+        strip = tk.Frame(self, bg=self.P["accent"], height=self.px(3))
+        strip.place(x=0, y=0, relwidth=1)
+
+        head = ttk.Frame(root, style="Header.TFrame", padding=(self.px(20), self.px(14)))
+        head.pack(fill="x", pady=(self.px(3), self.px(0)))
+        left = ttk.Frame(head, style="Header.TFrame")
+        left.pack(side="left")
+        ttk.Label(left, text="Oriole", style="H1.TLabel").pack(anchor="w")
+        ttk.Label(left, text=f"v{VERSION}  ·  audio/video → văn bản & phụ đề  ·  luyện phát âm",
+                  style="Sub.TLabel").pack(anchor="w")
+
+        right = ttk.Frame(head, style="Header.TFrame")
+        right.pack(side="right")
+        ttk.Label(right, text="Model", style="Sub.TLabel").grid(row=0, column=0, sticky="w")
+        ttk.Combobox(right, textvariable=self.model_name, values=MODELS, width=8,
+                     state="readonly").grid(row=1, column=0, padx=(self.px(0), self.px(12)))
+        ttk.Label(right, text="Ngôn ngữ", style="Sub.TLabel").grid(row=0, column=1, sticky="w")
+        ttk.Combobox(right, textvariable=self.lang_label, values=LANG_NAMES, width=11,
+                     state="readonly").grid(row=1, column=1, padx=(self.px(0), self.px(12)))
+        self.btn_theme = ttk.Button(right, text="Chế độ: Tối", style="Ghost.TButton", width=12,
+                                    command=self._flip_theme)
+        self.btn_theme.grid(row=1, column=2, padx=(self.px(0), self.px(0)))
+        ttk.Button(right, text="Cài đặt", style="Ghost.TButton",
+                   command=lambda: self.nb.select(self.tab_set)).grid(row=1, column=3, padx=(self.px(8), self.px(0)))
+
+        ttk.Separator(root).pack(fill="x")
+        self.nb = ttk.Notebook(root)
+        self.nb.pack(fill="both", expand=True, padx=self.px(18), pady=(self.px(10), self.px(0)))
+        self.tab_stt = ttk.Frame(self.nb, style="App.TFrame", padding=(self.px(0), self.px(10), self.px(0), self.px(0)))
+        self.tab_prac = ttk.Frame(self.nb, style="App.TFrame", padding=(self.px(0), self.px(10), self.px(0), self.px(0)))
+        self.tab_set = ttk.Frame(self.nb, style="App.TFrame", padding=(self.px(0), self.px(10), self.px(0), self.px(0)))
+        self.nb.add(self.tab_stt, text="Chuyển thành văn bản")
+        self.nb.add(self.tab_prac, text="Luyện phát âm")
+        self.nb.add(self.tab_set, text="Cài đặt")
+        self._build_text_tab(self.tab_stt)
+        self._build_practice_tab(self.tab_prac)
+        self._build_settings_tab(self.tab_set)
+        self.nb.bind("<<NotebookTabChanged>>", self._on_tab_changed)
+
+        bar = ttk.Frame(root, style="App.TFrame", padding=(self.px(20), self.px(6)))
+        bar.pack(fill="x")
+        ttk.Label(bar, textvariable=self.status, style="Muted.TLabel").pack(side="left")
+        ttk.Label(bar, text="Ctrl+O chọn file  ·  Ctrl+Enter bắt đầu  ·  Esc hủy",
+                  style="Muted.TLabel").pack(side="right")
+
+    # ================= tab 1: chuyển thành văn bản =================
+    def _build_text_tab(self, parent):
+        pw = ttk.Panedwindow(parent, orient="horizontal")
+        pw.pack(fill="both", expand=True)
+        left = ttk.Frame(pw, style="App.TFrame")
+        right = ttk.Frame(pw, style="App.TFrame")
+        pw.add(left, weight=0)
+        pw.add(right, weight=1)
+        self.pw_text = pw
+
+        # --- thẻ nguồn ---
+        card = self._card(left, "Nguồn")
+        row = ttk.Frame(card, style="CardInner.TFrame")
+        row.pack(fill="x")
+        for code, text in (("file", "File máy tính"), ("yt", "Link YouTube"),
+                           ("rec", "Ghi âm trực tiếp")):
+            ttk.Radiobutton(row, text=text, value=code, variable=self.src,
+                            style="Card.TRadiobutton",
+                            command=self._src_changed).pack(side="left", padx=(self.px(0), self.px(16)))
+
+        self.src_box = ttk.Frame(card, style="CardInner.TFrame")
+        self.src_box.pack(fill="x", pady=(self.px(12), self.px(0)))
+        self._build_src_file(self.src_box)
+        self._build_src_yt(self.src_box)
+        self._build_src_rec(self.src_box)
+
+        act = ttk.Frame(card, style="CardInner.TFrame")
+        act.pack(fill="x", pady=(self.px(16), self.px(0)))
+        self.btn_run = ttk.Button(act, text="▶  Bắt đầu", style="Accent.TButton",
+                                  command=self._primary)
+        self.btn_run.pack(side="left")
+        self.btn_cancel = ttk.Button(act, text="Hủy", style="Ghost.TButton",
+                                     command=self._cancel, state="disabled")
+        self.btn_cancel.pack(side="left", padx=(self.px(10), self.px(0)))
+        # chỉ hiện ở trạng thái "processing" (_set_stt_state) — thanh đầy xanh lúc rảnh
+        # gây hiểu nhầm (V-11)
+        self.pbar = ttk.Progressbar(card, mode="determinate", maximum=100)
+        self._pbar_pack = {"fill": "x", "pady": (self.px(14), self.px(2))}
+
+        # --- nhật ký ---
+        card2 = self._card(left, "Nhật ký", expand=True, pady=(self.px(0), self.px(0)))
+        self.log_txt = self._mk_text(card2, role="log", scroll=True, height=7, state="disabled")
+        self.log_txt.holder.pack(fill="both", expand=True)
+
+        # --- kết quả ---
+        self._build_result(right)
+
+    def _init_sash(self):
+        """Đặt vách ngăn hai tab ngay khi cửa sổ có kích thước — trước đây chờ 60 ms
+        nên cột trái có lúc hiện bề rộng 0 (V-10)."""
+        for pw, pos in ((getattr(self, "pw_text", None), 470),
+                        (getattr(self, "pw_prac", None), 540)):
+            if pw is not None:
+                self._sash(pw, self.px(pos))
+
+    def _build_src_file(self, box):
+        f = ttk.Frame(box, style="CardInner.TFrame")
+        ttk.Label(f, text="File cần chuyển", style="Card.Hint.TLabel").pack(anchor="w")
+        row = ttk.Frame(f, style="CardInner.TFrame")
+        row.pack(fill="x", pady=(self.px(4), self.px(0)))
+        ttk.Entry(row, textvariable=self.file_path).pack(side="left", fill="x", expand=True)
+        ttk.Button(row, text="Chọn…", style="Ghost.TButton",
+                   command=self._pick_file).pack(side="left", padx=(self.px(8), self.px(0)))
+        ttk.Label(f, text="mp3 · wav · m4a · flac · ogg · mp4 · mov · mkv · webm "
+                          "— hoặc dán đường dẫn vào ô trên",
+                  style="Card.Hint.TLabel", wraplength=self.px(430)).pack(anchor="w", pady=(self.px(6), self.px(0)))
+        self.f_src_file = f
+
+    def _build_src_yt(self, box):
+        f = ttk.Frame(box, style="CardInner.TFrame")
+        row = ttk.Frame(f, style="CardInner.TFrame")
+        row.pack(fill="x")
+        ttk.Entry(row, textvariable=self.yt_url).pack(side="left", fill="x", expand=True)
+        ttk.Button(row, text="Dán", style="Ghost.TButton",
+                   command=self._paste_url).pack(side="left", padx=(self.px(8), self.px(0)))
+
+        g = ttk.Frame(f, style="CardInner.TFrame")
+        g.pack(fill="x", pady=(self.px(12), self.px(0)))
+        ttk.Label(g, text="Lấy", style="Card.TLabel").grid(row=0, column=0, sticky="w")
+        ttk.Combobox(g, textvariable=self.yt_kind, values=YT_KIND_NAMES, width=25,
+                     state="readonly").grid(row=0, column=1, sticky="w", padx=(self.px(8), self.px(16)))
+        ttk.Label(g, text="Chất lượng", style="Card.TLabel").grid(row=0, column=2, sticky="w")
+        self.cb_quality = ttk.Combobox(g, textvariable=self.yt_quality,
+                                       values=[n for _, n in YT_QUALITIES], width=13,
+                                       state="readonly")
+        self.cb_quality.grid(row=0, column=3, sticky="w", padx=(self.px(8), self.px(0)))
+
+        s = ttk.Frame(f, style="CardInner.TFrame")
+        s.pack(fill="x", pady=(self.px(12), self.px(0)))
+        ttk.Checkbutton(s, text="Kèm phụ đề (.srt + .txt)", variable=self.y_subs,
+                        style="Card.TCheckbutton",
+                        command=self._yt_subs_changed).pack(side="left")
+        ttk.Label(s, text="Ngôn ngữ", style="Card.TLabel").pack(side="left", padx=(self.px(16), self.px(6)))
+        self.cb_sublang = ttk.Combobox(s, textvariable=self.yt_sub_lang,
+                                       values=YT_SUB_LANG_NAMES, width=23, state="readonly")
+        self.cb_sublang.pack(side="left")
+
+        s2 = ttk.Frame(f, style="CardInner.TFrame")
+        s2.pack(fill="x", pady=(self.px(6), self.px(0)))
+        self.cb_embed = ttk.Checkbutton(s2, text="Nhúng phụ đề vào video (MP4)",
+                                        variable=self.y_embed, style="Card.TCheckbutton")
+        self.cb_embed.pack(side="left")
+
+        d = ttk.Frame(f, style="CardInner.TFrame")
+        d.pack(fill="x", pady=(self.px(12), self.px(0)))
+        ttk.Label(d, text="Lưu vào", style="Card.TLabel").pack(side="left")
+        ttk.Entry(d, textvariable=self.out_dir).pack(side="left", fill="x", expand=True,
+                                                     padx=(self.px(8), self.px(0)))
+        ttk.Button(d, text="Đổi…", style="Ghost.TButton",
+                   command=self._pick_out_dir).pack(side="left", padx=(self.px(8), self.px(0)))
+        ttk.Label(f, text="Ưu tiên phụ đề có sẵn của video; nếu không có thì tự tạo bằng "
+                          "Whisper (model ở trên). “Chỉ transcript” không tải video.",
+                  style="Card.Hint.TLabel", wraplength=self.px(430)).pack(anchor="w", pady=(self.px(8), self.px(0)))
+        self.f_src_yt = f
+
+    def _build_src_rec(self, box):
+        f = ttk.Frame(box, style="CardInner.TFrame")
+        ttk.Label(f, text="Bấm “Bắt đầu thu âm”, đọc trong 15 phút, rồi bấm "
+                          "“Dừng & chuyển thành văn bản”.",
+                  style="Card.Hint.TLabel", wraplength=self.px(430)).pack(anchor="w")
+        self.lbl_rec_level = ttk.Label(f, text="", style="Card.Mono.TLabel")
+        self.lbl_rec_level.pack(anchor="w", pady=(self.px(8), self.px(0)))
+        self._mk_mic_row(f)
+        self.f_src_rec = f
+
+    def _build_result(self, parent):
+        card = self._card(parent, None, expand=True, pady=(self.px(0), self.px(0)))
+        head = ttk.Frame(card, style="CardInner.TFrame")
+        head.pack(fill="x")
+        ttk.Label(head, text="Kết quả", style="Card.Title.TLabel").pack(side="left")
+        ttk.Label(head, textvariable=self.stats, style="Card.Hint.TLabel").pack(side="right")
+
+        self.res_nb = ttk.Notebook(card, style="Card.TNotebook")
+        self.res_nb.pack(fill="both", expand=True, pady=(self.px(10), self.px(10)))
+        t_text = ttk.Frame(self.res_nb, style="CardInner.TFrame", padding=(self.px(0), self.px(8), self.px(0), self.px(0)))
+        t_srt = ttk.Frame(self.res_nb, style="CardInner.TFrame", padding=(self.px(0), self.px(8), self.px(0), self.px(0)))
+        self.res_nb.add(t_text, text="Văn bản")
+        self.res_nb.add(t_srt, text="SRT")
+        bar = ttk.Frame(t_text, style="CardInner.TFrame")
+        bar.pack(fill="x", pady=(self.px(0), self.px(6)))
+        ttk.Checkbutton(bar, text="Kèm mốc thời gian", variable=self.show_time,
+                        style="Card.TCheckbutton",
+                        command=self._render_preview).pack(side="right")
+        self.txt_out = self._mk_text(t_text, role="out", scroll=True)
+        self.txt_out.holder.pack(fill="both", expand=True)
+        self.txt_srt = self._mk_text(t_srt, role="out", scroll=True, font=("Consolas", 10),
+                                     state="disabled")
+        self.txt_srt.holder.pack(fill="both", expand=True)
+
+        act = ttk.Frame(card, style="CardInner.TFrame")
+        act.pack(fill="x")
+        self.btn_copy = ttk.Button(act, text="Sao chép", style="Ghost.TButton",
+                                   command=self._copy, state="disabled")
+        self.btn_copy.pack(side="left")
+        self.btn_txt = ttk.Button(act, text="Lưu .txt", style="Ghost.TButton",
+                                  command=self._save_txt, state="disabled")
+        self.btn_txt.pack(side="left", padx=(self.px(8), self.px(0)))
+        self.btn_srt = ttk.Button(act, text="Lưu .srt", style="Ghost.TButton",
+                                  command=self._save_srt, state="disabled")
+        self.btn_srt.pack(side="left", padx=(self.px(8), self.px(0)))
+        self.btn_folder = ttk.Button(act, text="Mở thư mục", style="Ghost.TButton",
+                                     command=self._open_folder, state="disabled")
+        self.btn_folder.pack(side="left", padx=(self.px(8), self.px(0)))
+        self.btn_open = ttk.Button(act, text="Mở file gốc", style="Ghost.TButton",
+                                   command=self._open_file, state="disabled")
+        self.btn_open.pack(side="left", padx=(self.px(8), self.px(0)))
+
+    # ----- đổi nguồn / tham số -----
+    def _src_changed(self):
+        src = self.src.get()
+        for w in (getattr(self, "f_src_file", None), getattr(self, "f_src_yt", None),
+                  getattr(self, "f_src_rec", None)):
+            if w is not None:
+                w.pack_forget()
+        target = {"file": self.f_src_file, "yt": self.f_src_yt, "rec": self.f_src_rec}[src]
+        target.pack(fill="x")
+        self._update_primary()
+
+    def _src_label(self):
+        """Nhãn nút chính khi rảnh, theo nguồn đang chọn."""
+        if self.src.get() == "rec":
+            return "●  Bắt đầu thu âm"
+        if self.src.get() == "yt":
+            kind = YT_KIND_BY_NAME.get(self.yt_kind.get(), "video")
+            return {"video": "⬇  Tải video", "audio": "⬇  Tải audio"}.get(
+                kind, "▶  Lấy transcript")
+        return "▶  Bắt đầu"
+
+    def _update_primary(self):
+        self.btn_run.configure(
+            text=stt_controls(getattr(self, "stt_state", "idle"), self._src_label())["run_text"])
+
+    def _yt_subs_changed(self):
+        on = bool(self.y_subs.get())
+        kind = YT_KIND_BY_NAME.get(self.yt_kind.get(), "video")
+        if hasattr(self, "btn_run"):
+            self._update_primary()
+        try:
+            self.cb_sublang.state(["!disabled"] if on else ["disabled"])
+            self.cb_embed.state(["!disabled"] if (on and kind == "video") else ["disabled"])
+            self.cb_quality.state(["disabled"] if kind == "subs" else ["!disabled"])
+        except Exception:
+            pass
+
+    def _paste_url(self):
+        try:
+            txt = self.clipboard_get().strip()
+        except Exception:
+            txt = ""
+        if txt:
+            self.yt_url.set(txt)
+            self.status.set("Đã dán link từ clipboard.")
+
+    def _pick_file(self):
+        p = filedialog.askopenfilename(title="Chọn file audio/video", filetypes=SUPPORTED)
+        if p:
+            self.src.set("file")
+            self._src_changed()
+            self.file_path.set(p)
+            self.status.set(f"Đã chọn: {os.path.basename(p)}")
+
+    def _pick_out_dir(self):
+        d = filedialog.askdirectory(title="Chọn thư mục lưu",
+                                    initialdir=self.out_dir.get() or BASE_DIR)
+        if d:
+            self.out_dir.set(d)
+            self._save_cfg()
+
+    # ----- nhật ký & tiến trình -----
+    def _log(self, msg, level="info"):
+        t = self.log_txt
+        stamp = time.strftime("%H:%M:%S")
+        t.configure(state="normal")
+        t.insert("end", f"[{stamp}] ", "note")
+        t.insert("end", str(msg).strip() + "\n", {"err": "err"}.get(level, ""))
+        t.see("end")
+        t.configure(state="disabled")
+
+    def _pbar(self, value):
+        if value is None:
+            if str(self.pbar.cget("mode")) != "indeterminate":
+                self.pbar.stop()
+                self.pbar.configure(mode="indeterminate")
+                self.pbar.start(14)
+        else:
+            self.pbar.stop()
+            if str(self.pbar.cget("mode")) != "determinate":
+                self.pbar.configure(mode="determinate")
+            self.pbar["value"] = max(0.0, min(100.0, float(value) * 100))
+
+    # ----- trạng thái màn hình (D-31): nơi DUY NHẤT bật/tắt nút & thanh tiến trình -----
+    def _set_stt_state(self, state):
+        """Tab Chuyển văn bản: idle | recording | processing | result | error."""
+        assert state in STT_STATES, state
+        prev = getattr(self, "stt_state", "idle")
+        self.stt_state = state
+        self.busy = state == "processing"
+        if state == "recording":
+            self.recording, self.rec_owner = True, "stt"
+        elif prev == "recording" and self.rec_owner == "stt":
+            self.recording, self.rec_owner = False, None
+        c = stt_controls(state, self._src_label())
+        self.btn_run.state(["!disabled"] if c["run_enabled"] else ["disabled"])
+        self.btn_run.configure(text=c["run_text"])
+        self.btn_cancel.state(["!disabled"] if c["cancel_enabled"] else ["disabled"])
+        if c["show_pbar"] and not self.pbar.winfo_manager():
+            self.pbar.pack(**self._pbar_pack)
+        elif not c["show_pbar"] and self.pbar.winfo_manager():
+            self.pbar.stop()
+            self.pbar.pack_forget()
+        if state != "recording":
+            self.lbl_rec_level.configure(text="")
+
+    def _set_prac_state(self, state):
+        """Tab Luyện: idle | recording | scoring | result | unsure | error."""
+        assert state in PRAC_STATES, state
+        prev = getattr(self, "prac_state", "idle")
+        self.prac_state = state
+        self.p_working = state == "scoring"
+        if state == "recording":
+            self.recording, self.rec_owner = True, "prac"
+        elif prev == "recording" and self.rec_owner == "prac":
+            self.recording, self.rec_owner = False, None
+        c = prac_controls(state, bool(self.last_wav))
+        self.btn_prec.state(["!disabled"] if c["rec_enabled"] else ["disabled"])
+        self.btn_prec.configure(text=c["rec_text"])
+        self.btn_preplay.state(["!disabled"] if c["replay_enabled"] else ["disabled"])
+        if c["show_pbar"]:
+            if not self.pbar_p.winfo_manager():
+                self.pbar_p.pack(**self._pbar_p_pack)
+            self.pbar_p.configure(mode="indeterminate")
+            self.pbar_p.start(12)
+        elif self.pbar_p.winfo_manager():
+            self.pbar_p.stop()
+            self.pbar_p.configure(mode="determinate", value=0)
+            self.pbar_p.pack_forget()
+        if state != "recording":
+            self.lbl_plevel.configure(text="")
+
+    # ----- chạy / hủy -----
+    def _primary(self):
+        if self.recording:
+            if self.rec_owner == "stt":
+                self._rec_stop_and_transcribe()
+            else:
+                self.status.set("Đang thu ở tab Luyện phát âm — dừng ở đó trước (hoặc Esc).")
+            return
+        src = self.src.get()
+        if src == "rec":
+            self._rec_start()
+        else:
+            self._run()
+
+    def _run(self):
+        if self.busy:
+            return
+        src = self.src.get()
+        model_size = self.model_name.get()
+        lang_opt = self.lang.get()
+        lang = None if lang_opt == "auto" else lang_opt
+
+        if src == "file":
+            fp = self.file_path.get().strip().strip('"')
+            if not fp or not os.path.exists(fp):
+                messagebox.showwarning("Chưa có file", "Hãy chọn file audio/video trước (Ctrl+O).")
+                return
+            self.cancel_flag = False
+            self._set_stt_state("processing")
+            self._log(f"File: {os.path.basename(fp)}  ·  model {model_size}")
+            self._pbar(None)
+            self.status.set("Đang tải model & nhận dạng…")
+            threading.Thread(target=self._w_file, args=(fp, model_size, lang),
+                             daemon=True).start()
+            return
+
+        url = self.yt_url.get().strip()
+        if not re.match(r"https?://", url) or "youtu" not in url.lower():
+            messagebox.showwarning("Link không hợp lệ",
+                                   "Chỉ hỗ trợ link YouTube (youtu.be/… hoặc watch?v=…).")
+            return
+        out = self.out_dir.get().strip() or YT_DIR_DEFAULT
+        if not os.path.isdir(out):
+            try:
+                os.makedirs(out, exist_ok=True)
+            except Exception as e:
+                messagebox.showerror("Không tạo được thư mục", str(e))
+                return
+        self.out_dir.set(out)
+        kind = YT_KIND_BY_NAME.get(self.yt_kind.get(), "video")
+        quality = "best" if kind in ("audio", "subs") else \
+            YT_QUAL_BY_NAME.get(self.yt_quality.get(), "best")
+        subs = bool(self.y_subs.get())
+        embed = bool(self.y_embed.get())
+        sub_pref = YT_SUB_LANG_BY_NAME.get(self.yt_sub_lang.get(), "auto")
+        self.cancel_flag = False
+        self._set_stt_state("processing")
+        self._log(f"YouTube: {url}")
+        self._log(f"Chế độ: {self.yt_kind.get()}" + (
+            "  ·  phụ đề " + self.yt_sub_lang.get() if subs else "  ·  không phụ đề"))
+        self._pbar(0)
+        self.status.set("Đang lấy thông tin video…")
+        threading.Thread(target=self._w_yt,
+                         args=(url, kind, quality, out, subs, sub_pref, embed,
+                               model_size, lang), daemon=True).start()
+
+    def _stop_recorder(self):
+        """Dừng recorder dùng chung; tab đang thu về trạng thái idle (D-26, D-31).
+        Trả (frames, rate)."""
+        owner = self.rec_owner
+        frames, rate = self.recorder.stop()
+        if owner == "prac":
+            self._set_prac_state("idle")
+        else:
+            self._set_stt_state("idle")
+        return frames, rate
+
+    def _cancel(self):
+        if self.recording:
+            owner = self.rec_owner
+            self._stop_recorder()
+            if owner == "prac":
+                self.p_status.set("Đã dừng thu âm, không chấm điểm.")
+            else:
+                self.status.set("Đã dừng thu âm, không chuyển văn bản.")
+            return
+        if self.busy and not self.cancel_flag:
+            self.cancel_flag = True
+            self.status.set("Đang hủy…")
+            self._log("Người dùng bấm hủy.", "err")
+
+    def _poll(self):
+        """Vòng lặp duy nhất: nhận cập nhật từ worker thread (chạy trên luồng UI)."""
+        try:
+            while True:
+                kind, payload = self._queue.get_nowait()
+                if kind == "log":
+                    if isinstance(payload, tuple):
+                        self._log(*payload)
+                    else:
+                        self._log(payload)
+                elif kind == "status":
+                    self.status.set(payload)
+                elif kind == "progress":
+                    self._pbar(payload)
+                elif kind == "result":
+                    self._on_result(payload)
+                elif kind == "error":
+                    self._on_error(payload)
+                elif kind == "rec_autostop":
+                    self._rec_stop_and_transcribe()
+                elif kind == "rec_error":
+                    if self.rec_owner == "stt":
+                        self._stop_recorder()
+                    self.status.set("Lỗi thu âm.")
+                    messagebox.showerror("Lỗi thu âm", payload)
+                elif kind == "prac_status":
+                    self.p_status.set(payload)
+                elif kind == "prac_autostop":
+                    self._prac_stop_and_score(payload)
+                elif kind == "prac_done":
+                    self._prac_done(payload)
+                elif kind == "prac_error":
+                    self._prac_error(payload)
+                elif kind == "mic_found":
+                    self._mic_probing = False
+                    if payload and payload[3] >= MIC_MIN_PEAK:
+                        idx, name, api, peak = payload
+                        try:
+                            self.mic_var.set(
+                                self._mic_names[self.mic_ids.index(idx)])
+                            self.p_status.set(
+                                f"Đã chọn micro có tín hiệu: {name} [{api}] "
+                                f"(đỉnh {peak * 100:.0f}%). "
+                                f"Bấm Thu âm & chấm để đọc lại.")
+                        except ValueError:
+                            self.p_status.set(
+                                "Tìm thấy micro có tín hiệu nhưng danh sách vừa đổi — "
+                                "bấm Quét lại rồi chọn lại micro.")
+                    else:
+                        self.p_status.set(
+                            "Không tìm thấy micro nào có tín hiệu. Kiểm tra âm lượng "
+                            "trong Windows: Settings → System → Sound → Input.")
+        except queue.Empty:
+            pass
+        self.after(80, self._poll)
+
+    # ================= worker: nhận dạng file / bản ghi =================
+    def _w_file(self, fp, model_size, lang, delete_after=False, base=None):
+        try:
+            self._queue.put(("status", f"Bước 1/2: tải model '{model_size}' "
+                                       f"(lần đầu hơi lâu)…"))
+            model = load_model(model_size)
+            self._queue.put(("status", "Bước 2/2: đang nhận dạng giọng nói…"))
+            segs, info = model.transcribe(fp, language=lang, beam_size=5)
+            dur = float(getattr(info, "duration", 0) or 0)
+            cues = []
+            for s in segs:
+                if self.cancel_flag:
+                    raise _YtCancelled()
+                tx = " ".join(s.text.split())
+                if tx:
+                    cues.append((float(s.start), float(s.end), tx))
+                if dur > 0:
+                    self._queue.put(("progress", min(0.99, float(s.end) / dur)))
+            cues = _fix_cues(split_long_cues(cues))
+            det = getattr(info, "language", "?")
+            prob = float(getattr(info, "language_probability", 0) or 0)
+            self._queue.put(("log", (f"Nhận dạng xong: {len(cues)} dòng · "
+                                     f"ngôn ngữ {det} ({prob:.0%})", "info")))
+            media = None if delete_after else fp
+            if not base:
+                base = os.path.splitext(os.path.basename(fp))[0]
+            payload = {"cues": cues, "media": media, "base": base,
+                       "note": f"Xong: {len(cues)} dòng · {det} ({prob:.0%})"}
+            self._queue.put(("result", payload))
+        except _YtCancelled:
+            self._queue.put(("error", "__cancelled__"))
+        except Exception as e:
+            self._queue.put(("error", str(e)))
+        finally:
+            # bản ghi tạm: xóa cả khi xong, hủy hay lỗi (I10)
+            if delete_after:
+                remove_temp(fp)
+
+    def _w_whisper_cues(self, media, model_size, lang):
+        self._queue.put(("status", f"Đang tạo phụ đề bằng Whisper (model '{model_size}')…"))
+        self._queue.put(("progress", None))
+        model = load_model(model_size)
+        segs, info = model.transcribe(media, language=lang, beam_size=5, vad_filter=True)
+        cues = []
+        det = getattr(info, "language", "?")
+        for s in segs:
+            if self.cancel_flag:
+                raise _YtCancelled()
+            tx = " ".join(s.text.split())
+            if tx:
+                cues.append((float(s.start), float(s.end), tx))
+            if cues and len(cues) % 15 == 0:
+                self._queue.put(("status",
+                                 f"Whisper: {clock_time(s.end)} · {len(cues)} câu"))
+        self._queue.put(("log", (f"Whisper xong: {len(cues)} câu ({det})", "info")))
+        return _fix_cues(split_long_cues(cues))
+
+    # ================= worker: YouTube =================
+    def _w_yt(self, url, kind, quality, out_dir, subs, sub_pref, embed,
+              model_size, lang):
+        """Điểm vào thread: luôn gửi 'result' hoặc 'error' để UI thoát trạng thái bận.
+
+        Thiếu lớp bọc này thì Hủy (_YtCancelled) hay lỗi bất ngờ làm thread chết
+        im lặng → nút Bắt đầu bị khóa mãi, thanh trạng thái treo "Đang hủy…".
+        """
+        try:
+            self._w_yt_body(url, kind, quality, out_dir, subs, sub_pref, embed,
+                            model_size, lang)
+        except _YtCancelled:
+            self._queue.put(("error", "__cancelled__"))
+        except Exception as e:
+            # yt-dlp có thể bọc ngoại lệ từ hook thành DownloadError
+            if self.cancel_flag:
+                self._queue.put(("error", "__cancelled__"))
+            else:
+                self._queue.put(("error", f"Lỗi YouTube: {e}"))
+
+    def _yt_fetch_sub_cues(self, yt_dlp, url, stem, sub_lang, since):
+        """Tải phụ đề có sẵn về <stem>.<lang>.<ext>, đọc thành cue, xóa file thô.
+
+        Không bao giờ ném lỗi tải (trừ Hủy): trả [] để nơi gọi chuyển sang Whisper.
+        YouTube hay trả HTTP 429 cho phụ đề (nhất là bản dịch máy) → thử lại 1 lần.
+        """
+        out_dir = os.path.dirname(stem) or "."
+        opts = {"skip_download": True, "writesubtitles": True,
+                "writeautomaticsub": True, "subtitleslangs": [sub_lang],
+                "subtitlesformat": "srt/vtt/best",
+                "outtmpl": stem + ".%(ext)s",
+                "quiet": True, "no_warnings": True, "noplaylist": True}
+        for attempt in (1, 2):
+            try:
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    ydl.download([url])
+                break
+            except _YtCancelled:
+                raise
+            except Exception as e:
+                if self.cancel_flag:
+                    raise _YtCancelled()
+                busy = "429" in str(e)
+                if busy and attempt == 1:
+                    self._queue.put(("status", "YouTube đang giới hạn tải phụ đề, thử lại…"))
+                    for _ in range(40):  # ~4 s, vẫn phản hồi nút Hủy
+                        if self.cancel_flag:
+                            raise _YtCancelled()
+                        time.sleep(0.1)
+                    continue
+                why = ("YouTube tạm chặn vì tải quá nhiều (HTTP 429)" if busy
+                       else str(e).replace("ERROR: ", ""))
+                self._queue.put(("log", (f"Không tải được phụ đề '{sub_lang}': {why} "
+                                         "→ chuyển sang Whisper.", "err")))
+                break
+        raw = find_subtitle_file(out_dir, stem + ".mp4", sub_lang, since)
+        if not raw:
+            return []
+        try:
+            cues = read_subtitle_file(raw)
+        except Exception:
+            cues = []
+        if cues and os.path.normcase(raw) != os.path.normcase(stem + ".srt"):
+            try:
+                os.remove(raw)
+            except OSError:
+                pass
+        return cues
+
+    def _w_yt_body(self, url, kind, quality, out_dir, subs, sub_pref, embed,
+                   model_size, lang):
+        try:
+            import yt_dlp
+        except ImportError:
+            self._queue.put(("error", "Chưa có thư viện yt-dlp. "
+                                      "Chạy: pip install -r requirements.txt"))
+            return
+        ffmpeg_loc = yt_ffmpeg_location()
+        if not ffmpeg_loc:
+            self._queue.put(("error", "Chưa có ffmpeg (imageio-ffmpeg). "
+                                      "Chạy: pip install -r requirements.txt"))
+            return
+        t0 = time.time()
+
+        def hook(d):
+            if self.cancel_flag:
+                raise _YtCancelled()
+            st = d.get("status")
+            if st == "downloading":
+                frac = yt_progress_fraction(d)  # 0..1 — _pbar tự nhân 100
+                if frac is not None:
+                    self._queue.put(("progress", frac))
+                self._queue.put(("status",
+                                 f"Đang tải… {os.path.basename(d.get('filename') or '')}"))
+            elif st == "finished":
+                self._queue.put(("progress", None))
+                self._queue.put(("status", "Đã tải xong, đang ghép bằng ffmpeg…"))
+
+        self._queue.put(("status", "Đang đọc thông tin video…"))
+        info = {}
+        try:
+            with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True,
+                                   "noplaylist": True}) as ydl:
+                info = ydl.extract_info(url, download=False) or {}
+            info = _yt_first_info(info)
+        except Exception as e:
+            self._queue.put(("error", f"Không lấy được thông tin video: {e}"))
+            return
+        if self.cancel_flag:
+            raise _YtCancelled()
+
+        title, vid = info.get("title") or "", info.get("id") or ""
+        base = safe_stem(title, vid)
+        self._queue.put(("log", (f"Video: {title or vid}", "info")))
+        sub_lang, sub_kind = (pick_subtitle_source(info, sub_pref) if subs
+                              else (None, None))
+        sub_label = ""
+        if subs:
+            if sub_lang:
+                tracks = ((info.get("subtitles") or {}).get(sub_lang)
+                          or (info.get("automatic_captions") or {}).get(sub_lang) or [])
+                name = (tracks[0] or {}).get("name") if tracks else ""
+                available = sorted(set((info.get("subtitles") or {}).keys()) |
+                                   set((info.get("automatic_captions") or {}).keys()))
+                orig = (info.get("language") or "").lower()
+                sub_label = f"{sub_lang}" + (f" ({name})" if name else "")
+                hint = ""
+                sub_base = sub_lang.lower().split("-")[0]
+                if (sub_kind == "auto" and orig and sub_base != orig) or                         sub_base not in ("en", orig):
+                    hint = ("  → đây là bản dịch máy của YouTube, không phải bản gốc"
+                            + (f"; muốn bản gốc hãy chọn Ngôn ngữ = Tự động ({orig})"
+                               if orig else ""))
+                self._queue.put(("log", (
+                    f"Phụ đề chọn: {sub_label} "
+                    f"({'tự động' if sub_kind == 'auto' else 'thủ công'})"
+                    f"{hint}", "info")))
+                if available:
+                    self._queue.put(("log", (
+                        "Video có phụ đề: " + ", ".join(available[:12]), "info")))
+            else:
+                self._queue.put(("log", ("Video không có phụ đề sẵn → dùng Whisper.",
+                                         "info")))
+
+        cues = []
+        from_video = False  # phụ đề lấy từ YouTube (True) hay do Whisper tạo
+        media_path = None
+
+        # ---- chế độ chỉ transcript: không tải video ----
+        if kind == "subs":
+            if sub_lang:
+                self._queue.put(("status", "Đang tải phụ đề có sẵn (không tải video)…"))
+                cues = self._yt_fetch_sub_cues(yt_dlp, url, os.path.join(out_dir, base),
+                                               sub_lang, t0)
+                from_video = bool(cues)
+            if not cues:
+                self._queue.put(("status",
+                                 "Chưa có phụ đề → tải âm thanh tạm để Whisper tạo…"))
+                tmp_dir = tempfile.mkdtemp(prefix="stt_yt_")
+                opts = {"format": "ba/b",
+                        "outtmpl": os.path.join(tmp_dir, "%(id)s.%(ext)s"),
+                        "quiet": True, "no_warnings": True, "noplaylist": True,
+                        "progress_hooks": [hook]}
+                try:
+                    with yt_dlp.YoutubeDL(opts) as ydl:
+                        ydl.download([url])
+                    files = [os.path.join(tmp_dir, f) for f in os.listdir(tmp_dir)]
+                    tmp_media = max(files, key=os.path.getsize) if files else None
+                    if not tmp_media:
+                        self._queue.put(("error", "Không tải được âm thanh của video."))
+                        return
+                    cues = self._w_whisper_cues(tmp_media, model_size, lang)
+                finally:
+                    # dọn cả file .part khi hủy/lỗi giữa chừng (I10)
+                    shutil.rmtree(tmp_dir, ignore_errors=True)
+            base = os.path.join(out_dir, base)
+
+        # ---- tải video/audio ----
+        else:
+            self._queue.put(("status", "Đang tải video…"))
+            # không kèm phụ đề: yt-dlp coi lỗi tải phụ đề (vd HTTP 429) là lỗi chết
+            # → mất luôn video. Phụ đề tải riêng ở dưới, lỗi thì dùng Whisper (D-25).
+            opts = yt_build_opts(out_dir, "audio" if kind == "audio" else "video",
+                                 quality, ffmpeg_loc, hook, None)
+            try:
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    dl_info = _yt_first_info(ydl.extract_info(url, download=True) or {})
+            except _YtCancelled:
+                raise
+            except Exception as e:
+                self._queue.put(("error", f"Tải video lỗi: {e}"))
+                return
+            media_path = pick_downloaded_file(dl_info, out_dir, vid, t0)
+            if not media_path:
+                self._queue.put(("error",
+                                 "Đã tải nhưng không tìm thấy file trong thư mục:\n"
+                                 + out_dir + "\n\n"
+                                 "Kiểm tra quyền ghi thư mục, hoặc thử đổi thư mục lưu."))
+                return
+            base = os.path.splitext(media_path)[0]
+            if subs:
+                if sub_lang:
+                    self._queue.put(("status", "Đang tải phụ đề có sẵn…"))
+                    cues = self._yt_fetch_sub_cues(yt_dlp, url, base, sub_lang, t0)
+                    from_video = bool(cues)
+                if not cues:
+                    cues = self._w_whisper_cues(media_path, model_size, lang)
+
+        if self.cancel_flag:
+            raise _YtCancelled()
+
+        # ---- ghi .srt/.txt ----
+        srt_path = txt_path = None
+        if cues:
+            srt_path = base + ".srt"
+            txt_path = base + ".txt"
+            with open(srt_path, "w", encoding="utf-8") as f:
+                f.write(cues_to_srt(cues))
+            with open(txt_path, "w", encoding="utf-8") as f:
+                f.write(cues_to_txt(cues))
+
+        # ---- nhúng phụ đề mềm vào video ----
+        if cues and embed and kind == "video" and media_path and srt_path:
+            if self.cancel_flag:
+                raise _YtCancelled()
+            self._queue.put(("status", "Đang nhúng phụ đề vào video…"))
+            muxed, err = mux_subtitles_into_video(media_path, srt_path, ffmpeg_loc,
+                                                  sub_lang or "vi")
+            if muxed:
+                media_path = muxed
+            else:
+                self._queue.put(("log", (f"Không nhúng được phụ đề: {err}", "err")))
+
+        bits = []
+        if cues:
+            bits.append(f"{len(cues)} dòng phụ đề")
+            bits.append(("từ video: " + sub_label) if from_video else "do Whisper tạo")
+        if media_path:
+            bits.append(os.path.basename(media_path))
+        self._queue.put(("result", {
+            "cues": cues, "media": media_path, "srt": srt_path, "txt": txt_path,
+            "base": os.path.basename(base), "note": "Xong" + (
+                ": " + "  ·  ".join(bits) if bits else "."),
+        }))
+
+    # ================= kết quả & xuất file =================
+    def _render_preview(self):
+        cues = self.last_cues
+        if cues:
+            text = cues_to_txt(cues, with_time=True) if self.show_time.get() \
+                else "\n".join(c[2] for c in cues)
+        else:
+            text = (self.last_payload or {}).get("text", "")
+        w = self.txt_out
+        w.configure(state="normal")
+        w.delete("1.0", "end")
+        w.insert("1.0", text if text else "")
+        if not text:
+            w.insert("1.0", "Kết quả sẽ hiện ở đây sau khi bạn bấm Bắt đầu.", "note")
+
+    def _on_result(self, p):
+        self._set_stt_state("result")
+        self.pbar.configure(mode="determinate", value=0)
+        cues = p.get("cues") or []
+        self.last_cues = cues
+        self.last_payload = p
+        self.last_media = p.get("media")
+        self.last_srt = p.get("srt")
+        self.last_txt = p.get("txt")
+        self._render_preview()
+        srt = cues_to_srt(cues)
+        self.txt_srt.configure(state="normal")
+        self.txt_srt.delete("1.0", "end")
+        self.txt_srt.insert("1.0", srt or "Chưa có phụ đề.")
+        self.txt_srt.configure(state="disabled")
+        words = sum(len(c[2].split()) for c in cues)
+        dur = cues[-1][1] if cues else 0
+        self.stats.set(f"{len(cues)} dòng · {words:,} từ · {clock_time(dur)}"
+                       if cues else "không có nội dung")
+        on = bool(cues)
+        for b in (self.btn_copy, self.btn_txt):
+            b.state(["!disabled"] if on else ["disabled"])
+        self.btn_srt.state(["!disabled"] if cues else ["disabled"])
+        self.btn_folder.state(["!disabled"] if (self.last_srt or self.last_media) else ["disabled"])
+        self.btn_open.state(["!disabled"] if (self.last_media and os.path.exists(self.last_media))
+                            else ["disabled"])
+        note = p.get("note") or "Xong."
+        self.status.set(note)
+        self._log(note)
+
+    def _on_error(self, err):
+        self._set_stt_state("idle" if err == "__cancelled__" else "error")
+        self.pbar.configure(mode="determinate", value=0)
+        if err == "__cancelled__":
+            self.status.set("Đã hủy.")
+            self._log("Đã hủy tác vụ.", "err")
+            return
+        self.status.set("Lỗi — xem chi tiết trong hộp thoại.")
+        self._log(f"Lỗi: {err}", "err")
+        messagebox.showerror("Lỗi", str(err))
+
+    def _default_base(self):
+        p = self.last_payload or {}
+        if p.get("base"):
+            return p["base"]
+        if self.last_media:
+            return os.path.splitext(os.path.basename(self.last_media))[0]
+        return "ket-qua"
+
+    def _copy(self):
+        if not (self.last_cues or (self.last_payload or {}).get("text")):
+            return
+        text = self.txt_out.get("1.0", "end").strip()
+        if not text:
+            return
+        self.clipboard_clear()
+        self.clipboard_append(text)
+        self.status.set("Đã copy vào clipboard.")
+
+    def _save_txt(self):
+        text = self.txt_out.get("1.0", "end").strip()
+        if not text or not self.last_cues:
+            messagebox.showinfo("Trống", "Chưa có nội dung để lưu.")
+            return
+        p = filedialog.asksaveasfilename(defaultextension=".txt",
+                                         initialfile=self._default_base() + ".txt",
+                                         filetypes=[("Text", "*.txt"), ("Tất cả file", "*.*")])
+        if not p:
+            return
+        with open(p, "w", encoding="utf-8") as f:
+            f.write(text + "\n")
+        self.last_txt = p
+        self.status.set(f"Đã lưu: {p}")
+        self._log(f"Lưu .txt → {p}")
+
+    def _save_srt(self):
+        cues = self.last_cues
+        if not cues:
+            messagebox.showinfo("Chưa có phụ đề", "Chưa có mốc thời gian để xuất .srt.")
+            return
+        p = filedialog.asksaveasfilename(defaultextension=".srt",
+                                         initialfile=self._default_base() + ".srt",
+                                         filetypes=[("SubRip", "*.srt"), ("Tất cả file", "*.*")])
+        if not p:
+            return
+        with open(p, "w", encoding="utf-8") as f:
+            f.write(cues_to_srt(cues))
+        self.last_srt = p
+        self.status.set(f"Đã lưu phụ đề: {p}  ({len(cues)} dòng)")
+        self._log(f"Lưu .srt → {p}")
+
+    def _open_folder(self):
+        target = self.last_srt or self.last_txt or self.last_media
+        folder = os.path.dirname(target) if target else (self.out_dir.get() or BASE_DIR)
+        try:
+            os.startfile(folder)
+        except Exception as e:
+            messagebox.showerror("Lỗi", f"Không mở được thư mục: {e}")
+
+    def _open_file(self):
+        p = self.last_media
+        if not p or not os.path.exists(p):
+            return
+        try:
+            os.startfile(p)
+        except Exception as e:
+            messagebox.showerror("Lỗi", f"Không mở được file: {e}")
+
+    # ================= ghi âm ở tab 1 =================
+    def _rec_start(self):
+        if self.busy or self.recording:
+            return
+        dev, name, rate = self._resolve_mic()
+        if dev is None:
+            return
+        self._set_stt_state("recording")
+        self.recorder.start(dev, rate, REC_LONG_SEC,
+                            lambda reason: self._queue.put(("rec_autostop", reason)),
+                            lambda m: self._queue.put(("rec_error", m)))
+        self._log(f"Thu âm bằng {name} ({rate} Hz)")
+        self.status.set(f"Đang thu bằng {name} — đọc to, rõ.")
+        self._rec_tick()
+
+    def _rec_tick(self):
+        if not self.recording:
+            return
+        el = int(time.time() - self.recorder.t0)
+        self.lbl_rec_level.configure(
+            text=f"● {el}s / {REC_LONG_SEC}s   {self.recorder.level_bar()}")
+        self.after(200, self._rec_tick)
+
+    def _rec_stop_and_transcribe(self):
+        if not self.recording or self.rec_owner != "stt":
+            return
+        frames, rate = self._stop_recorder()
+        if not frames:
+            self.status.set("Chưa thu được gì — thử lại.")
+            return
+        # file tạm thuộc về _w_file (delete_after=True); không gán last_wav — đó là
+        # bản ghi để Nghe lại của tab Luyện phát âm.
+        path, secs, info = save_frames_wav(frames, "stt_", rate)
+        self._log(quality_note(info))
+        if secs < 0.4:
+            remove_temp(path)
+            self.status.set("Bản thu quá ngắn (<0.4s) — thử lại, đọc to hơn.")
+            return
+        self.cancel_flag = False
+        self._set_stt_state("processing")
+        self._pbar(None)
+        self.status.set("Đang chuyển bản thu thành văn bản…")
+        base = "ghi-am-" + time.strftime("%Y%m%d-%H%M%S")
+        threading.Thread(target=self._w_file,
+                         args=(path, self.model_name.get(),
+                               None if self.lang.get() == "auto" else self.lang.get(),
+                               True, base), daemon=True).start()
+
+    # ================= tab 2: luyện phát âm =================
+    def _sash(self, pw, pos):
+        try:
+            pw.sashpos(0, pos)
+        except Exception:
+            pass
+
+    def _build_practice_tab(self, parent):
+        pw = ttk.Panedwindow(parent, orient="horizontal")
+        pw.pack(fill="both", expand=True)
+        left = ttk.Frame(pw, style="App.TFrame")
+        right = ttk.Frame(pw, style="App.TFrame")
+        pw.add(left, weight=0)
+        pw.add(right, weight=1)
+        self.pw_prac = pw
+
+        card = self._card(left, "Bài luyện", expand=True, pady=(self.px(0), self.px(0)))
+        row = ttk.Frame(card, style="CardInner.TFrame")
+        row.pack(fill="x")
+        for code, text in (("set", "Luyện câu"), ("guide", "Học âm")):
+            ttk.Radiobutton(row, text=text, value=code, variable=self.prac_mode,
+                            style="Card.TRadiobutton",
+                            command=self._prac_mode_changed).pack(side="left", padx=(self.px(0), self.px(16)))
+        self.cb_prac = ttk.Combobox(card, textvariable=self.prac_pick, width=36,
+                                    state="readonly")
+        self.cb_prac["values"] = SET_NAMES
+        self.cb_prac.current(0)
+        self.cb_prac.pack(fill="x", pady=(self.px(10), self.px(0)))
+        self.cb_prac.bind("<<ComboboxSelected>>", lambda e: self._refresh_practice())
+
+        self.entry_custom = ttk.Entry(card, textvariable=self.custom_text)
+        self.entry_custom.bind("<KeyRelease>", lambda e: self._refresh_practice())
+
+        self.p_target = ttk.Label(card, text="", style="Card.Big.TLabel", wraplength=self.px(470))
+        self.p_target.pack(anchor="w", pady=(self.px(12), self.px(2)))
+        # gợi ý bài có ký hiệu IPA ("/θ/ /ð/") → font có đủ IPA (D-28)
+        self.p_hint = ttk.Label(card, text="", style="Card.HintIpa.TLabel",
+                                wraplength=self.px(470))
+        self.p_hint.pack(anchor="w")
+        self.p_ipa = ttk.Label(card, text="", style="Card.Ipa.TLabel",
+                               wraplength=self.px(470))
+        self.p_ipa.pack(anchor="w", pady=(self.px(4), self.px(0)))
+        self.p_prog = ttk.Label(card, text="", style="Card.Hint.TLabel",
+                                wraplength=self.px(470))
+        self.p_prog.pack(anchor="w", pady=(self.px(6), self.px(0)))
+
+        self.p_how_card = ttk.Frame(card, style="CardInner.TFrame")
+        self.p_how = self._mk_text(self.p_how_card, role="out", scroll=True, height=7,
+                                   wrap="word")
+        self.p_how.holder.pack(fill="x")
+        self.p_how.configure(state="disabled")
+        self.p_samples = ttk.Frame(self.p_how_card, style="CardInner.TFrame")
+        self.p_samples.pack(fill="x", pady=(self.px(8), self.px(0)))
+
+        self.p_rec_row = ttk.Frame(card, style="CardInner.TFrame")
+        self.p_rec_row.pack(fill="x", pady=(self.px(16), self.px(0)))
+        self.btn_prec = ttk.Button(self.p_rec_row, text="●  Thu âm & chấm",
+                                   style="Accent.TButton", command=self._prac_record)
+        self.btn_prec.pack(side="left")
+        self.btn_preplay = ttk.Button(self.p_rec_row, text="Nghe lại", style="Ghost.TButton",
+                                      command=self._prac_replay, state="disabled")
+        self.btn_preplay.pack(side="left", padx=(self.px(8), self.px(0)))
+        ttk.Button(self.p_rec_row, text="Dừng phát", style="Ghost.TButton",
+                   command=self._stop_play).pack(side="left", padx=(self.px(8), self.px(0)))
+        ttk.Button(self.p_rec_row, text="Chấm file…", style="Ghost.TButton",
+                   command=self._prac_from_file).pack(side="left", padx=(self.px(8), self.px(0)))
+
+        self._mk_mic_row(card)
+        self.lbl_plevel = ttk.Label(card, text="", style="Card.Mono.TLabel")
+        self.lbl_plevel.pack(anchor="w", pady=(self.px(8), self.px(0)))
+        # chỉ hiện khi đang chấm (_prac_score → _prac_done/_prac_error), V-11
+        self.pbar_p = ttk.Progressbar(card, mode="determinate", maximum=100, value=0)
+        self._pbar_p_pack = {"fill": "x", "pady": (self.px(10), self.px(0))}
+
+        res = self._card(right, None, expand=True, pady=(self.px(0), self.px(0)))
+        head = ttk.Frame(res, style="CardInner.TFrame")
+        head.pack(fill="x")
+        ttk.Label(head, text="Kết quả", style="Card.Title.TLabel").pack(side="left")
+        # đầu kết quả (S-2): vòng điểm + câu chính + tóm tắt; chỉ hiện khi có kết quả
+        self.p_head = ttk.Frame(res, style="CardInner.TFrame")
+        self._p_head_after = head
+        self.p_ring = tk.Canvas(self.p_head, width=self.px(60), height=self.px(60), bd=0,
+                                highlightthickness=0, bg=self.P["card"])
+        self.p_ring.pack(side="left", padx=(0, self.px(12)))
+        info = ttk.Frame(self.p_head, style="CardInner.TFrame")
+        info.pack(side="left", fill="x", expand=True)
+        self.p_headline = ttk.Label(info, text="", style="Card.Headline.TLabel")
+        self.p_headline.pack(anchor="w")
+        self.p_summary = ttk.Label(info, text="", style="Card.Hint.TLabel",
+                                   wraplength=self.px(620), justify="left")
+        self.p_summary.pack(anchor="w", pady=(self.px(2), 0))
+        ttk.Label(res, textvariable=self.p_status, style="Card.Hint.TLabel",
+                  wraplength=self.px(620)).pack(anchor="w", pady=(self.px(8), self.px(8)))
+        self._embeds = []          # widget nhúng trong p_txt (chip, thẻ) — hủy khi vẽ lại
+        self._last_view = None
+        self._last_words_t = []
+        self._show_details = False
+        self._show_heard = False
+        self.p_txt = self._mk_text(res, role="out", scroll=True, state="disabled")
+        self.p_txt.holder.pack(fill="both", expand=True)
+
+        # --- Ngữ điệu (cao độ): chỉ hiện khi có dữ liệu so sánh ---
+        self.p_int_card = ttk.Frame(res, style="CardInner.TFrame")
+        int_head = ttk.Frame(self.p_int_card, style="CardInner.TFrame")
+        int_head.pack(fill="x", pady=(self.px(10), self.px(4)))
+        ttk.Label(int_head, text="Ngữ điệu", style="Card.Title.TLabel").pack(side="left")
+        ttk.Label(int_head, text="cao độ · bán cung (st) so với trung vị mỗi người",
+                  style="Card.Hint.TLabel").pack(side="left", padx=(self.px(8), self.px(0)))
+        self.p_int = tk.Canvas(self.p_int_card, height=self.px(175), bd=0,
+                               highlightthickness=0, bg=self.P["card2"])
+        self.p_int.pack(fill="x")
+        self.p_int.bind("<Configure>", lambda e: self._draw_intonation())
+        self.p_int.bind("<Map>", lambda e: self.after(60, self._draw_intonation))
+        self.p_int_note = ttk.Label(self.p_int_card, text="", style="Card.Hint.TLabel",
+                                    wraplength=self.px(900))
+        self.p_int_note.pack(anchor="w", pady=(self.px(4), 0))
+        self._clear_prac_result()
+
+    def _clear_prac_result(self, note=True):
+        """Xóa điểm/kết quả/ngữ điệu của lần chấm trước — đổi bài (P-01), thu/chấm lại."""
+        self.p_score.set("")
+        self.p_status.set("Chọn bài (hoặc âm), bấm Thu âm rồi đọc to, rõ.")
+        self._destroy_embeds()
+        self._last_view = None
+        self._show_details = self._show_heard = False
+        if self.p_head.winfo_manager():
+            self.p_head.pack_forget()
+        t = self.p_txt
+        t.configure(state="normal")
+        t.delete("1.0", "end")
+        if note:
+            t.insert("1.0", "Kết quả sẽ hiện ở đây: từ nào đúng, từ nào cần sửa và cách sửa.",
+                     "note")
+        t.configure(state="disabled")
+        self._inton = None
+        if self.p_int_card.winfo_manager():
+            self.p_int_card.pack_forget()
+
+    def _destroy_embeds(self):
+        for w in getattr(self, "_embeds", []):
+            try:
+                w.destroy()
+            except tk.TclError:
+                pass
+        self._embeds = []
+
+    def _prac_mode_changed(self):
+        guide = self.prac_mode.get() == "guide"
+        self.cb_prac.configure(values=GUIDE_NAMES if guide else SET_NAMES)
+        try:
+            self.cb_prac.current(0)
+        except Exception:
+            pass
+        self._refresh_practice()
+
+    def _refresh_practice(self):
+        # đổi bài / chế độ -> kết quả cũ không còn đúng với câu mới (P-01, D-31: về idle)
+        if not self.p_working:
+            self._clear_prac_result()
+            if getattr(self, "prac_state", "idle") in ("result", "unsure", "error"):
+                self._set_prac_state("idle")
+        guide = self.prac_mode.get() == "guide"
+        idx = self.cb_prac.current()
+        if guide:
+            idx = idx if 0 <= idx < len(GUIDE_IDS) else 0
+            g = GUIDES[GUIDE_IDS[idx]]
+            self.p_target.configure(text=g["target"])
+            self.p_hint.configure(text="Đọc đúng câu trên, so khẩu hình với hướng dẫn.")
+            self.p_ipa.configure(text="")
+            self.p_prog.configure(text="")
+            t = self.p_how
+            t.configure(state="normal")
+            t.delete("1.0", "end")
+            t.insert("1.0", g["instruction"])
+            t.configure(state="disabled")
+            self._fill_samples(g["samples"])
+            if not self.p_how_card.winfo_manager():
+                self.p_how_card.pack(fill="x", pady=(self.px(12), self.px(0)), before=self.p_rec_row)
+            if self.entry_custom.winfo_manager():
+                self.entry_custom.pack_forget()
+        else:
+            idx = idx if 0 <= idx < len(SET_IDS) else 0
+            sid = SET_IDS[idx]
+            s = PRACTICE_SETS[sid]
+            target, hint = s["target"], s["hint"]
+            if sid == "custom":
+                target = self.custom_text.get().strip()
+                hint = "Gõ câu của bạn ở ô trên (Việt hoặc Anh)."
+                if not self.entry_custom.winfo_manager():
+                    self.entry_custom.pack(fill="x", pady=(self.px(10), self.px(0)), before=self.p_target)
+            else:
+                if self.entry_custom.winfo_manager():
+                    self.entry_custom.pack_forget()
+            self.p_target.configure(text=target or "…gõ câu của bạn ở ô trên…")
+            self.p_hint.configure(text=hint)
+            ipa = s.get("ipa") or ""
+            self.p_ipa.configure(text=("IPA:  " + ipa) if ipa else "")
+            tips = s.get("tips") or []
+            if tips:
+                t = self.p_how
+                t.configure(state="normal")
+                t.delete("1.0", "end")
+                t.insert("1.0", "\n".join("•  " + x for x in tips))
+                t.configure(state="disabled")
+                self._fill_samples(s.get("samples") or [])
+                if not self.p_how_card.winfo_manager():
+                    self.p_how_card.pack(fill="x", pady=(self.px(12), self.px(0)),
+                                         before=self.p_rec_row)
+            elif self.p_how_card.winfo_manager():
+                self.p_how_card.pack_forget()
+            self._update_prog(sid)
+
+    def _fill_samples(self, samples):
+        for ch in self.p_samples.winfo_children():
+            ch.destroy()
+        for label, fname in samples:
+            p = os.path.join(MAU_DIR, fname)
+            b = ttk.Button(self.p_samples, text=f"▶ {label}", style="Ghost.TButton",
+                           command=lambda p=p: self._play_sample(p))
+            b.pack(side="left", padx=(self.px(0), self.px(8)))
+            if not os.path.exists(p):
+                b.state(["disabled"])
+
+    def _play_sample(self, path):
+        if self.playing:
+            return
+        self.playing = True
+
+        def job():
+            try:
+                play_wav_file(path)
+            except Exception as e:
+                self._queue.put(("prac_status", f"Không phát được âm mẫu: {e}"))
+            finally:
+                self.playing = False
+
+        threading.Thread(target=job, daemon=True).start()
+
+    # ---------- ngữ điệu (cao độ) ----------
+    def _show_intonation(self, d):
+        self._inton = d or None
+        if not d:
+            if self.p_int_card.winfo_manager():
+                self.p_int_card.pack_forget()
+            return
+        if not self.p_int_card.winfo_manager():
+            self.p_int_card.pack(side="bottom", fill="x",
+                                 pady=(self.px(10), self.px(0)), before=self.p_txt.holder)
+        self.p_int_note.configure(text=self._inton_text(d))
+        self.p_int.update_idletasks()
+        self._draw_intonation()
+        self.after(60, self._draw_intonation)  # vẽ lại sau khi cửa sổ hiện ra
+
+    def _inton_text(self, d):
+        def slope(v):
+            if v is None:
+                return "không đủ dữ liệu"
+            if abs(v) < 0.35:
+                return "gần như đi ngang"
+            return ("xuống %.1f st" if v < 0 else "lên %.1f st") % abs(v)
+
+        parts = ["Nét đứt = mẫu (%.2fs) · nét liền = bạn (%.2fs)."
+                 % (d.get("dur_ref", 0), d.get("dur_usr", 0)),
+                 "Cuối câu: mẫu %s · bạn %s."
+                 % (slope(d.get("final_ref")), slope(d.get("final_usr")))]
+        if d.get("range_ref") is not None and d.get("range_usr") is not None:
+            parts.append("Khoảng cao độ: mẫu %.1f st · bạn %.1f st."
+                         % (d["range_ref"], d["range_usr"]))
+        if d.get("diff") is not None:
+            parts.append("Độ lệch đường cong: %.1f st (căn thời gian tự động — "
+                         "chỉ để tham khảo)." % d["diff"])
+        return "  ".join(parts)
+
+    def _draw_intonation(self):
+        c = self.p_int
+        c.delete("all")
+        d = self._inton
+        if not d:
+            return
+        W, H = c.winfo_width(), c.winfo_height()
+        if W < self.px(180) or H < self.px(80):
+            return
+        P = self.P
+        ml, mr, mt, mb = self.px(44), self.px(14), self.px(10), self.px(24)
+        x0, x1 = ml, W - mr
+        y0, y1 = mt, H - mb
+        if x1 - x0 < 10 or y1 - y0 < 10:
+            return
+
+        vals = [v for k in ("ref", "usr") for v in (d.get(k) or {}).get("st", [])
+                if v is not None]
+        if not vals:
+            return
+        lim = max(6, min(18, int(math.ceil(max(abs(v) for v in vals) / 3.0)) * 3))
+
+        def X(t):
+            return x0 + max(0.0, min(1.0, t)) * (x1 - x0)
+
+        def Y(v):
+            return y0 + (lim - v) / (2.0 * lim) * (y1 - y0)
+
+        c.create_rectangle(x0, y0, x1, y1, outline=P["border"])
+        step = 3 if lim <= 9 else 6
+        for k in range(-lim, lim + 1, step):
+            yy = Y(k)
+            c.create_line(x0, yy, x1, yy, fill=P["border"],
+                          dash=() if k == 0 else (self.px(2), self.px(3)))
+            txt = "0" if k == 0 else ("+%d" % k if k > 0 else str(k))
+            c.create_text(x0 - self.px(6), yy, text=txt, anchor="e",
+                          fill=P["muted"], font=(self.F, 8))
+        for pct in (0, 25, 50, 75, 100):
+            xx = X(pct / 100.0)
+            c.create_line(xx, y0, xx, y1, fill=P["border"],
+                          dash=(self.px(2), self.px(3)))
+        for pct in (0, 50, 100):
+            c.create_text(X(pct / 100.0), y1 + self.px(4), text="%d%%" % pct,
+                          anchor="n", fill=P["muted"], font=(self.F, 8))
+
+        for key, color, width, dash in (("ref", P["muted"], 2, (self.px(7), self.px(4))),
+                                        ("usr", P["accent"], 3, ())):
+            data = d.get(key) or {}
+            ts, sts = data.get("t") or [], data.get("st") or []
+            pts = []
+            for t, st in zip(ts, sts):
+                if st is None:
+                    if len(pts) >= 4:
+                        c.create_line(*pts, fill=color, width=self.px(width), dash=dash)
+                    pts = []
+                else:
+                    pts.extend((X(t), Y(st)))
+            if len(pts) >= 4:
+                c.create_line(*pts, fill=color, width=self.px(width), dash=dash)
+
+    # ---------- lịch sử luyện (tiến bộ) ----------
+    def _load_hist(self):
+        try:
+            with open(HISTORY_PATH, encoding="utf-8") as f:
+                data = json.load(f)
+            return data if isinstance(data, dict) else {}
+        except Exception:
+            return {}
+
+    def _save_hist(self):
+        try:
+            tmp = HISTORY_PATH + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(self.hist, f, ensure_ascii=False, indent=1)
+            os.replace(tmp, HISTORY_PATH)
+        except Exception:
+            pass
+
+    def _update_prog(self, sid):
+        if not sid or sid == "custom":
+            self.p_prog.configure(text="")
+            return
+        h = self.hist.get(sid)
+        if not h:
+            self.p_prog.configure(text="Chưa luyện bài này.")
+            return
+        txt = f"Đã luyện {h.get('n', 0)} lần · tốt nhất {h.get('best', 0):.0f}%"
+        if h.get("last") is not None:
+            txt += f" · lần trước {h['last']:.0f}%"
+        weak = hist_weakest(self.hist, PRACTICE_SETS.get(sid, {}).get("lang"))
+        if weak:
+            txt += f"   |   Âm yếu nhất: {weak[0]} ({weak[1]} lần)"
+        self.p_prog.configure(text=txt)
+
+    def _record_hist(self, sid, res, view=None):
+        if not sid or sid == "custom":
+            return
+        if view is None:
+            view = build_result_view(res, PRACTICE_SETS.get(sid))
+        hist_add_try(self.hist, sid, view, time.strftime("%Y-%m-%d %H:%M"))
+        self._save_hist()
+
+    def _current_set_id(self):
+        if self.prac_mode.get() == "guide":
+            return None
+        idx = self.cb_prac.current()
+        return SET_IDS[idx] if 0 <= idx < len(SET_IDS) else None
+
+    def _current_practice(self):
+        guide = self.prac_mode.get() == "guide"
+        idx = self.cb_prac.current()
+        if guide:
+            idx = idx if 0 <= idx < len(GUIDE_IDS) else 0
+            g = GUIDES[GUIDE_IDS[idx]]
+            return g["target"], g["lang"]
+        idx = idx if 0 <= idx < len(SET_IDS) else 0
+        sid = SET_IDS[idx]
+        if sid == "custom":
+            return self.custom_text.get().strip(), "auto"
+        s = PRACTICE_SETS[sid]
+        return s["target"], s["lang"]
+
+    def _prac_record(self):
+        if self.p_working or self.busy:
+            return
+        if self.recording:
+            if self.rec_owner == "prac":
+                self._prac_stop_and_score()
+            else:
+                self.p_status.set("Đang ghi âm ở tab Chuyển thành văn bản — dừng ở đó "
+                                  "trước (hoặc Esc) rồi mới thu bài luyện.")
+        else:
+            self._prac_start()
+
+    def _prac_start(self):
+        target, _lang = self._current_practice()
+        if not target:
+            messagebox.showwarning("Chưa có câu",
+                                   "Hãy chọn bài hoặc gõ câu cần đọc vào ô Tùy chỉnh.")
+            return
+        if self._mic_probing:
+            self.p_status.set("Đang dò micro — chờ vài giây rồi bấm Thu âm & chấm.")
+            return
+        dev, name, rate = self._resolve_mic()
+        if dev is None:
+            return
+        self._set_prac_state("recording")
+        self._clear_prac_result(note=False)
+        self.recorder.start(dev, rate, REC_MAX_SEC,
+                            lambda reason: self._queue.put(("prac_autostop", reason)),
+                            lambda m: self._queue.put(("prac_error", m)),
+                            auto_stop={"silence": 1.3, "min_speech": 0.4,
+                                       "start_timeout": 7.0})
+        self.p_status.set(
+            f"● ĐANG THU bằng {name}. Đọc câu trên — đọc xong app tự dừng, "
+            f"hoặc bấm ■ Dừng & chấm.")
+        self.lbl_plevel.configure(text="● 0s — mời bạn đọc…")
+        self._prac_tick()
+
+    def _prac_tick(self):
+        if not self.recording:
+            return
+        el = int(time.time() - self.recorder.t0)
+        if self.recorder.speech_seen:
+            hint = "đã nghe giọng · đọc xong app tự dừng"
+        elif el >= 3:
+            hint = "chưa nghe thấy giọng — nói to / gần mic hơn"
+        else:
+            hint = "mời bạn đọc…"
+        self.lbl_plevel.configure(
+            text=f"● Đang thu {el}s  ·  {hint}  ·  {self.recorder.level_bar()}")
+        self.after(200, self._prac_tick)
+
+    def _set_last_wav(self, path):
+        """Đổi bản ghi để Nghe lại; xóa bản cũ (file tạm luyen_*) để không rò rỉ (I10)."""
+        old = self.last_wav
+        if old and old != path:
+            remove_temp(old)
+        self.last_wav = path
+
+    def _prac_stop_and_score(self, reason=None):
+        if not self.recording or self.rec_owner != "prac":
+            return
+        frames, rate = self._stop_recorder()
+        if reason == "nospeech":
+            self.p_status.set("Không nghe thấy giọng nói — mic gần như im lặng "
+                              "(có thể đang bị tắt tiếng). Chưa chấm điểm.")
+            self._find_mic_auto(show_dialog=True)
+            return
+        if not frames:
+            self.p_status.set("Chưa thu được gì — thử lại.")
+            return
+        path, secs, info = save_frames_wav(frames, "luyen_", rate)
+        self._set_last_wav(path)
+        self.btn_preplay.state(["!disabled"])
+        peak0 = float(info.get("peak0", 0.0) or 0.0)
+        if peak0 < MIC_MIN_PEAK:
+            # Gần như im lặng: KHÔNG đưa cho Whisper (dễ bịa ra câu lặp vô nghĩa).
+            self.p_status.set(
+                "Bản thu gần như im lặng (đỉnh vào %.2f%%) — chưa chấm điểm. "
+                "Tăng Microphone Level trong Windows hoặc để mic gần hơn."
+                % (peak0 * 100))
+            self._find_mic_auto(show_dialog=True)
+            return
+        self.p_status.set(quality_note(info))
+        if secs < 0.5:
+            self.p_status.set("Bản thu quá ngắn (<0.5s) — thử lại, đọc to hơn.")
+            return
+        self._prac_score(path)
+
+    def _mic_help_text(self):
+        return ("Mic gần như chỉ thu được im lặng (mức tín hiệu ~0).\n\n"
+                "Cách sửa:\n"
+                "• Bỏ tắt tiếng micro: nhấn phím tắt mute trên bàn phím/tai nghe "
+                "(nếu có).\n"
+                "• Windows: Settings → System → Sound → Input — chọn đúng micro, "
+                "kéo Volume lên 100%, bật Microphone Boost nếu có, bỏ Mute.\n"
+                "• Hoặc chọn micro khác ở ô Micro rồi bấm Kiểm tra. Mic ngoài (USB, "
+                "tai nghe bluetooth) phải được Windows nhận trước: bấm “Quét lại”, "
+                "và với tai nghe bluetooth hãy bật profile Hands-Free (xem gợi ý "
+                "dưới ô Micro).\n\n"
+                "Lưu ý: micro loại [Windows WDM-KS] không thu được trong app — "
+                "hãy chọn bản cùng tên ở [Windows WASAPI], [Windows DirectSound] "
+                "hoặc [MME].\n\n"
+                "App đang tự dò các micro khác trên máy để tìm cái có tín hiệu.")
+
+    def _find_mic_auto(self, show_dialog=False):
+        """Dò các micro, chọn cái có tín hiệu nhất (chạy nền)."""
+        if show_dialog:
+            messagebox.showwarning("Mic im lặng", self._mic_help_text())
+        if self._mic_probing:
+            return
+        self._mic_probing = True
+        self.p_status.set("Đang dò các micro để tìm cái có tín hiệu…")
+
+        def job():
+            try:
+                best = best_input_mic(1.0)
+            except Exception:
+                best = None
+            self._queue.put(("mic_found", best))
+
+        threading.Thread(target=job, daemon=True).start()
+        self.after(20000, self._mic_probe_timeout)
+
+    def _mic_probe_timeout(self):
+        self._mic_probing = False
+
+    def _prac_replay(self):
+        if not self.last_wav or not os.path.exists(self.last_wav) or self.playing:
+            return
+        self.playing = True
+
+        def job():
+            try:
+                play_wav_file(self.last_wav)
+            except Exception as e:
+                self._queue.put(("prac_status", f"Không phát lại được: {e}"))
+            finally:
+                self.playing = False
+
+        threading.Thread(target=job, daemon=True).start()
+
+    def _stop_play(self):
+        try:
+            import sounddevice as sd
+            sd.stop()
+        except Exception:
+            pass
+        self.playing = False
+
+    def _prac_from_file(self):
+        if self.p_working or self.recording:
+            return
+        p = filedialog.askopenfilename(title="Chọn file bài đọc", filetypes=SUPPORTED)
+        if not p:
+            return
+        self._set_last_wav(None)  # bỏ bản ghi tạm cũ; file người dùng chọn không gán vào last_wav
+        self._prac_score(p)
+
+    def _prac_score(self, wav_path):
+        target, lang = self._current_practice()
+        if not target:
+            messagebox.showwarning("Chưa có câu", "Bài đọc đang trống.")
+            return
+        self._set_prac_state("scoring")
+        self._clear_prac_result(note=False)
+        ref_wav = None
+        sid = self._current_set_id()
+        if sid and sid != "custom":
+            samples = PRACTICE_SETS.get(sid, {}).get("samples") or []
+            if samples:
+                cand = os.path.join(MAU_DIR, samples[0][1])
+                if os.path.exists(cand):
+                    ref_wav = cand
+        threading.Thread(target=self._w_prac,
+                         args=(wav_path, self.model_name.get(), lang, target, ref_wav),
+                         daemon=True).start()
+
+    def _w_prac(self, wav_path, model_size, lang, target, ref_wav=None):
+        try:
+            pk = wav_peak(wav_path)
+            if pk < MIC_MIN_PEAK:
+                self._queue.put(("prac_error",
+                                 "File gần như im lặng (đỉnh %.2f%%) — không chấm điểm. "
+                                 "Hãy chọn file khác." % (pk * 100)))
+                return
+            self._queue.put(("prac_status", "Đang nghe lại bài đọc của bạn…"))
+            model = load_model(model_size)
+            segs, _info = model.transcribe(
+                wav_path, language=None if lang == "auto" else lang,
+                beam_size=5, word_timestamps=True,
+                vad_filter=True, condition_on_previous_text=False)
+            # segs là generator: chỉ duyệt được MỘT lần → gom luôn text dự phòng ở đây
+            words, probs, texts, words_t = [], [], [], []
+            for s in segs:
+                texts.append(getattr(s, "text", "") or "")
+                for w in (getattr(s, "words", None) or []):
+                    t = (getattr(w, "word", "") or "").strip()
+                    if t:
+                        p = float(getattr(w, "probability", 1.0) or 0.0)
+                        words.append(t)
+                        probs.append(p)
+                        # mốc thời gian từng từ: để vẽ nhãn từ dưới biểu đồ ngữ điệu (S-5)
+                        st, en = getattr(w, "start", None), getattr(w, "end", None)
+                        if st is not None and en is not None:
+                            words_t.append({"w": t, "s": round(float(st), 3),
+                                            "e": round(float(en), 3), "p": round(p, 3)})
+            hyp = " ".join(words).strip() or " ".join("".join(texts).split())
+            if not hyp:
+                self._queue.put(("prac_error",
+                                 "Không nghe được chữ nào — thử đọc to, gần mic hơn."))
+                return
+            res = score_pronunciation(target, hyp, lang)
+            res["target"] = target
+            res["words_t"] = words_t
+            res["det_lang"] = (getattr(_info, "language", None) or lang or "auto")
+            res["conf"] = (sum(probs) / len(probs)) if probs else 1.0
+            res["low_conf"] = bool(probs) and res["conf"] < 0.35
+            # Dấu hiệu Whisper "bịa" (câu lặp rất dài so với câu mẫu):
+            hw_n = len(res.get("hyp", "").split())
+            tw_n = len(target.split())
+            res["garbage"] = bool(hw_n >= 8 and hw_n >= 2 * tw_n
+                                  and res["score"] < 35)
+            pairs = [(i, tw, hw) for i, (tw, st, hw, _n) in enumerate(res["items"])
+                     if st != "ok" and tw and hw]
+            if res.get("det_lang") == "en" and pairs:
+                res["phon"] = pron_en.analyze_pairs(pairs)
+            else:
+                res["phon"] = {"issues": [], "counts": {}, "top": [],
+                               "by_phoneme": {}, "unknown": []}
+            res["inton"] = None
+            if ref_wav:
+                try:
+                    res["inton"] = prosody.compare(ref_wav, wav_path)
+                except Exception:
+                    res["inton"] = None
+            res["gop"] = None
+            if (lang == "en" or res.get("det_lang") == "en") and gop.available():
+                try:
+                    self._queue.put(("prac_status",
+                                     "Đang chấm âm vị (GOP)… lần đầu sẽ lâu hơn "
+                                     "(nạp model)."))
+                    tw = [w for w in re.split(r"\s+", target.strip()) if w]
+                    res["gop"] = gop.score(wav_path, tw, ref_wav=ref_wav)
+                except Exception:
+                    res["gop"] = None
+            self._queue.put(("prac_done", res))
+        except Exception as e:
+            self._queue.put(("prac_error", str(e)))
+
+    def _prac_done(self, res):
+        sid = self._current_set_id()
+        lesson = PRACTICE_SETS.get(sid) if sid and sid != "custom" else None
+        v = build_result_view(res, lesson)
+        self._set_prac_state(v["state"])
+        self.p_score.set(v["score_line"])
+        self.p_status.set(v["status_line"])
+        self._last_words_t = res.get("words_t") or []
+        self._show_details = self._show_heard = False
+        self._render_result(v)
+
+        self._show_intonation(res.get("inton"))
+
+        self._record_hist(sid, res, v)
+        self._update_prog(sid)
+
+    # ---------- kết quả luyện (S-2, B3): chỉ VẼ view của build_result_view ----------
+    def _render_result(self, v):
+        """Vẽ đầu kết quả + câu mẫu + chip từng từ + thẻ "Cần sửa" vào p_txt."""
+        self._last_view = v
+        self._destroy_embeds()
+        P = self.P
+        self._draw_ring(v["ring"])
+        self.p_headline.configure(text=v["headline"])
+        self.p_summary.configure(text=v["summary"],
+                                 style="Card.HintIpa.TLabel" if has_ipa(v["summary"])
+                                 else "Card.Hint.TLabel")
+        if not self.p_head.winfo_manager():
+            self.p_head.pack(fill="x", pady=(self.px(10), 0), after=self._p_head_after)
+        t = self.p_txt
+        t.configure(state="normal")
+        t.delete("1.0", "end")
+        t.insert("end", "Câu mẫu:  ", "note")
+        t.insert("end", v["target"] + "\n", "big")
+
+        if v["state"] == "unsure":
+            # D-29: không số, không tô màu câu, không đổ lỗi cho người học
+            box = tk.Frame(t, bg=P["info_bg"], padx=self.px(14), pady=self.px(10))
+            tk.Label(box, text="Thử lại như sau", bg=P["info_bg"], fg=P["accent_fg"],
+                     font=(self.F, 10, "bold")).pack(anchor="w")
+            for tip in v["tips"]:
+                tk.Label(box, text="•  " + tip, bg=P["info_bg"], fg=P["fg"], font=(self.F, 10),
+                         justify="left").pack(anchor="w", pady=(self.px(2), 0))
+            self._embed(box, pady=self.px(8))
+            t.insert("end", "\n")
+            arrow = "▾" if self._show_heard else "▸"
+            self._link(t, "Máy nghe được gì? " + arrow, self._toggle_heard)
+            if self._show_heard:
+                t.insert("end", "\n“%s”" % v["heard_text"], "note")
+                if v["heard_note"]:
+                    t.insert("end", "\n" + v["heard_note"], "note")
+            t.insert("end", "\n")
+            t.configure(state="disabled")
+            return
+
+        t.insert("end", "\nTừng từ\n", "note")
+        for c in v["chips"]:
+            self._embed(self._mk_chip(t, c), padx=self.px(3), pady=self.px(3))
+        for w in v["extras"][:3]:
+            self._embed(self._mk_chip(t, {"kind": "extra", "target": w, "heard": None}),
+                        padx=self.px(3), pady=self.px(3))
+        if v["extras_total"] > 3:
+            t.insert("end", "  … +%d từ thừa" % (v["extras_total"] - 3), "note")
+        t.insert("end", "\n")
+
+        if v["cards"]:
+            t.insert("end", "\nCần sửa\n", "note")
+            for card in v["cards"]:
+                self._embed(self._mk_card(t, card), pady=self.px(4))
+                t.insert("end", "\n")
+            if v["cards_more"]:
+                t.insert("end", "… và %d lỗi khác\n" % v["cards_more"], "note")
+        if v["notes"]:
+            t.insert("end", "\n")
+            for n in v["notes"][:6]:
+                t.insert("end", "•  %s\n" % n)
+        if v["is_en"] and not v["cards"] and not v["perfect"] and v["score"] < 95:
+            t.insert("end", "\nChưa đủ dữ liệu để kết luận âm vị — đọc to và rõ hơn.\n", "note")
+        if not v["is_en"] and v["correct"] == 0 and not v["cards"]:
+            t.insert("end", "\nNghe lại câu mẫu rồi đọc chậm, rõ hơn; nếu bản ghi nghe rõ mà "
+                            "vẫn sai, thử model “small”.\n", "note")
+        if v["low_conf"]:
+            t.insert("end", "\nMáy nghe chưa chắc (tín hiệu yếu/nhiễu) — phần âm vị chỉ để "
+                            "tham khảo.\n", "note")
+        if v["has_gop"]:
+            # Q-03: số GOP chỉ hiện trong "Chi tiết số đo"; mặc định là mức chữ (I7)
+            t.insert("end", "\n")
+            self._link(t, "Chi tiết số đo " + ("▾" if self._show_details else "▸"),
+                       self._toggle_details)
+            t.insert("end", "\n")
+            if self._show_details:
+                for card in v["cards"]:
+                    if card.get("detail"):
+                        t.insert("end", "%s:  %s\n" % (card["title"], card["detail"]), "ipa")
+                t.insert("end", "Điểm GOP 0–100 do mô hình âm học chấm, so với bản mẫu cùng câu — "
+                                "không phải phần trăm phát âm đúng.\n" if v["gop_has_ref"] else
+                                "Điểm GOP 0–100 do mô hình âm học chấm (ngưỡng tuyệt đối vì "
+                                "không có bản mẫu) — không phải phần trăm phát âm đúng.\n", "note")
+        t.configure(state="disabled")
+
+    def _embed(self, widget, **kw):
+        self.p_txt.window_create("end", window=widget, **kw)
+        self._embeds.append(widget)
+
+    def _link(self, t, text, command):
+        """Chữ bấm được trong ô kết quả (dùng tag riêng cho mỗi link)."""
+        tag = "link_" + getattr(command, "__name__", "x")   # một tag cho mỗi hành động
+        t.insert("end", text, (tag,))
+        t.tag_configure(tag, foreground=self.P["accent_fg"], underline=False)
+        t.tag_bind(tag, "<Button-1>", lambda e: command())
+        t.tag_bind(tag, "<Enter>", lambda e: t.configure(cursor="hand2"))
+        t.tag_bind(tag, "<Leave>", lambda e: t.configure(cursor=""))
+
+    def _toggle_details(self):
+        self._show_details = not self._show_details
+        if self._last_view:
+            self._render_result(self._last_view)
+
+    def _toggle_heard(self):
+        self._show_heard = not self._show_heard
+        if self._last_view:
+            self._render_result(self._last_view)
+
+    def _draw_ring(self, ring):
+        c, P, s = self.p_ring, self.P, self.px(60)
+        c.configure(bg=P["card"])
+        c.delete("all")
+        w = self.px(7)
+        pad = w / 2.0 + 1
+        c.create_oval(pad, pad, s - pad, s - pad, outline=P["track"], width=w)
+        color = {"ok": P["ring_ok"], "warn": P["ring_warn"], "bad": P["ring_bad"]}.get(
+            ring["tone"], P["muted"])
+        if ring["frac"] > 0:
+            c.create_arc(pad, pad, s - pad, s - pad, start=90,
+                         extent=-359.9 * min(1.0, ring["frac"]), style="arc",
+                         outline=color, width=w)
+        c.create_text(s / 2.0, s / 2.0, text=ring["text"], fill=P["fg"],
+                      font=(self.F, 12, "bold"))
+
+    def _mk_chip(self, parent, c):
+        """Chip một từ (Canvas, góc bo): biểu tượng + từ mẫu + "→ nghe ‘…’" (P-02)."""
+        import tkinter.font as tkfont
+        P = self.P
+        kind = c["kind"]
+        bg, fg, icon = {
+            "ok": (P["ok_bg"], P["ok_fg"], "✓"),
+            "warn": (P["warn_bg"], P["warn_fg"], "!"),
+            "tone": (P["warn_bg"], P["warn_fg"], "!"),
+            "rhyme": (P["bad_bg"], P["bad_fg"], "✕"),
+            "bad": (P["bad_bg"], P["bad_fg"], "✕"),
+            "missing": (P["bad_bg"], P["bad_fg"], "✕"),
+            "extra": (P["card2"], P["muted"], "+"),
+        }.get(kind, (P["card2"], P["fg"], "•"))
+        word = c["target"] if c["target"] is not None else (c.get("heard") or "")
+        sub = ""
+        if kind == "missing":
+            sub = "→ (thiếu)"
+        elif kind in ("warn", "tone", "rhyme", "bad") and c.get("heard"):
+            sub = "→ nghe “%s”" % c["heard"]
+        f_main = tkfont.Font(family=self.F, size=11, weight="bold")
+        f_sub = tkfont.Font(family=self.F, size=9)
+        f_icon = tkfont.Font(family=self.F, size=10)
+        gap, padx = self.px(5), self.px(10)
+        w_icon, w_main = f_icon.measure(icon), f_main.measure(word)
+        w_sub = f_sub.measure(sub) if sub else 0
+        width = padx * 2 + w_icon + gap + w_main + ((gap + w_sub) if sub else 0)
+        height = f_main.metrics("linespace") + self.px(10)
+        cv = tk.Canvas(parent, width=width, height=height, bd=0, highlightthickness=0,
+                       bg=P["card"])
+        r = self.px(5)
+        pts = [r, 0, width - r, 0, width, 0, width, r, width, height - r, width, height,
+               width - r, height, r, height, 0, height, 0, height - r, 0, r, 0, 0]
+        cv.create_polygon(pts, smooth=True, fill=bg,
+                          outline=P["border"] if kind == "extra" else bg,
+                          dash=(self.px(3), self.px(2)) if kind == "extra" else None)
+        y = height / 2.0
+        x = padx
+        cv.create_text(x, y, text=icon, anchor="w", fill=fg, font=f_icon)
+        x += w_icon + gap
+        cv.create_text(x, y, text=word, anchor="w", fill=fg, font=f_main)
+        if sub:
+            x += w_main + gap
+            cv.create_text(x, y, text=sub, anchor="w", fill=fg, font=f_sub)
+        return cv
+
+    def _mk_card(self, parent, card):
+        """Thẻ một lỗi: chấm màu + tiêu đề + mức, mẹo khẩu hình, ▶ Mẫu / ▶ Bạn đọc."""
+        P = self.P
+        width = max(self.px(360), min(self.px(720), self.p_txt.winfo_width() - self.px(40)))
+        f = tk.Frame(parent, bg=P["card"], highlightthickness=1,
+                     highlightbackground=P["border"], padx=self.px(12), pady=self.px(8))
+        top = tk.Frame(f, bg=P["card"])
+        top.pack(fill="x")
+        dot = tk.Canvas(top, width=self.px(10), height=self.px(10), bd=0, highlightthickness=0,
+                        bg=P["card"])
+        dot.create_oval(0, 0, self.px(10), self.px(10), outline="",
+                        fill=P["ring_bad"] if card["kind"] == "bad" else P["ring_warn"])
+        dot.pack(side="left", padx=(0, self.px(8)))
+        title_font = (FONT_IPA, 11, "bold") if card.get("ipa") else (self.F, 11, "bold")
+        tk.Label(top, text=card["title"], bg=P["card"], fg=P["fg"], font=title_font,
+                 anchor="w").pack(side="left")
+        tk.Label(top, text=card["level"], bg=P["card"], fg=P["muted"],
+                 font=((FONT_IPA, 9) if has_ipa(card["level"]) else (self.F, 9))).pack(
+            side="right", padx=(self.px(12), 0))
+        if card.get("tip"):
+            tk.Label(f, text=card["tip"], bg=P["card"], fg=P["fg"],
+                     font=((FONT_IPA, 10) if has_ipa(card["tip"]) else (self.F, 10)),
+                     wraplength=width - self.px(30), justify="left", anchor="w").pack(
+                fill="x", pady=(self.px(4), 0))
+        row = tk.Frame(f, bg=P["card"])
+        sample = os.path.join(MAU_DIR, card["sample"]) if card.get("sample") else None
+        if sample and os.path.exists(sample):
+            self._mk_link_label(row, "▶ Mẫu “%s”" % card["word"],
+                                lambda p=sample: self._play_sample(p))
+        if card.get("heard") and self._heard_span(card["heard"]):
+            self._mk_link_label(row, "▶ Bạn đọc", lambda h=card["heard"]: self._play_heard(h))
+        if row.winfo_children():
+            row.pack(anchor="w", pady=(self.px(6), 0))
+        f.configure(width=width)
+        return f
+
+    def _mk_link_label(self, parent, text, command):
+        lb = tk.Label(parent, text=text, bg=self.P["card"], fg=self.P["accent_fg"],
+                      font=(self.F, 10), cursor="hand2")
+        lb.pack(side="left", padx=(0, self.px(16)))
+        lb.bind("<Button-1>", lambda e: command())
+        return lb
+
+    def _heard_span(self, word):
+        """Mốc (bắt đầu, kết thúc) của từ máy nghe trong bản thu luyện — None nếu không có."""
+        if not self.last_wav or not os.path.exists(self.last_wav):
+            return None
+        key = " ".join(norm_words(word))
+        for w in self._last_words_t:
+            if " ".join(norm_words(w["w"])) == key:
+                return w["s"], w["e"]
+        return None
+
+    def _play_heard(self, word):
+        span = self._heard_span(word)
+        if not span or self.playing:
+            return
+        self.playing = True
+        path = self.last_wav
+
+        def job():
+            try:
+                play_wav_segment(path, *span)
+            except Exception as e:
+                self._queue.put(("prac_status", f"Không phát được: {e}"))
+            finally:
+                self.playing = False
+
+        threading.Thread(target=job, daemon=True).start()
+
+    def _prac_error(self, err):
+        if self.rec_owner == "prac":
+            # lỗi mở micro khi đang thu bài luyện; lỗi chấm điểm thì không đụng
+            # tới bản thu đang chạy ở tab 1
+            self._stop_recorder()
+        self._set_prac_state("error")
+        msg = str(err)
+        self.p_status.set(msg if len(msg) < 300
+                          else "Lỗi — xem chi tiết trong hộp thoại.")
+        messagebox.showerror("Lỗi", msg)
+
+    # ================= micro =================
+    def _refresh_mics(self, rescan=False):
+        if rescan and not (self.recording or self.p_working
+                           or getattr(self, "playing", False)
+                           or self._mic_probing):
+            rescan_audio_devices()
+        mics = list_usable_mics()
+        self.mic_ids = [i for (i, n, a, *_) in mics]
+        self._mic_names = [f"{n} [{a}]" for (i, n, a, *_) in mics] or ["(không tìm thấy micro)"]
+        for cb in self._mic_combos:
+            cb["values"] = self._mic_names
+        self._update_mic_hint()
+        if not mics:
+            return
+        saved = self.cfg.get("mic") or ""
+        dflt = None
+        if saved in self._mic_names:
+            dflt = self.mic_ids[self._mic_names.index(saved)]
+        if dflt is None:
+            dflt = pick_default_mic(mics)
+        try:
+            self.mic_var.set(self._mic_names[self.mic_ids.index(dflt)])
+        except Exception:
+            self.mic_var.set(self._mic_names[0])
+
+    def _on_tab_changed(self, _evt=None):
+        """Vào tab Cài đặt -> quét lại thiết bị (thấy mic ngoài vừa kết nối)."""
+        try:
+            cur = self.nb.nametowidget(self.nb.select())
+        except Exception:
+            return
+        if cur is self.tab_set:
+            self._refresh_mics(rescan=True)
+
+    def _mic_hint_text(self):
+        """Gợi ý dưới ô Micro: thiết bị bị ẩn và tai nghe bluetooth thiếu micro."""
+        parts = []
+        missing = headset_mic_missing()
+        if missing:
+            parts.append(
+                f"Tai nghe “{missing}” mới chỉ có chiều NGHE — Windows chưa mở micro "
+                "của nó (headset bluetooth chỉ thu khi bật profile Hands-Free). "
+                "Cách bật: Control Panel → Sound → tab Recording → chuột phải → "
+                "“Show Disabled Devices” → Enable “Headset (… Hands-Free AG Audio)”; "
+                "hoặc Control Panel → Devices and Printers → chuột phải tai nghe → "
+                "Properties → Services → tích “Hands-Free Telephony”. Xong bấm "
+                "“Quét lại”.")
+        try:
+            hidden = len(list_input_mics()) - len(self.mic_ids)
+        except Exception:
+            hidden = 0
+        if hidden > 0:
+            parts.append(f"Đã ẩn {hidden} thiết bị [Windows WDM-KS] "
+                         "(PortAudio không thu liên tục được).")
+        return "  ".join(parts)
+
+    def _update_mic_hint(self):
+        text = self._mic_hint_text()
+        for lbl in getattr(self, "_mic_hints", []):
+            try:
+                lbl.configure(text=text)
+            except Exception:
+                pass
+
+    def _open_sound_settings(self):
+        """Mở trang âm thanh của Windows để chọn/tăng micro ngoài."""
+        try:
+            os.startfile("ms-settings:sound")
+        except Exception:
+            messagebox.showinfo(
+                "Âm thanh Windows",
+                "Mở thủ công: Settings → System → Sound → Input (hoặc Control Panel → "
+                "Sound → Recording).")
+
+    def _resolve_mic(self):
+        try:
+            import sounddevice  # noqa: F401
+        except ImportError:
+            messagebox.showerror("Thiếu thư viện",
+                                 "Chưa có sounddevice. Chạy: pip install -r requirements.txt")
+            return None, None, None
+        try:
+            i = self._mic_names.index(self.mic_var.get())
+            dev = self.mic_ids[i]
+            return dev, self._mic_names[i], query_mic_rate(dev)
+        except Exception:
+            pass
+        self._refresh_mics()
+        if not self.mic_ids:
+            messagebox.showerror("Không có micro", "Không tìm thấy thiết bị thu âm nào.")
+            return None, None, None
+        try:
+            dev = self.mic_ids[0]
+            return dev, self._mic_names[0], query_mic_rate(dev)
+        except Exception:
+            return None, None, None
+
+    def _test_mic(self):
+        if self.recording or self.p_working or self._mic_probing:
+            return
+        dev, mic, sr = self._resolve_mic()
+        if dev is None:
+            return
+        self.status.set(f"Đang kiểm tra mic ({mic}) — nói “a…” to trong 2 giây…")
+
+        def job():
+            try:
+                import math
+                import numpy as np
+                import sounddevice as sd
+                data = sd.rec(int(sr * 2.0), samplerate=sr, channels=1,
+                              dtype="int16", device=dev)
+                sd.wait()
+                x = data.astype(np.float32).flatten() / 32768.0
+                peak = float(np.max(np.abs(x))) if len(x) else 0.0
+                rms = float(np.sqrt(np.mean(x * x))) if len(x) else 0.0
+                db = 20 * math.log10(peak + 1e-9)
+                meas = (f"đỉnh {peak*100:.2f}% ({db:.0f} dB), "
+                        f"RMS {rms*100:.2f}%")
+                if peak < MIC_MIN_PEAK:
+                    msg = (f"Mic gần như IM LẶNG ({meas}). "
+                           "Bật micro trong Windows (Privacy → Microphone), bỏ Mute, "
+                           "tăng Microphone Level lên 100%.")
+                    best = best_input_mic()
+                    if best and best[3] >= max(MIC_MIN_PEAK, peak * 3):
+                        self._queue.put(("mic_found", best))
+                        msg += (f" Đã tìm thấy '{best[1]}' [{best[2]}] có tín hiệu "
+                                f"(đỉnh {best[3]*100:.0f}%) — đã chọn giúp bạn. "
+                                f"Bấm Thu âm & chấm để đọc lại.")
+                    else:
+                        msg += (" Không thấy micro nào khác có tín hiệu — kiểm tra "
+                                "âm lượng micro trong Windows (Settings → System → "
+                                "Sound → Input).")
+                elif peak < MIC_GOOD_PEAK:
+                    msg = (f"Mic hơi NHỎ ({meas}). App vẫn thu và khuếch đại được, "
+                           "nhưng nên tăng Microphone Level lên 100% và để mic "
+                           "gần hơn (10–20cm) để nhận dạng chính xác hơn.")
+                    best = best_input_mic()
+                    if best and best[3] >= max(MIC_GOOD_PEAK, peak * 3):
+                        self._queue.put(("mic_found", best))
+                        msg += (f" Có micro khác khá hơn: '{best[1]}' [{best[2]}] "
+                                f"(đỉnh {best[3]*100:.0f}%) — đã chọn giúp bạn.")
+                elif peak >= 0.95:
+                    msg = (f"Mic quá TO/VỠ ({meas}). "
+                           "Để mic xa hơn hoặc giảm Microphone Level.")
+                else:
+                    msg = f"Mic tốt ({meas})."
+                self._queue.put(("status", "Kiểm tra mic: " + msg))
+                self._queue.put(("prac_status", "Kiểm tra mic: " + msg))
+            except Exception as e:
+                self._queue.put(("error", f"Lỗi kiểm tra mic: {e}"))
+
+        threading.Thread(target=job, daemon=True).start()
+
+    # ================= tab 3: cài đặt =================
+    def _build_settings_tab(self, parent):
+        wrap = ttk.Frame(parent, style="App.TFrame")
+        wrap.pack(fill="both", expand=True)
+        left = ttk.Frame(wrap, style="App.TFrame")
+        left.pack(side="left", fill="both", expand=True, padx=(self.px(0), self.px(12)))
+        right = ttk.Frame(wrap, style="App.TFrame")
+        right.pack(side="left", fill="both", expand=True)
+
+        c = self._card(left, "Nhận dạng")
+        g = ttk.Frame(c, style="CardInner.TFrame")
+        g.pack(fill="x")
+        ttk.Label(g, text="Model", style="Card.TLabel").grid(row=0, column=0, sticky="w")
+        ttk.Combobox(g, textvariable=self.model_name, values=MODELS, width=10,
+                     state="readonly").grid(row=1, column=0, padx=(self.px(0), self.px(16)))
+        ttk.Label(g, text="Ngôn ngữ", style="Card.TLabel").grid(row=0, column=1, sticky="w")
+        ttk.Combobox(g, textvariable=self.lang_label, values=LANG_NAMES, width=12,
+                     state="readonly").grid(row=1, column=1)
+        ttk.Label(c, text=MODEL_HINT, style="Card.Hint.TLabel",
+                  wraplength=self.px(520)).pack(anchor="w", pady=(self.px(10), self.px(0)))
+        self._mk_mic_row(c)
+
+        c2 = self._card(left, "Lưu file & giao diện")
+        g2 = ttk.Frame(c2, style="CardInner.TFrame")
+        g2.pack(fill="x")
+        ttk.Label(g2, text="Thư mục lưu mặc định", style="Card.TLabel").pack(side="left")
+        ttk.Entry(g2, textvariable=self.out_dir).pack(side="left", fill="x", expand=True,
+                                                      padx=(self.px(8), self.px(0)))
+        ttk.Button(g2, text="Đổi…", style="Ghost.TButton",
+                   command=self._pick_out_dir).pack(side="left", padx=(self.px(8), self.px(0)))
+        g3 = ttk.Frame(c2, style="CardInner.TFrame")
+        g3.pack(fill="x", pady=(self.px(12), self.px(0)))
+        ttk.Label(g3, text="Giao diện", style="Card.TLabel").pack(side="left", padx=(self.px(0), self.px(10)))
+        ttk.Radiobutton(g3, text="Sáng", value="light", variable=self.theme_name,
+                        style="Card.TRadiobutton",
+                        command=self._toggle_theme).pack(side="left", padx=(self.px(0), self.px(14)))
+        ttk.Radiobutton(g3, text="Tối", value="dark", variable=self.theme_name,
+                        style="Card.TRadiobutton",
+                        command=self._toggle_theme).pack(side="left")
+        g4 = ttk.Frame(c2, style="CardInner.TFrame")
+        g4.pack(fill="x", pady=(self.px(14), self.px(0)))
+        ttk.Button(g4, text="Lưu cài đặt", style="Accent.TButton",
+                   command=lambda: (self._save_cfg(), self.status.set("Đã lưu cài đặt."))
+                   ).pack(side="left")
+        ttk.Button(g4, text="Mặc định", style="Ghost.TButton",
+                   command=self._reset_cfg).pack(side="left", padx=(self.px(8), self.px(0)))
+
+        c5 = self._card(left, "Phím tắt", expand=True, pady=(self.px(0), self.px(0)))
+        for key, desc in (("Ctrl+O", "chọn file audio/video"),
+                          ("Ctrl+Enter", "bắt đầu chuyển / bắt đầu thu"),
+                          ("Ctrl+S", "lưu kết quả .txt"),
+                          ("Esc", "hủy tác vụ đang chạy")):
+            rowk = ttk.Frame(c5, style="CardInner.TFrame")
+            rowk.pack(fill="x", pady=(self.px(2), self.px(0)))
+            ttk.Label(rowk, text=key, style="Card.Mono.TLabel", width=12).pack(side="left")
+            ttk.Label(rowk, text=desc, style="Card.Hint.TLabel").pack(side="left")
+
+        c3 = self._card(right, "Phụ đề mặc định")
+        g5 = ttk.Frame(c3, style="CardInner.TFrame")
+        g5.pack(fill="x")
+        ttk.Checkbutton(g5, text="Kèm phụ đề (.srt + .txt)", variable=self.y_subs,
+                        style="Card.TCheckbutton",
+                        command=self._yt_subs_changed).pack(side="left")
+        ttk.Label(g5, text="Ngôn ngữ", style="Card.TLabel").pack(side="left", padx=(self.px(14), self.px(6)))
+        ttk.Combobox(g5, textvariable=self.yt_sub_lang, values=YT_SUB_LANG_NAMES,
+                     width=22, state="readonly").pack(side="left")
+        ttk.Checkbutton(c3, text="Nhúng phụ đề vào video MP4", variable=self.y_embed,
+                        style="Card.TCheckbutton").pack(anchor="w", pady=(self.px(10), self.px(0)))
+        ttk.Label(c3, text="Phụ đề lấy từ video nếu có; nếu không có thì tạo bằng Whisper.",
+                  style="Card.Hint.TLabel", wraplength=self.px(520)).pack(anchor="w", pady=(self.px(8), self.px(0)))
+
+        c4 = self._card(right, "Thông tin", expand=True, pady=(self.px(0), self.px(0)))
+        self.info_txt = self._mk_text(c4, role="out", scroll=True, height=9, state="disabled",
+                                      wrap="char")
+        self.info_txt.holder.pack(fill="both", expand=True)
+        g6 = ttk.Frame(c4, style="CardInner.TFrame")
+        g6.pack(fill="x", pady=(self.px(10), self.px(0)))
+        ttk.Button(g6, text="Mở thư mục app", style="Ghost.TButton",
+                   command=lambda: os.startfile(BASE_DIR)).pack(side="left")
+        ttk.Button(g6, text="Mở README", style="Ghost.TButton",
+                   command=self._open_readme).pack(side="left", padx=(self.px(8), self.px(0)))
+        self._fill_info()
+
+    def _fill_info(self):
+        import importlib.util
+        rows = [f"Phiên bản: {APP_TITLE} v{VERSION}",
+                f"Python: {sys.version.split()[0]}",
+                f"Thư mục app: {BASE_DIR}",
+                f"Model đang chọn: {self.model_name.get()} · ngôn ngữ {self.lang_label.get()}",
+                "", "Thư viện:"]
+        for mod, label in (("faster_whisper", "faster-whisper (nhận dạng)"),
+                           ("yt_dlp", "yt-dlp (tải YouTube)"),
+                           ("imageio_ffmpeg", "ffmpeg (ghép / nhúng phụ đề)"),
+                           ("sounddevice", "sounddevice (thu âm)"),
+                           ("numpy", "numpy")):
+            try:
+                ok = importlib.util.find_spec(mod) is not None
+            except Exception:
+                ok = False
+            rows.append(f"  {'✓' if ok else '✗'}  {label}")
+        rows += ["", f"ffmpeg: {yt_ffmpeg_location() or '(chưa có)'}"]
+        t = self.info_txt
+        t.configure(state="normal")
+        t.delete("1.0", "end")
+        t.insert("1.0", "\n".join(rows))
+        t.configure(state="disabled")
+
+    def _open_readme(self):
+        p = os.path.join(BASE_DIR, "README.md")
+        if os.path.exists(p):
+            os.startfile(p)
+
+    # ================= cấu hình & đóng app =================
+    def _cfg_from_vars(self):
+        return {
+            "model": self.model_name.get(),
+            "lang": self.lang.get(),
+            "out_dir": self.out_dir.get(),
+            "theme": self.theme_name.get(),
+            "yt_kind": YT_KIND_BY_NAME.get(self.yt_kind.get(), "video"),
+            "yt_quality": YT_QUAL_BY_NAME.get(self.yt_quality.get(), "best"),
+            "subs": bool(self.y_subs.get()),
+            "embed": bool(self.y_embed.get()),
+            "sub_lang": YT_SUB_LANG_BY_NAME.get(self.yt_sub_lang.get(), "auto"),
+            "mic": self.mic_var.get(),
+            "geometry": self.cfg.get("geometry") or "1200x830",
+        }
+
+    def _save_cfg(self):
+        self.cfg = self._cfg_from_vars()
+        save_config(self.cfg)
+
+    def _toggle_theme(self):
+        self._apply_theme()
+        self._save_cfg()
+
+    def _flip_theme(self):
+        """Nút ở header: đảo theme rồi áp dụng. Radio trong Cài đặt tự set biến
+        trước khi gọi _toggle_theme, nên không đảo ở đó."""
+        self.theme_name.set("light" if self.theme_name.get() == "dark" else "dark")
+        self._toggle_theme()
+
+    def _reset_cfg(self):
+        self.cfg = dict(DEFAULT_CFG)
+        self.model_name.set(self.cfg["model"])
+        self.lang.set(self.cfg["lang"])
+        self.out_dir.set(self.cfg["out_dir"] or YT_DIR_DEFAULT)
+        self.theme_name.set(self.cfg["theme"])
+        self.yt_kind.set(YT_KIND_NAME.get(self.cfg["yt_kind"], YT_KIND_NAMES[1]))
+        self.yt_quality.set({c: n for c, n in YT_QUALITIES}.get(self.cfg["yt_quality"],
+                                                               YT_QUALITIES[0][1]))
+        self.y_subs.set(bool(self.cfg["subs"]))
+        self.y_embed.set(bool(self.cfg["embed"]))
+        self.yt_sub_lang.set({c: n for c, n in YT_SUB_LANGS}.get(self.cfg["sub_lang"],
+                                                                YT_SUB_LANG_NAMES[0]))
+        self._apply_theme()
+        self._fill_info()
+        self.status.set("Đã khôi phục cài đặt mặc định.")
+
+    def _on_close(self):
+        try:
+            self.cfg["geometry"] = self.geometry()
+        except Exception:
+            pass
+        self._save_cfg()
+        self.cancel_flag = True       # worker đang chạy tự dừng ở lần kiểm tra kế tiếp
+        if self.recording:
+            self.recorder.stop()
+        self._stop_play()
+        self._set_last_wav(None)      # xóa bản ghi luyện tạm (I10)
+        self.destroy()
+
+
+if __name__ == "__main__":
+    App().mainloop()

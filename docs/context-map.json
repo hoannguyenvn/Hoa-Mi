@@ -1,0 +1,250 @@
+{
+  "schema": 1,
+  "project": {
+    "name": "Oriole",
+    "version_source": "app.py:VERSION",
+    "readme": "README.md"
+  },
+  "docs": [
+    "AGENTS.md",
+    "docs/PROJECT-STATE.md",
+    "docs/ARCHITECTURE.md",
+    "docs/FEATURES.md",
+    "docs/DECISIONS.md",
+    "docs/HANDOFF.md",
+    "docs/ROADMAP.md",
+    "docs/UI-PLAN.md"
+  ],
+  "python": {
+    "app.py": [
+      "load_en_lessons",
+      "format_time",
+      "clock_time",
+      "srt_time",
+      "_parse_ts",
+      "_clean_cue",
+      "_parse_sub_text",
+      "_parse_json3",
+      "_dedupe_cues",
+      "_fix_cues",
+      "split_long_cues",
+      "cues_to_srt",
+      "cues_to_txt",
+      "read_subtitle_file",
+      "pick_subtitle_source",
+      "_yt_first_info",
+      "pick_downloaded_file",
+      "find_subtitle_file",
+      "mux_subtitles_into_video",
+      "ensure_av_patched",
+      "load_model",
+      "yt_ffmpeg_location",
+      "yt_build_opts",
+      "yt_progress_fraction",
+      "norm_words",
+      "strip_tone_vi",
+      "list_input_mics",
+      "list_usable_mics",
+      "rescan_audio_devices",
+      "headset_mic_missing",
+      "pick_default_mic",
+      "query_mic_rate",
+      "probe_input_levels",
+      "best_input_mic",
+      "resample_to_16k",
+      "enhance_audio",
+      "flag_pair",
+      "score_pronunciation",
+      "load_config",
+      "save_config",
+      "safe_stem",
+      "quality_note",
+      "wav_peak",
+      "remove_temp",
+      "save_frames_wav",
+      "play_wav_file",
+      "Recorder.start",
+      "Recorder.stop",
+      "Recorder.level_bar",
+      "App._run",
+      "App._cancel",
+      "App._stop_recorder",
+      "App._poll",
+      "App._w_file",
+      "App._w_whisper_cues",
+      "App._w_yt",
+      "App._w_yt_body",
+      "App._yt_fetch_sub_cues",
+      "App._on_result",
+      "App._on_error",
+      "App._prac_start",
+      "App._set_last_wav",
+      "App._prac_stop_and_score",
+      "App._w_prac",
+      "App._prac_done",
+      "App._prac_error",
+      "App._refresh_mics",
+      "App._test_mic",
+      "App._open_sound_settings",
+      "App._on_tab_changed",
+      "App._find_mic_auto",
+      "App._apply_theme",
+      "App._flip_theme",
+      "App._build_ui",
+      "App._save_cfg",
+      "App._on_close",
+      "register_ui_fonts",
+      "pick_ui_font",
+      "indicator_rows",
+      "logo_rows",
+      "rows_to_photo",
+      "App._theme_indicators",
+      "App._set_icon",
+      "App._clear_prac_result",
+      "App._init_sash",
+      "build_result_view",
+      "gop_level",
+      "stt_controls",
+      "prac_controls",
+      "hist_add_try",
+      "hist_weakest",
+      "App._set_stt_state",
+      "App._set_prac_state",
+      "App._render_result",
+      "App._src_label"
+    ],
+    "pron_en.py": [
+      "phonemes",
+      "ipa",
+      "word_ipa",
+      "align",
+      "compare_words",
+      "analyze_pairs",
+      "TIPS",
+      "LETTER_TIPS"
+    ],
+    "gop.py": [
+      "available",
+      "score",
+      "forget"
+    ],
+    "prosody.py": [
+      "read_wav",
+      "f0_track",
+      "contour",
+      "contour_cached",
+      "compare"
+    ],
+    "tools/build_lessons.py": [
+      "sentence_ipa",
+      "focus_text",
+      "make_wav",
+      "main"
+    ],
+    "gen_mau.py": [
+      "mp3_to_wav16k",
+      "main"
+    ],
+    "tools/context_check.py": [
+      "main"
+    ],
+    "tools/smoke_test.py": [
+      "main"
+    ],
+    "tools/ui_shots.py": [
+      "main",
+      "grab_png"
+    ]
+  },
+  "data": {
+    "lessons_en.json": {
+      "type": "lessons",
+      "min_lessons": 14,
+      "required_fields": [
+        "id",
+        "target",
+        "words",
+        "tips",
+        "pairs",
+        "ipa",
+        "focus_ipa",
+        "samples"
+      ],
+      "sample_dir": "mau/en"
+    },
+    "config.json": {
+      "type": "config",
+      "defaults_symbol": "app.py:DEFAULT_CFG"
+    },
+    "practice_history.json": {
+      "type": "json"
+    },
+    "requirements.txt": {
+      "type": "requirements",
+      "required": [
+        "faster-whisper",
+        "av",
+        "sounddevice",
+        "numpy",
+        "yt-dlp",
+        "imageio-ffmpeg"
+      ]
+    }
+  },
+  "assets": {
+    "globs": {
+      "mau/*.wav": 12,
+      "mau/en/*.wav": 74,
+      "assets/fonts/*.ttf": 3
+    }
+  },
+  "skills": [
+    "project-context",
+    "app-transcription",
+    "app-youtube",
+    "app-recording",
+    "app-pronunciation",
+    "app-phonemes",
+    "app-prosody",
+    "app-ui",
+    "app-lessons",
+    "app-qa-release",
+    "skill-authoring"
+  ],
+  "skill_rules": {
+    "max_body_lines": 500,
+    "max_description_chars": 1024,
+    "id_pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+  },
+  "docs_required_text": {
+    "docs/PROJECT-STATE.md": [
+      "Cập nhật lần cuối",
+      "## 1. Đang làm",
+      "## 2. Trạng thái"
+    ],
+    "docs/HANDOFF.md": [
+      "## 2. Template",
+      "## 4. Nhật ký"
+    ],
+    "docs/DECISIONS.md": [
+      "## A. Quyết định",
+      "## B. Những cách làm đã bị loại"
+    ],
+    "docs/ARCHITECTURE.md": [
+      "## 4. Luồng 1",
+      "## 6. Luồng 3"
+    ],
+    "docs/FEATURES.md": [
+      "## 1. Chuyển văn bản",
+      "## 3. Luyện phát âm"
+    ],
+    "docs/ROADMAP.md": [
+      "## P0",
+      "## P1"
+    ],
+    "docs/UI-PLAN.md": [
+      "## 1. Issue inventory",
+      "## 6. Questions for the user"
+    ]
+  }
+}

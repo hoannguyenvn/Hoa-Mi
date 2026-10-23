@@ -1,0 +1,698 @@
+#!/usr/bin/env python3
+"""Test khói cho các hàm thuần của Oriole.
+
+Không cần mic, không cần model Whisper, không mở cửa sổ Tk. Mục đích là bắt
+regression nhanh trước khi sửa app.py. Chạy:
+
+    C:\\Users\\ADMIN\\miniforge3\\python.exe tools\\smoke_test.py
+
+Quy ước: mỗi test in PASS/FAIL; exit code 1 nếu có FAIL.
+"""
+
+from __future__ import annotations
+
+import math
+import sys
+import traceback
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+import app  # noqa: E402  (import sau khi thêm ROOT vào sys.path)
+import numpy as np  # noqa: E402
+import pron_en  # noqa: E402
+import prosody  # noqa: E402
+
+CASES: list[tuple[str, callable]] = []
+
+
+def case(fn):
+    CASES.append((fn.__name__, fn))
+    return fn
+
+
+def approx(a: float, b: float, tol: float = 1e-6) -> bool:
+    return abs(float(a) - float(b)) <= tol
+
+
+# ---------------------------------------------------------------- bài học
+@case
+def lessons_loaded():
+    assert len(app.SET_IDS) == 18, f"SET_IDS={len(app.SET_IDS)}"
+    assert len(app.SET_IDS) == len(set(app.SET_IDS)), "SET_IDS trùng"
+    assert "en_th" in app.PRACTICE_SETS
+    for sid in app.SET_IDS:
+        s = app.PRACTICE_SETS[sid]
+        if sid != "custom":
+            assert s.get("target"), f"{sid} thiếu target"
+            assert s.get("lang") in ("vi", "en", "auto"), f"{sid} lang lạ"
+
+
+@case
+def lessons_have_samples():
+    for sid in app.SET_IDS:
+        if sid in ("custom",) or not sid.startswith("en_"):
+            continue
+        for _label, rel in app.PRACTICE_SETS[sid]["samples"]:
+            assert (ROOT / "mau" / rel).exists(), f"thiếu mau/{rel}"
+
+
+# ---------------------------------------------------------------- L1 scoring
+@case
+def exact_read_is_100():
+    r = app.score_pronunciation("Think about this thing.",
+                                "Think about this thing.", "en")
+    assert r["score"] == 100.0, r
+    assert r["warns"] == 0 and r["tones"] == 0, r
+    assert all(it[1] == "ok" for it in r["items"]), r["items"]
+
+
+@case
+def th_confusion_flagged():
+    r = app.score_pronunciation("Think about this thing.",
+                                "Tink about this thing.", "en")
+    assert r["warns"] >= 1, r
+    assert any("âm th" in (it[3] or "").lower() for it in r["items"]), r["items"]
+    assert r["score"] < 100, r
+
+
+@case
+def nl_confusion_flagged():
+    r = app.score_pronunciation("na la", "la la", "vi")
+    assert r["warns"] >= 1, r
+    assert any(it[1] == "warn" for it in r["items"]), r["items"]
+    assert approx(r["score"], 50.0), r
+
+
+@case
+def vietnamese_tone_flagged():
+    r = app.score_pronunciation("má", "ma", "vi")
+    assert r["tones"] == 1, r
+    assert r["items"][0][1] == "tone", r["items"]
+    assert r["score"] == 0.0, r
+
+
+@case
+def tone_strip_keeps_letters():
+    # strip_tone_vi trả chuỗi NFD (giữ dấu chữ như ă/â), nên chuẩn hóa NFC để so.
+    import unicodedata
+
+    def nfc(s):
+        return unicodedata.normalize("NFC", s)
+
+    assert nfc(app.strip_tone_vi("năm")) == "năm", repr(app.strip_tone_vi("năm"))
+    assert nfc(app.strip_tone_vi("má")) == "ma"
+    assert nfc(app.strip_tone_vi("mất")) == "mât"
+
+
+@case
+def extra_word_not_penalised():
+    # Hành vi có chủ đích: điểm = correct/total, từ thừa chỉ là cảnh báo.
+    r = app.score_pronunciation("na la", "na la la", "vi")
+    assert r["score"] == 100.0, r
+    assert any(it[1] == "extra" for it in r["items"]), r["items"]
+
+
+@case
+def norm_words_strips_punctuation():
+    assert app.norm_words("Xin chào, thế giới!") == ["xin", "chào", "thế", "giới"]
+    assert app.norm_words("") == []
+
+
+@case
+def flag_pair_direct():
+    assert app.flag_pair("think", "tink", "en")[0] == "th"
+    assert app.flag_pair("she", "see", "en")[0] == "sh"
+    assert app.flag_pair("cat", "ca", "en")[0] == "final"
+    assert app.flag_pair("năm", "lăm", "vi")[0] == "nl"
+    assert app.flag_pair("na", "na", "vi") is None
+
+
+# ---------------------------------------------------------------- cue / SRT
+@case
+def srt_timestamps():
+    srt = app.cues_to_srt([(0.0, 1.234, "Xin chào"),
+                           (61.5, 63.0, "Dòng hai")])
+    assert "1\n00:00:00,000 --> 00:00:01,234\nXin chào" in srt, srt
+    assert "2\n00:01:01,500 --> 00:01:03,000\nDòng hai" in srt, srt
+
+
+@case
+def txt_with_time():
+    txt = app.cues_to_txt([(0, 1, "a"), (61, 62, "b")])
+    assert txt == "[00:00:00] a\n[00:01:01] b\n", repr(txt)
+
+
+@case
+def fix_cues_removes_empty_and_fixes_duration():
+    out = app._fix_cues([(0, 1, "  a  "), (2, 2, ""), (3, 2, "b")])
+    assert out[0] == (0.0, 1.0, "a"), out
+    assert len(out) == 2, out
+    assert out[1][1] > out[1][0], out
+
+
+@case
+def split_long_cues_respects_words():
+    text = " ".join(["hello"] * 40)
+    out = app.split_long_cues([(0, 10, text)], max_chars=40)
+    assert len(out) > 1, out
+    assert all(len(c[2]) <= 40 for c in out), out
+    assert all(" ".join(c[2].split()) == c[2] for c in out), out
+    assert out[0][0] == 0.0 and out[-1][1] <= 10.0, out
+
+
+# ---------------------------------------------------------------- âm thanh
+@case
+def resample_length():
+    x = np.zeros(44100, dtype=np.float32)
+    y = app.resample_to_16k(x, 44100, 16000)
+    assert len(y) == 16000, len(y)
+
+
+@case
+def enhance_silence_is_quiet():
+    x = np.zeros(16000, dtype=np.int16)
+    out, info = app.enhance_audio(x, 16000)
+    assert out.dtype == np.int16
+    assert info["quiet"] is True, info
+    assert info["peak0"] == 0.0, info
+
+
+@case
+def enhance_normalises_gain():
+    t = np.arange(16000, dtype=np.float32) / 16000.0
+    x = (0.2 * np.sin(2 * math.pi * 150 * t) * 32767).astype(np.int16)
+    out, info = app.enhance_audio(x, 16000)
+    assert info["quiet"] is False, info
+    assert info["peak1"] > 0.4, info
+    assert np.max(np.abs(out)) <= 32767
+
+
+@case
+def enhance_lifts_weak_mic():
+    # Micro array laptop cho đỉnh ~1%: vẫn phải kéo lên mức Whisper nghe được
+    # (gain tối đa +24dB), nếu không app sẽ không chấm được gì.
+    t = np.arange(16000, dtype=np.float32) / 16000.0
+    x = (0.01 * np.sin(2 * math.pi * 150 * t) * 32767).astype(np.int16)
+    out, info = app.enhance_audio(x, 16000)
+    assert info["peak0"] < app.MIC_GOOD_PEAK, info
+    assert info["peak1"] > 0.1, info
+    assert np.max(np.abs(out)) <= 32767
+    assert app.MIC_MIN_PEAK < app.MIC_GOOD_PEAK, (app.MIC_MIN_PEAK, app.MIC_GOOD_PEAK)
+
+
+# ---------------------------------------------------------------- âm vị / F0
+@case
+def ipa_think_has_theta():
+    ipa = pron_en.word_ipa("think")
+    assert "θ" in ipa, ipa
+
+
+@case
+def phoneme_issue_think_tink():
+    rep = pron_en.analyze_pairs([(0, "think", "tink")])
+    assert rep["issues"], rep
+    assert any(it["exp"] == "TH" for it in rep["issues"]), rep["issues"]
+    assert any("θ" in it["label"] for it in rep["issues"]), rep["issues"]
+
+
+@case
+def f0_track_sine():
+    sr = 16000
+    t = np.arange(sr, dtype=np.float32) / sr
+    x = (0.5 * np.sin(2 * math.pi * 150.0 * t)).astype(np.float32)
+    _times, f0 = prosody.f0_track(x, sr)
+    vals = f0[~np.isnan(f0)]
+    assert len(vals) > 20, f"voiced={len(vals)}"
+    med = float(np.median(vals))
+    assert 135.0 <= med <= 165.0, med
+
+
+# ---------------------------------------------------------------- cấu hình
+@case
+def config_is_whitelisted():
+    cfg = app.load_config()
+    assert set(cfg) <= set(app.DEFAULT_CFG), set(cfg) - set(app.DEFAULT_CFG)
+    for key, val in app.DEFAULT_CFG.items():
+        assert key in cfg
+        assert isinstance(cfg[key], type(val)), f"{key}: {type(cfg[key])} != {type(val)}"
+
+
+@case
+def usable_mics_drops_wdmks():
+    # WDM-KS luôn lỗi blocking read -> không được hiện trong ô chọn micro.
+    fake = [(1, "Mic A", "Windows WASAPI", 48000),
+            (2, "Mic B", "Windows WDM-KS", 48000)]
+    out = app.list_usable_mics(fake)
+    assert [m[0] for m in out] == [1], out
+    # Máy chỉ có WDM-KS: giữ lại để ô chọn không trắng.
+    only = [(2, "Mic B", "Windows WDM-KS", 48000)]
+    assert len(app.list_usable_mics(only)) == 1, only
+    assert app.list_usable_mics([]) == []
+
+
+@case
+def pick_default_prefers_real_mic():
+    mics = [(0, "Microsoft Sound Mapper - Input", "MME", 44100),
+            (4, "Primary Sound Capture Driver", "Windows DirectSound", 44100),
+            (9, "Microphone Array (Intel)", "Windows WASAPI", 48000),
+            (5, "Microphone Array (Intel)", "Windows DirectSound", 44100),
+            (11, "Microphone (Realtek)", "Windows WDM-KS", 44100)]
+    assert app.pick_default_mic(mics) == 5, app.pick_default_mic(mics)
+    assert app.pick_default_mic([]) is None
+
+
+@case
+def headset_without_mic_is_detected():
+    # AirPods nối bluetooth chỉ có chiều nghe -> app phải phát hiện & nhắc bật
+    # profile Hands-Free, chứ không im lặng để người dùng tưởng app không hỗ trợ.
+    base = [
+        {"name": "Speakers (Realtek(R) Audio)", "max_input_channels": 0,
+         "max_output_channels": 2},
+        {"name": "Headphones (AirPods Pro - Find My)", "max_input_channels": 0,
+         "max_output_channels": 2},
+        {"name": "Microphone Array (Intel)", "max_input_channels": 4,
+         "max_output_channels": 0},
+    ]
+    assert app.headset_mic_missing(base), "phải thấy AirPods thiếu micro"
+    with_mic = base + [{"name": "Headset (AirPods Pro Hands-Free AG Audio)",
+                        "max_input_channels": 1, "max_output_channels": 2}]
+    assert app.headset_mic_missing(with_mic) is None
+    # Loa máy thường và tai nghe có dây không bị báo nhầm.
+    plain = [{"name": "Speakers (Realtek(R) Audio)", "max_input_channels": 0,
+              "max_output_channels": 2},
+             {"name": "Microphone (USB Audio Device)", "max_input_channels": 1,
+              "max_output_channels": 0}]
+    assert app.headset_mic_missing(plain) is None
+
+
+@case
+def recorder_uses_callback_not_blocking_read():
+    # DirectSound trên máy này trả 100 % số 0 với InputStream.read (D-23) — phải giữ
+    # callback + queue; quay lại blocking read là lỗi "mic im lặng" tái phát.
+    import inspect
+    src = inspect.getsource(app.Recorder.start)
+    assert "callback=" in src, "Recorder phải mở InputStream(callback=...)"
+    assert "stream.read(" not in src, "không được dùng stream.read (D-23)"
+    assert "get_nowait" in inspect.getsource(app.Recorder.stop), \
+        "stop() phải drain queue trước khi trả frames"
+
+
+@case
+def yt_worker_always_reports_back():
+    # Thiếu lớp bọc ở _w_yt thì Hủy/lỗi giữa chừng làm thread chết im lặng
+    # → UI kẹt trạng thái bận mãi (D-24). Không cần mạng.
+    import queue as _q
+    import types
+
+    def run(exc, cancel=False):
+        fake = types.SimpleNamespace(_queue=_q.Queue(), cancel_flag=cancel)
+
+        def body(*a):
+            raise exc
+        fake._w_yt_body = body
+        app.App._w_yt(fake, "u", "video", "best", ".", False, "auto", False, "base", None)
+        return fake._queue.get_nowait()
+
+    assert run(app._YtCancelled()) == ("error", "__cancelled__")
+    assert run(RuntimeError("boom"), cancel=True) == ("error", "__cancelled__")
+    kind, msg = run(RuntimeError("boom"))
+    assert kind == "error" and "boom" in msg
+
+
+@case
+def yt_subtitle_429_falls_back_not_fatal():
+    # yt-dlp coi lỗi tải phụ đề là lỗi chết; YouTube hay trả 429 cho phụ đề dịch máy.
+    # Lỗi phụ đề phải trả [] (→ Whisper), không được làm hỏng tải video (D-25).
+    import inspect
+    import queue as _q
+    import types
+
+    class FakeYDL:
+        def __init__(self, opts):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def download(self, urls):
+            raise RuntimeError("HTTP Error 429: Too Many Requests")
+
+    fake = types.SimpleNamespace(_queue=_q.Queue(), cancel_flag=False)
+    app.time.sleep, real_sleep = (lambda s: None), app.time.sleep
+    try:
+        cues = app.App._yt_fetch_sub_cues(
+            fake, types.SimpleNamespace(YoutubeDL=FakeYDL), "u",
+            app.os.path.join(app.tempfile.gettempdir(), "stt_none_x"), "en", 0)
+    finally:
+        app.time.sleep = real_sleep
+    assert cues == []
+    body = inspect.getsource(app.App._w_yt_body)
+    assert "quality, ffmpeg_loc, hook, None)" in body, \
+        "tải video không được kèm phụ đề trong cùng lệnh yt-dlp"
+
+
+def _tmp_wav(prefix="luyen_"):
+    fd, path = app.tempfile.mkstemp(prefix=prefix, suffix=".wav")
+    app.os.close(fd)
+    return path
+
+
+class _Widget:
+    """Widget giả: chỉ ghi lại configure/set để test không cần mở Tk."""
+
+    def __init__(self):
+        self.calls = []
+
+    def configure(self, **kw):
+        self.calls.append(kw)
+
+    def set(self, v):
+        self.calls.append(v)
+
+
+@case
+def remove_temp_is_safe():
+    p = _tmp_wav()
+    assert app.remove_temp(p) and not app.os.path.exists(p)
+    assert app.remove_temp(p), "file đã xóa rồi vẫn phải trả True"
+    assert app.remove_temp(None) and app.remove_temp("")
+
+
+@case
+def practice_replay_wav_is_replaced_not_leaked():
+    # Trước đây mỗi lần luyện để lại 1 luyen_*.wav trong %TEMP% (I10).
+    import types
+    a, b = _tmp_wav(), _tmp_wav()
+    fake = types.SimpleNamespace(last_wav=a)
+    app.App._set_last_wav(fake, b)
+    assert not app.os.path.exists(a) and fake.last_wav == b
+    app.App._set_last_wav(fake, b)  # cùng file: không được tự xóa
+    assert app.os.path.exists(b)
+    app.App._set_last_wav(fake, None)  # đóng app / chấm file ngoài
+    assert not app.os.path.exists(b) and fake.last_wav is None
+
+
+@case
+def w_file_removes_temp_recording_on_error():
+    import queue as _q
+    import types
+    p = _tmp_wav("stt_")
+    fake = types.SimpleNamespace(_queue=_q.Queue(), cancel_flag=False)
+
+    def boom(_size):
+        raise RuntimeError("model hỏng")
+    real, app.load_model = app.load_model, boom
+    try:
+        app.App._w_file(fake, p, "base", None, True, "ghi-am")
+    finally:
+        app.load_model = real
+    msgs = []
+    while not fake._queue.empty():
+        msgs.append(fake._queue.get_nowait())
+    assert ("error", "model hỏng") in msgs, msgs
+    assert not app.os.path.exists(p), "bản ghi tạm phải bị xóa cả khi lỗi"
+
+
+@case
+def yt_progress_is_a_fraction():
+    # _pbar nhân 100: hook gửi 0..100 làm thanh tiến trình đầy ngay từ đầu.
+    import inspect
+    f = app.yt_progress_fraction
+    assert approx(f({"total_bytes": 200, "downloaded_bytes": 50}), 0.25)
+    assert approx(f({"total_bytes_estimate": 400, "downloaded_bytes": 100}), 0.25)
+    assert f({"downloaded_bytes": 10}) is None
+    assert approx(f({"total_bytes": 10, "downloaded_bytes": 30}), 1.0)
+    assert "yt_progress_fraction(d)" in inspect.getsource(app.App._w_yt_body)
+
+
+@case
+def practice_hyp_falls_back_to_segment_text():
+    # segs là generator: fallback cũ duyệt lại generator đã cạn → luôn rỗng.
+    import queue as _q
+    import types
+
+    def segs():
+        yield types.SimpleNamespace(text=" xin chào", words=None)
+
+    class FakeModel:
+        def transcribe(self, *a, **k):
+            return segs(), types.SimpleNamespace(language="vi")
+
+    fake = types.SimpleNamespace(_queue=_q.Queue())
+    real, app.load_model = app.load_model, (lambda _s: FakeModel())
+    try:
+        # đường dẫn không phải WAV → wav_peak trả 1.0, gate im lặng bỏ qua
+        app.App._w_prac(fake, "khong_co.wav", "base", "vi", "xin chào", None)
+    finally:
+        app.load_model = real
+    msgs = []
+    while not fake._queue.empty():
+        msgs.append(fake._queue.get_nowait())
+    kind, res = msgs[-1]
+    assert kind == "prac_done", msgs
+    assert res["hyp"] == "xin chào" and res["score"] == 100.0, res["hyp"]
+
+
+@case
+def recording_belongs_to_one_tab():
+    # Recorder dùng chung: bấm nút tab Luyện khi tab 1 đang thu không được chấm
+    # nhầm bản thu của tab 1; dừng thì reset đúng UI của tab đang thu.
+    import types
+    stopped = []
+    fake = types.SimpleNamespace(
+        p_working=False, busy=False, recording=True, rec_owner="stt",
+        p_status=_Widget(),
+        _prac_stop_and_score=lambda *a: stopped.append("prac"),
+        _prac_start=lambda: stopped.append("start"))
+    app.App._prac_record(fake)
+    assert stopped == [] and fake.p_status.calls, "không được đụng bản thu tab 1"
+
+    # dừng thu → tab ĐANG THU về idle qua state model (D-31), tab kia không bị đụng
+    states = []
+    fake = types.SimpleNamespace(
+        recording=True, rec_owner="prac",
+        recorder=types.SimpleNamespace(stop=lambda: ([], 16000)),
+        _set_prac_state=lambda s: states.append(("prac", s)),
+        _set_stt_state=lambda s: states.append(("stt", s)))
+    frames, rate = app.App._stop_recorder(fake)
+    assert frames == [] and rate == 16000
+    assert states == [("prac", "idle")], states
+    # nút tab 2 trở lại "Thu âm & chấm" ở idle (trước đây Esc để kẹt "Dừng & chấm")
+    assert app.prac_controls("idle", False)["rec_text"] == "●  Thu âm & chấm"
+    assert app.prac_controls("recording", False)["rec_text"] == "■  Dừng & chấm"
+
+
+@case
+def ui_font_bundled_and_registered():
+    # D-28: Be Vietnam Pro đóng gói kèm giấy phép OFL; đăng ký riêng cho tiến trình.
+    for name in app.UI_FONT_FILES + ("OFL.txt",):
+        assert (Path(app.FONTS_DIR) / name).is_file(), name
+    assert app.register_ui_fonts(app.tempfile.gettempdir() + "\\khong_co_font") == 0
+    if sys.platform == "win32":
+        assert app.register_ui_fonts() == len(app.UI_FONT_FILES)
+    assert app.pick_ui_font(["Arial", "Be Vietnam Pro"]) == "Be Vietnam Pro"
+    assert app.pick_ui_font(["Arial", "Segoe UI Variable Text"]) == "Segoe UI Variable Text"
+    assert app.pick_ui_font(["Arial"]) == "Segoe UI"
+    assert app.FONT_IPA == "Segoe UI", "IPA phải dùng font có đủ θ ŋ ə ɪ (D-28)"
+
+
+@case
+def indicator_images_follow_theme():
+    # V-01/V-02: radio/checkbox vẽ bằng ảnh theo theme; checkbox chọn có nền accent.
+    c = {"box": "#56636F", "fill": "#FFFFFF", "accent": "#0B6BCB", "mark": "#FFFFFF",
+         "bg": "#FFFFFF"}
+    for kind in ("check", "radio"):
+        for on in (False, True):
+            rows = app.indicator_rows(kind, on, 16, c)
+            assert len(rows) == 16 and all(len(r) == 16 for r in rows)
+            assert rows[0][0] is None, "góc ngoài phải trong suốt"
+    on_rows = app.indicator_rows("radio", True, 16, c)
+    off_rows = app.indicator_rows("radio", False, 16, c)
+    assert on_rows[8][8] == "#0b6bcb" or on_rows[8][8] == "#0B6BCB", on_rows[8][8]
+    assert off_rows[8][8].lower() == "#ffffff", "radio chưa chọn phải rỗng (lỗi theme tối cũ)"
+    chk = app.indicator_rows("check", True, 16, c)
+    assert chk[3][3].lower() == "#0b6bcb", chk[3][3]
+
+
+@case
+def window_icon_drawn_in_code():
+    rows = app.logo_rows(32)
+    assert len(rows) == 32 and rows[0][0] is None
+    assert rows[16][4].lower() == "#0b6bcb", rows[16][4]
+
+
+@case
+def language_names_map_to_codes():
+    # V-13: ô Ngôn ngữ hiện tên tiếng Việt, cấu hình vẫn lưu mã.
+    assert app.LANG_NAMES[0] == "Tự động" and app.LANG_BY_NAME["Tiếng Việt"] == "vi"
+    assert [c for c, _ in app.LANG_LABELS] == app.LANGS
+    for code in app.LANGS:
+        assert app.LANG_BY_NAME[app.LANG_NAME[code]] == code
+
+
+def _view_of(target, hyp, lang, lesson_lang=None, **extra):
+    res = app.score_pronunciation(target, hyp, lang)
+    res.update(target=target, det_lang=lang, gop=None, low_conf=False, garbage=False)
+    res.update(extra)
+    pairs = [(i, tw, hw) for i, (tw, st, hw, _n) in enumerate(res["items"])
+             if st != "ok" and tw and hw]
+    if "phon" not in extra:
+        res["phon"] = (pron_en.analyze_pairs(pairs) if lang == "en" and pairs else
+                       {"issues": [], "counts": {}, "top": [], "by_phoneme": {}, "unknown": []})
+    return app.build_result_view(res, {"lang": lesson_lang or lang})
+
+
+@case
+def result_view_english_errors():
+    # D-31 / A-02: "nói gì" nằm trong hàm thuần, test được không cần Tk.
+    v = _view_of("Think about this thing.", "tink about dis thing", "en")
+    kinds = [(c["target"], c["kind"], c["heard"]) for c in v["chips"]]
+    assert kinds[0] == ("think", "warn", "tink") and kinds[1][1] == "ok", kinds
+    assert v["headline"] == "Đúng 2/4 từ" and not v["perfect"]
+    assert v["score_line"] == "2/4 từ", v["score_line"]
+    assert v["cards"] and v["cards"][0]["title"].startswith("/θ/"), v["cards"]
+    assert v["summary"].startswith("Lỗi chính: /θ/"), v["summary"]
+    assert v["sounds"].get("TH"), v["sounds"]
+    assert v["state"] == "result"
+
+
+@case
+def result_view_perfect_and_extras():
+    v = _view_of("Think about this thing.", "think about this thing", "en")
+    assert v["perfect"] and v["headline"] == "Hoàn hảo — đúng cả 4 từ" and v["ring"]["text"] == "✓"
+    v2 = _view_of("Think about this thing.", "think about this thing um", "en")
+    assert not v2["perfect"] and v2["extras_total"] == 1, "từ thừa không được khen hoàn hảo"
+
+
+@case
+def result_view_vietnamese_counts_by_lesson_language():
+    v = _view_of("Lan năm nay lên lớp", "nan lăm nay nên lớp", "vi")
+    assert [c["code"] for c in v["chips"] if c["kind"] == "warn"] == ["nl", "nl", "nl"]
+    assert v["sounds"] == {"nl": 3}, v["sounds"]
+    # Whisper nhận nhầm tiếng Anh cho bài Việt → KHÔNG đếm âm vị Anh vào bài Việt (H-03)
+    wrong = _view_of("Lan năm nay", "nan lăm nay", "en", lesson_lang="vi")
+    assert wrong["sounds"] == {}, wrong["sounds"]
+    missing = _view_of("Lan năm nay lên", "lan năm nay", "vi")
+    assert missing["chips"][-1]["kind"] == "missing" and missing["chips"][-1]["heard"] is None
+
+
+@case
+def result_view_gop_levels_not_percent():
+    # I7: GOP thành mức chữ cho giao diện mới; số vẫn giữ trong view cho "Chi tiết".
+    it = pron_en._issue("TH", "T", "think", 0, 3)
+    it.update(score=18.0, ref_score=71.0, wi=0, ph="TH")
+    it2 = pron_en._issue("DH", "D", "this", 0, 3)
+    it2.update(score=31.0, ref_score=66.0, wi=2, ph="DH")
+    v = _view_of("Think about this thing.", "tink about dis thing", "en",
+                 gop={"issues": [it, it2], "has_ref": True})
+    assert [c["level"] for c in v["cards"]] == ["lệch rõ", "hơi lệch"]
+    assert v["has_gop"] and "18%" in v["cards"][0]["detail"]
+    assert v["sounds"] == {"TH": 1, "DH": 1} and v["n_issues"] == 2
+
+
+@case
+def screen_states_drive_controls():
+    # D-31: một chỗ quyết định nút/thanh tiến trình theo trạng thái.
+    c = app.stt_controls("processing", "▶  Bắt đầu")
+    assert not c["run_enabled"] and c["cancel_enabled"] and c["show_pbar"]
+    c = app.stt_controls("result", "▶  Bắt đầu")
+    assert c["run_enabled"] and c["run_text"] == "▶  Bắt đầu" and not c["show_pbar"]
+    assert not c["cancel_enabled"]
+    assert app.stt_controls("recording", "x")["run_text"].startswith("■")
+    p = app.prac_controls("scoring", True)
+    assert not p["rec_enabled"] and not p["replay_enabled"] and p["show_pbar"]
+    p = app.prac_controls("result", True)
+    assert p["rec_enabled"] and p["replay_enabled"] and not p["show_pbar"]
+    assert not app.prac_controls("idle", False)["replay_enabled"]
+    assert set(app.PRAC_STATES) >= {"unsure", "scoring"}
+
+
+@case
+def history_keeps_tries_and_migrates():
+    # D-30: lưu từng lần (tối đa 30); file cũ không có "tries" vẫn dùng được.
+    old = {"en_th": {"n": 2, "best": 75.0, "last": 50.0, "ph": {"TH": 2}}}
+    v = _view_of("Think about this thing.", "tink about dis thing", "en")
+    app.hist_add_try(old, "en_th", v, "2026-10-22 10:00")
+    h = old["en_th"]
+    assert h["n"] == 3 and h["last"] == 50.0 and h["best"] == 75.0
+    assert h["tries"] == [{"ts": "2026-10-22 10:00", "c": 2, "t": 4, "ph": v["sounds"]}]
+    for i in range(40):
+        app.hist_add_try(old, "en_th", v, "t%d" % i)
+    assert len(old["en_th"]["tries"]) == app.HIST_TRIES_MAX
+    unsure = dict(v, state="unsure")
+    before = old["en_th"]["n"]
+    app.hist_add_try(old, "en_th", unsure, "x")
+    assert old["en_th"]["n"] == before, "lần 'chưa nghe rõ' không được lưu (D-29/D-30)"
+
+
+@case
+def weakest_sound_is_per_language():
+    hist = {"vi2": {"ph": {"N": 10, "AA": 4, "nl": 2}},   # dữ liệu cũ lẫn âm vị Anh
+            "en_th": {"ph": {"TH": 5, "DH": 4}}}
+    assert app.hist_weakest(hist, "vi") == ("N/L", 2)
+    assert app.hist_weakest(hist, "en") == ("/θ/", 5)
+    assert app.hist_weakest({"vi1": {"ph": {"N": 10}}}, "vi") is None
+
+
+@case
+def practice_keeps_word_timings():
+    # S-5: giữ mốc thời gian từng từ để vẽ nhãn dưới biểu đồ ngữ điệu (B4).
+    import queue as _q
+    import types
+
+    def segs():
+        yield types.SimpleNamespace(text=" xin chào", words=[
+            types.SimpleNamespace(word=" xin", probability=0.9, start=0.1, end=0.4),
+            types.SimpleNamespace(word=" chào", probability=0.8, start=0.5, end=0.9)])
+
+    class FakeModel:
+        def transcribe(self, *a, **k):
+            return segs(), types.SimpleNamespace(language="vi")
+
+    fake = types.SimpleNamespace(_queue=_q.Queue())
+    real, app.load_model = app.load_model, (lambda _s: FakeModel())
+    try:
+        app.App._w_prac(fake, "khong_co.wav", "base", "vi", "xin chào", None)
+    finally:
+        app.load_model = real
+    msgs = []
+    while not fake._queue.empty():
+        msgs.append(fake._queue.get_nowait())
+    kind, res = msgs[-1]
+    assert kind == "prac_done", msgs
+    assert [w["w"] for w in res["words_t"]] == ["xin", "chào"]
+    assert res["words_t"][1]["s"] == 0.5 and res["words_t"][1]["e"] == 0.9
+
+
+def main() -> int:
+    if hasattr(sys.stdout, "reconfigure"):
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+    failed = 0
+    for name, fn in CASES:
+        try:
+            fn()
+            print(f"[PASS] {name}")
+        except Exception as exc:
+            failed += 1
+            print(f"[FAIL] {name}: {exc}")
+            if not isinstance(exc, AssertionError):
+                traceback.print_exc(limit=2)
+
+    print()
+    print(f"TỔNG: {len(CASES) - failed}/{len(CASES)} PASS · {failed} FAIL")
+    return 0 if failed == 0 else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

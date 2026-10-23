@@ -1,0 +1,240 @@
+"""Phân tích ngữ điệu (cao độ) — chỉ dùng numpy, không cần librosa/praat.
+
+Nguyên tắc: chỉ hiển thị cái đo được, không cho "điểm ngữ điệu" giả.
+  - Tách cao độ F0 bằng autocorrelation trên từng khung 40 ms (bước 10 ms).
+  - Bỏ khung câm / vô thanh (không có cao độ).
+  - Quy đổi sang BÁN CUNG so với trung vị của chính người nói
+    (12*log2(f/median)) -> so được hình dáng câu giữa hai người khác giọng.
+  - Trục thời gian chuẩn hoá 0..100% vì độ dài hai bản thu khác nhau.
+
+Hàm chính:
+    compare(ref_path, usr_path) -> dict | None
+"""
+
+import wave
+
+import numpy as np
+
+_REF_CACHE = {}  # (path, mtime, size) -> contour
+
+
+# ------------------------------------------------------------------ đọc WAV
+def read_wav(path):
+    """Đọc WAV PCM -> (float32 mono [-1..1], sample_rate)."""
+    with wave.open(path, "rb") as w:
+        sr = w.getframerate()
+        nch = w.getnchannels()
+        sw = w.getsampwidth()
+        raw = w.readframes(w.getnframes())
+    if sw == 1:
+        x = (np.frombuffer(raw, dtype=np.uint8).astype(np.float32) - 128.0) / 128.0
+    elif sw == 2:
+        x = np.frombuffer(raw, dtype="<i2").astype(np.float32) / 32768.0
+    elif sw == 3:
+        b = np.frombuffer(raw, dtype=np.uint8).reshape(-1, 3).astype(np.int32)
+        v = b[:, 0] | (b[:, 1] << 8) | (b[:, 2] << 16)
+        v = np.where(v & 0x800000, v - 0x1000000, v)
+        x = v.astype(np.float32) / 8388608.0
+    elif sw == 4:
+        x = np.frombuffer(raw, dtype="<i4").astype(np.float32) / 2147483648.0
+    else:
+        raise ValueError("định dạng WAV không hỗ trợ")
+    if nch > 1:
+        x = x.reshape(-1, nch).mean(axis=1)
+    if sr != 16000:  # nội suy tuyến tính — đủ tốt cho việc đo F0
+        t_old = np.arange(len(x), dtype=np.float64) / sr
+        n_new = int(round(len(x) * 16000.0 / sr))
+        t_new = np.arange(n_new, dtype=np.float64) / 16000.0
+        x = np.interp(t_new, t_old, x).astype(np.float32)
+        sr = 16000
+    return x, sr
+
+
+# ------------------------------------------------------------------ F0
+def _clean(f0):
+    """Lọc trung vị 5 khung + sửa lỗi nhảy quãng tám so với lân cận."""
+    bad = np.isnan(f0)
+    idx = np.where(~bad)[0]
+    if len(idx) < 3:
+        return f0
+    vals = f0[idx].astype(np.float64)
+    sm = vals.copy()
+    for k in range(len(vals)):
+        lo, hi = max(0, k - 2), min(len(vals), k + 3)
+        sm[k] = np.median(vals[lo:hi])
+    for k in range(1, len(sm) - 1):
+        nb = np.median(sm[max(0, k - 2):k + 3])
+        if nb <= 0:
+            continue
+        if sm[k] > 1.8 * nb:
+            sm[k] /= 2.0
+        elif sm[k] < 0.55 * nb:
+            sm[k] *= 2.0
+    f0[idx] = sm
+    return f0
+
+
+def f0_track(x, sr, fmin=60.0, fmax=420.0, frame_ms=40, hop_ms=10):
+    """Trả (times, f0) — f0 = nan ở khung câm/vô thanh."""
+    frame = int(sr * frame_ms / 1000)
+    hop = int(sr * hop_ms / 1000)
+    if len(x) < frame:
+        return np.array([]), np.array([])
+    n = 1 + (len(x) - frame) // hop
+    win = np.hanning(frame).astype(np.float32)
+    nfft = 1
+    while nfft < 2 * frame:
+        nfft *= 2
+    lag_min = max(2, int(sr / fmax))
+    lag_max = min(frame - 2, int(sr / fmin))
+    if lag_max <= lag_min:
+        return np.array([]), np.array([])
+
+    rms = np.empty(n, dtype=np.float64)
+    f0 = np.full(n, np.nan, dtype=np.float64)
+    for i in range(n):
+        seg = x[i * hop:i * hop + frame]
+        rms[i] = float(np.sqrt(np.mean(seg * seg)))
+        w = (seg - seg.mean()) * win
+        if rms[i] <= 0:
+            continue
+        spec = np.fft.rfft(w, nfft)
+        ac = np.fft.irfft(spec * np.conj(spec), nfft)[:frame]
+        if ac[0] <= 1e-12:
+            continue
+        ac = ac / ac[0]
+        seg_ac = ac[lag_min:lag_max]
+        k = int(np.argmax(seg_ac)) + lag_min
+        peak = float(ac[k])
+        if peak < 0.32:
+            continue
+        # nội suy parabol để mịn hơn
+        if 0 < k < frame - 1:
+            a, b, c = ac[k - 1], ac[k], ac[k + 1]
+            den = a - 2 * b + c
+            delta = 0.5 * (a - c) / den if abs(den) > 1e-9 else 0.0
+        else:
+            delta = 0.0
+        lag = k + delta
+        if lag <= 0:
+            continue
+        hz = sr / lag
+        if fmin <= hz <= fmax:
+            f0[i] = hz
+
+    thr = max(0.004, 0.10 * float(np.percentile(rms, 95)))
+    f0[rms < thr] = np.nan
+    f0 = _clean(f0)
+    times = (np.arange(n) * hop + frame / 2.0) / sr
+    return times, f0
+
+
+# ------------------------------------------------------------------ contour
+def contour(path):
+    """-> {"t": [...0..1], "st": [...], "dur": giây, "median": Hz, "voiced": 0..1}."""
+    x, sr = read_wav(path)
+    times, f0 = f0_track(x, sr)
+    if len(f0) == 0:
+        return None
+    ok = ~np.isnan(f0)
+    if ok.sum() < 6:
+        return None
+    med = float(np.median(f0[ok]))
+    if med <= 0:
+        return None
+    st = 12.0 * np.log2(f0 / med)  # giữ nan
+    dur = len(x) / float(sr)
+    t = times / max(times[-1], 1e-6)
+    return {
+        "t": [round(float(v), 4) for v in t],
+        "st": [None if np.isnan(v) else round(float(v), 2) for v in st],
+        "dur": round(dur, 2),
+        "median": round(med, 1),
+        "voiced": round(float(ok.mean()), 3),
+    }
+
+
+def contour_cached(path):
+    try:
+        st = __import__("os").stat(path)
+        key = (path, st.st_mtime_ns, st.st_size)
+    except OSError:
+        return None
+    if key in _REF_CACHE:
+        return _REF_CACHE[key]
+    try:
+        c = contour(path)
+    except Exception:
+        c = None
+    if len(_REF_CACHE) > 40:
+        _REF_CACHE.clear()
+    _REF_CACHE[key] = c
+    return c
+
+
+# ------------------------------------------------------------------ so sánh
+def _grid(c, n=101):
+    pts = [(t, s) for t, s in zip(c["t"], c["st"]) if s is not None]
+    if len(pts) < 8:
+        return None
+    pts.sort()
+    xs = np.linspace(0.0, 1.0, n)
+    ys = np.interp(xs, [p[0] for p in pts], [p[1] for p in pts])
+    return ys
+
+
+def _dtw(a, b, band=15):
+    n, m = len(a), len(b)
+    inf = 1e18
+    D = np.full((n + 1, m + 1), inf)
+    D[0, 0] = 0.0
+    for i in range(1, n + 1):
+        for j in range(max(1, i - band), min(m, i + band) + 1):
+            D[i, j] = abs(a[i - 1] - b[j - 1]) + min(
+                D[i - 1, j], D[i, j - 1], D[i - 1, j - 1])
+    if not np.isfinite(D[n, m]):
+        return None
+    return float(D[n, m] / max(n, m))
+
+
+def _final_slope(c, frac=0.3):
+    pts = [(t, s) for t, s in zip(c["t"], c["st"])
+           if s is not None and t >= 1.0 - frac]
+    if len(pts) < 5:
+        return None
+    xs = np.array([p[0] for p in pts])
+    ys = np.array([p[1] for p in pts])
+    if np.ptp(xs) < 1e-6:
+        return None
+    a = float(np.polyfit(xs, ys, 1)[0])
+    return a / 10.0  # bán cung trên mỗi 10% độ dài câu
+
+
+def _range(c):
+    v = [s for s in c["st"] if s is not None]
+    if len(v) < 4:
+        return None
+    return float(max(v) - min(v))
+
+
+def compare(ref_path, usr_path):
+    """So đường cao độ bản mẫu với bản người đọc. Lỗi/thiếu dữ liệu -> None."""
+    try:
+        ref = contour_cached(ref_path)
+        usr = contour(usr_path)
+    except Exception:
+        return None
+    if not ref or not usr:
+        return None
+    ga, gb = _grid(ref), _grid(usr)
+    diff = _dtw(ga, gb) if (ga is not None and gb is not None) else None
+    return {
+        "ref": {"t": ref["t"], "st": ref["st"]},
+        "usr": {"t": usr["t"], "st": usr["st"]},
+        "dur_ref": ref["dur"], "dur_usr": usr["dur"],
+        "med_ref": ref["median"], "med_usr": usr["median"],
+        "range_ref": _range(ref), "range_usr": _range(usr),
+        "final_ref": _final_slope(ref), "final_usr": _final_slope(usr),
+        "diff": None if diff is None else round(diff, 2),
+        "voiced_ref": ref["voiced"], "voiced_usr": usr["voiced"],
+    }
