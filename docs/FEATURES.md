@@ -48,6 +48,7 @@ và skill nào cần nạp. Dùng file này thay vì grep toàn repo.
 | F3.13 | Đọc to transcript YouTube (D-39) | link → đoạn 20–45 s → nghe gốc/đọc → đoạn tô màu, "phụ đề có thể sai" không tính | `ytread_prepare`, `ytread_orig_hyp`, `read_aloud_diff`, `ytread_view`, `App._yt_*` | `app-youtube`, `app-pronunciation` | `tools/ytread_e2e.py <link>` đọc = audio gốc → "Hoàn hảo" |
 | F3.14 | Trôi chảy + từng câu (D-40 R1) | tốc độ, từ/hơi, ngừng giữa cụm "/" , ▶ Mẫu/▶ Bạn đọc mỗi câu | `fluency_view`, `yt_read.sentence_ranges`, `App._yt_render` | `app-prosody` | `tools/ytread_e2e.py` in "trôi chảy: …" |
 | F3.15 | Lưu bản thu | nút "Lưu bản thu" / "Lưu cả N đoạn đã đọc" → Documents\Oriole: x.wav + x.txt + x.json (+ x_goc.wav), hộp xác nhận nơi lưu, "Đã lưu ✓" | `recordings_dir`, `App._save_recording`, `App._save_all`, `App._save_bundle`, `App._sync_rec_pills` | `app-recording` | `ytread_e2e` in "Đã lưu cả 2 đoạn ✓" |
+| F3.16 | Âm hay sai theo mẫu (D-42) | ÂM HAY SAI: tối đa 4 mẫu + ví dụ + mẹo, dòng "Cả video" | `pron_en.error_patterns`, `error_pattern_view`, `App._yt_session_patterns` | `app-phonemes` | molecules→molecule = "Âm cuối & -s" |
 | F3.12 | Mic & kiểm tra | chọn, làm mới, kiểm tra | `_refresh_mics`, `_test_mic`, `_find_mic_auto` | `app-recording` | nói "a" → dB/TỐT |
 
 ## 4. Cài đặt & nền tảng (Tab 3)

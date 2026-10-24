@@ -1714,6 +1714,43 @@ def fluency_view(text, res, mine, orig=None):
             "sentences": sentences, "pause_after": pause_after}
 
 
+UNREAD_MIN = 3       # ≥ ngần này từ cuối đoạn không nghe thấy → "chưa đọc tới" (người học dừng)
+PATTERN_SHOW = 4     # số mẫu lỗi tối đa trong mục ÂM HAY SAI
+PATTERN_EXAMPLES = 4
+
+
+def error_pattern_view(fixes):
+    """Từ cần sửa (ytread_view["fixes"]) → mẫu lỗi hay gặp (D-42). Hàm thuần.
+
+    → {"groups": [{code, title, tip, n, examples [(từ, nghe)], ti [token]}] (nhiều từ trước),
+       "grouped": số từ thuộc ít nhất một mẫu, "total": số từ cần sửa}. Một từ có thể thuộc
+    nhiều mẫu (nose → "low": n→l + âm cuối)."""
+    groups, grouped = {}, 0
+    fixes = [f for f in fixes or [] if not f.get("unread")]
+    for f in fixes:
+        codes = pron_en.error_patterns(f.get("word"), f.get("heard"))
+        grouped += bool(codes)
+        for c in codes:
+            title, tip = pron_en.PATTERNS[c]
+            g = groups.setdefault(c, {"code": c, "title": title, "tip": tip, "n": 0,
+                                      "examples": [], "ti": []})
+            g["n"] += 1
+            g["ti"].append(f.get("ti"))
+            ex = (f.get("word"), f.get("heard"))
+            if ex not in g["examples"]:
+                g["examples"].append(ex)
+    order = list(pron_en.PATTERNS)
+    out = sorted(groups.values(), key=lambda g: (-g["n"], order.index(g["code"])))
+    return {"groups": out, "grouped": grouped, "total": len(fixes)}
+
+
+def pattern_example_text(examples, k=PATTERN_EXAMPLES):
+    """[(từ, nghe)] → "molecules → “molecule”, is → (thiếu), …"."""
+    parts = ["%s → %s" % (w, "“%s”" % h if h else "(thiếu)") for w, h in examples[:k]]
+    more = len(examples) - k
+    return ", ".join(parts) + (" … +%d" % more if more > 0 else "")
+
+
 YT_ROWS_MAX = 24   # số dòng tối đa mỗi nhóm trong panel kết quả (đoạn dài)
 _YT_RANK = {"ok": 0, "unsure": 1, "doubt": 2, "warn": 3, "bad": 4}
 
@@ -1731,7 +1768,7 @@ def ytread_view(res, gate=None):
                 "summary": "Chưa chấm đoạn này — thử lại theo gợi ý bên dưới.",
                 "tips": list(UNSURE_TIPS[:2]), "correct": 0, "total": res.get("total", 0)}
     spans = token_spans(res.get("words_t"), res.get("target", ""))
-    marks, fixes, doubts, extras, ti = {}, [], [], [], 0
+    marks, fixes, doubts, extras, ti, last_heard = {}, [], [], [], 0, -1
     src = res.get("src_idx") or []
     for tok, kind, heard, note in res.get("items") or []:
         if tok is None:
@@ -1757,13 +1794,25 @@ def ytread_view(res, gate=None):
             marks[si] = k
         elif si is not None:
             marks.setdefault(si, k)
+        if heard is not None:
+            last_heard = ti
         ti += 1
+    # người học dừng giữa đoạn: các từ sau từ cuối cùng máy nghe được là "chưa đọc tới",
+    # không phải nuốt âm — vẫn tính thiếu trong điểm (I4) nhưng không xếp vào mẫu lỗi (D-42)
+    unread = [f for f in fixes if f["heard"] is None and f["ti"] > last_heard]
+    if len(unread) < UNREAD_MIN:
+        unread = []
+    for f in unread:
+        f["unread"] = True
+        f["text"] = "“%s” — chưa đọc tới" % f["word"]
     correct, total = res.get("correct", 0), res.get("total", 0)
     frac = correct / float(total) if total else 0.0
     perfect = bool(total) and not fixes and correct == total
     parts = []
-    if fixes:
-        parts.append("%d từ cần sửa" % len(fixes))
+    if len(fixes) > len(unread):
+        parts.append("%d từ cần sửa" % (len(fixes) - len(unread)))
+    if unread:
+        parts.append("dừng trước %d từ cuối" % len(unread))
     if doubts:
         parts.append("%d từ không tính (phụ đề có thể sai)" % len(doubts))
     return {"state": "result", "gate": None, "marks": marks,
@@ -6691,6 +6740,21 @@ class App(tk.Tk):
         except Exception as e:
             self._queue.put(("prac_error", f"Lỗi chấm đoạn đọc: {e}"))
 
+    def _yt_session_patterns(self):
+        """Một dòng gom mẫu lỗi của MỌI đoạn đã đọc trong video ("" nếu < 2 đoạn)."""
+        done = [k for k in self._yt_keep.values() if k.get("res") and not k.get("gate")]
+        if len(done) < 2:
+            return ""
+        tot = {}
+        for k in done:
+            for g in error_pattern_view(ytread_view(k["res"])["fixes"])["groups"]:
+                tot[g["title"]] = tot.get(g["title"], 0) + g["n"]
+        if not tot:
+            return ""
+        top = sorted(tot.items(), key=lambda kv: -kv[1])[:3]
+        return "Cả video (%d đoạn đã đọc): %s" % (
+            len(done), " · ".join("%s %d từ" % (t, n) for t, n in top))
+
     def _w_ytprefetch(self, s, idx, model_size):
         """Nghe trước đoạn gốc trong lúc người học nghe/đọc → chấm xong nhanh hơn ~3–10 s.
         Lỗi bỏ qua: lúc chấm sẽ thử lại (cùng khóa của phiên)."""
@@ -6783,6 +6847,23 @@ class App(tk.Tk):
 
         P = self.P
         sections = ["head"]
+        pats = error_pattern_view(v["fixes"]) if v["state"] == "result" else None
+        if pats and pats["groups"]:
+            caps("ÂM HAY SAI — sửa thói quen, không chỉ từng từ")
+            for g in pats["groups"][:PATTERN_SHOW]:
+                ti = next((t for t in g["ti"] if orig.get(t)), g["ti"][0])
+                row(P["warn_line"], "%s · %d từ" % (g["title"], g["n"]), mine.get(ti),
+                    orig.get(ti), sub="Ví dụ: " + pattern_example_text(g["examples"]))
+                tip = self._wrap(self._lbl(self.pp_yt, g["tip"], bg="side", size=9,
+                                           justify="left", anchor="w"), self.px(28))
+                tip.pack(fill="x", padx=(self.px(18), 0), pady=(self.px(2), self.px(2)))
+                self._embeds.append(tip)
+            rest = pats["groups"][PATTERN_SHOW:]
+            if rest:
+                note("Còn: " + ", ".join("%s (%d)" % (g["title"], g["n"]) for g in rest))
+            whole = self._yt_session_patterns()
+            if whole:
+                note(whole)
         if flu and flu["lines"]:
             caps("TRÔI CHẢY")
             for ln in flu["lines"]:

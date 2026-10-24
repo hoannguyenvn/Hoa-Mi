@@ -14,6 +14,7 @@ Dùng:
     rep["top"]     -> [{"ph": "TH", "ipa": "θ", "n": 1, "heard": ["t"], "tip": ...}, ...]
 """
 
+import difflib
 import re
 
 # ---------------------------------------------------------------- ARPAbet -> IPA
@@ -392,3 +393,98 @@ def analyze_pairs(pairs):
     top = sorted(groups.values(), key=lambda x: (-x["n"], x["ph"]))
     return {"issues": issues, "counts": counts, "top": top,
             "by_phoneme": groups, "unknown": unknown}
+
+
+# ---------------------------------------------------------------- mẫu lỗi hay gặp (người Việt)
+# Gom lỗi từng từ thành MẪU để người học sửa một thói quen thay vì từng từ (D-42).
+# Thứ tự = thứ tự ưu tiên hiển thị khi số từ bằng nhau.
+PATTERNS = {
+    "final": ("Âm cuối & -s số nhiều",
+              "Tiếng Việt không bật phụ âm cuối nên ta hay nuốt /s z t d k/. Đọc rõ âm cuối "
+              "như có thêm chút hơi: molecule-s, contain-s, ask-ed. Số nhiều và -s của động "
+              "từ làm đổi nghĩa câu."),
+    "th": ("Âm th — /θ/ /ð/",
+           "Thò đầu lưỡi ra giữa hai răng rồi thổi hơi: /θ/ (think) không rung, /ð/ (the, "
+           "these, that) rung dây thanh. Đừng thay bằng t, d hay z."),
+    "nl": ("N đọc thành L",
+           "/n/ đầu từ: đầu lưỡi bít kín lợi trên, hơi ra MŨI — bịt mũi thấy nghẹt là đúng. "
+           "nose ≠ lows, night ≠ light."),
+    "diph": ("Nguyên âm đôi /eɪ/ /oʊ/ /aɪ/",
+             "Nguyên âm đôi phải TRƯỢT từ âm đầu sang âm sau: bacon = BAY-kən (e→i), odor = "
+             "OH-dər (ô→u). Đừng dừng ở một âm (back, odd)."),
+    "cluster": ("Cụm phụ âm đầu (sm-, st-, sn-…)",
+                "Đọc liền hai phụ âm, không bỏ âm nào và không chèn nguyên âm: s-mell, "
+                "s-niff, s-tinky. Bắt đầu bằng /s/ xì nhẹ rồi nối ngay âm sau."),
+    "short": ("Từ ngắn bị nuốt",
+              "Từ ngắn (is, an, of, the…) đọc nhẹ và nhanh nhưng vẫn phải có: “which IS AN "
+              "energy source”. Nghe lại câu mẫu để bắt cách nối các từ này."),
+}
+SHORT_WORDS = {"a", "an", "the", "of", "to", "in", "on", "at", "is", "are", "am", "be",
+               "was", "were", "up", "and", "or", "for", "as", "it", "its", "by", "with",
+               "from", "that", "this", "but", "so", "if", "we", "you", "he", "she", "they",
+               "i", "me", "my", "our", "your", "can", "do", "has", "have", "had", "not"}
+_DIPH = {"EY", "OW", "AY", "AW", "OY"}
+PATTERN_MIN_SIM = 0.3   # giống nhau (âm vị) dưới mức này → coi là máy nghe nhầm, không xếp mẫu
+# (much→"two" 0, trash→"just" 0,25 bị loại; nose→"lobe" 0,33 vẫn là n→l)
+
+
+def error_patterns(exp_word, got_word):
+    """Từ mẫu vs từ máy nghe → [mã mẫu lỗi] (có thể nhiều, có thể rỗng). Hàm thuần.
+
+    got_word None/"" = bỏ sót từ: chỉ tính "short" khi là từ ngắn. Từ nghe được không có
+    trong CMUdict → chỉ đoán theo chữ cái (âm cuối, n→l, th, cụm đầu)."""
+    ew = _letters(exp_word or "")
+    if not ew:
+        return []
+    if not got_word:
+        return ["short"] if ew in SHORT_WORDS else []
+    gw = _letters(got_word)
+    e, g = phonemes(exp_word), phonemes(got_word)
+    out = []
+    # máy nghe ra một từ khác hẳn (much → "two") là nghe nhầm, không phải thói quen phát âm
+    sim = difflib.SequenceMatcher(None, e, g).ratio() if (e and g) else \
+        difflib.SequenceMatcher(None, ew, gw).ratio()
+    if sim < PATTERN_MIN_SIM:
+        return []
+    if e and g:
+        ops = align(e, g)
+
+        def tail(ph):      # số phụ âm ở cuối từ; /r/ cuối không tính (giọng Anh-Anh bỏ /r/)
+            ph = ph[:-1] if ph and ph[-1] == "R" else ph
+            n = 0
+            while n < len(ph) and ph[-1 - n] not in VOWELS:
+                n += 1
+            return n
+
+        def onset(ph):     # các phụ âm ở đầu từ
+            out_ = []
+            for p in ph:
+                if p in VOWELS:
+                    break
+                out_.append(p)
+            return out_
+        # âm cuối: ít phụ âm cuối hơn (salt→so, molecules→molecule), mất cả âm tiết -es/-ed
+        # (senses→cents), hoặc máy nghe đúng phần đầu của từ (contains→contain)
+        lost_syll = len(e) >= 3 and e[-1] in ("S", "Z", "D", "T") and e[-2] in ("IH", "AH") \
+            and ew.endswith(("es", "ed")) and \
+            sum(p in VOWELS for p in g) < sum(p in VOWELS for p in e)
+        if tail(e) > tail(g) or lost_syll:
+            out.append("final")
+        if any(a in ("TH", "DH") and b != a for a, b, tag in ops if tag in ("sub", "del")):
+            out.append("th")
+        if e[0] == "N" and g[0] == "L":
+            out.append("nl")
+        if any(a in _DIPH and b not in _DIPH for a, b, tag in ops if tag in ("sub", "del")):
+            out.append("diph")
+        if len(onset(e)) >= 2 and onset(e) != onset(g):
+            out.append("cluster")
+    else:
+        if gw and ew.startswith(gw) and len(ew) > len(gw):
+            out.append("final")
+        if ew.startswith("th") and not gw.startswith("th"):
+            out.append("th")
+        if ew[:1] == "n" and gw[:1] == "l":
+            out.append("nl")
+        if len(ew) > 1 and ew[0] == "s" and ew[1] not in "aeiouy" and gw[:2] != ew[:2]:
+            out.append("cluster")
+    return out

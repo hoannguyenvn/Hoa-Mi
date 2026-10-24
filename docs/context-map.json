@@ -129,6 +129,9 @@
       "token_spans",
       "ytread_view",
       "fluency_view",
+      "error_pattern_view",
+      "pattern_example_text",
+      "App._yt_session_patterns",
       "ytread_model",
       "App._w_ytprefetch",
       "App._save_recording",
@@ -213,7 +216,8 @@
       "compare_words",
       "analyze_pairs",
       "TIPS",
-      "LETTER_TIPS"
+      "LETTER_TIPS",
+      "error_patterns"
     ],
     "gop.py": [
       "available",

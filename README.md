@@ -145,6 +145,9 @@ Ba chế độ:
     ~10 giây/đoạn); đoạn gốc được nghe sẵn trong lúc bạn nghe/đọc.
   - Cách viết khác nhau vẫn tính là đúng: I'm = I am, gonna = going to, 1990 = nineteen
     ninety; từ đệm (um, uh) bỏ qua.
+  - **Âm hay sai**: lỗi được gom theo thói quen — âm cuối & -s số nhiều, âm th, n đọc thành l,
+    nguyên âm đôi (bacon, odor), cụm phụ âm đầu (smell, sniff), từ ngắn bị nuốt — kèm số từ, ví dụ
+    từ chính bài đọc của bạn, mẹo sửa, ▶ Mẫu / ▶ Bạn đọc. Đọc từ 2 đoạn: thêm tổng cả video.
   - **Trôi chảy** (so với người nói, không tính điểm): tốc độ đọc, số từ mỗi hơi, chỗ bạn
     ngừng giữa cụm từ (dấu **/** đỏ trong đoạn), chỗ người nói ngừng mà bạn đọc liền.
   - **Từng câu**: ▶ Mẫu (người nói) và ▶ Bạn đọc cho mỗi câu, kèm thời lượng hai bên.

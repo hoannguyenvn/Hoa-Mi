@@ -433,6 +433,19 @@ gốc medium không đổi số "phụ đề có thể sai" nhưng thêm ~10 s �
 **Hệ quả:** chấm một đoạn ~10–12 s (lần đầu thêm ~2,4 s nạp model); `load_model` giữ 2 cỡ (medium +
 model đang chọn). Test: `ytread_learner_uses_medium_when_on_disk`.
 
+### D-42 — Từ YouTube: mục "ÂM HAY SAI" gom lỗi theo mẫu (2026-10-24)
+**Quyết định (người dùng yêu cầu):** sau mỗi đoạn, từ cần sửa được gom thành **mẫu lỗi** hay gặp ở người
+Việt (`pron_en.error_patterns`, `PATTERNS`): âm cuối & -s số nhiều, th /θ ð/, n→l, nguyên âm đôi
+/eɪ oʊ aɪ/, cụm phụ âm đầu, từ ngắn bị nuốt. Panel hiện tối đa 4 mẫu (nhiều từ trước) với số từ, ví dụ
+"từ → nghe", mẹo, ▶ Mẫu / ▶ Bạn đọc; ≥ 2 đoạn đã đọc thêm dòng "Cả video". Chỉ mô tả, không đổi điểm (I4).
+**Quy tắc chống báo oan:** từ máy nghe khác hẳn (âm vị giống < 0,3 — much→"two") là nghe nhầm, không xếp
+mẫu; /r/ cuối bị bỏ (your→you) không phải lỗi; "từ ngắn bị nuốt" chỉ khi **thiếu** từ; ≥ 3 từ cuối đoạn
+không nghe thấy = "chưa đọc tới" (người học dừng) — vẫn tính thiếu trong điểm nhưng không vào mẫu.
+**Vì sao:** 4 đoạn thật: lỗi lặp theo thói quen (âm cuối 15 từ, từ ngắn 12, cụm phụ âm/nguyên âm đôi 3,
+n→l 2, th 1 — sau khi lọc nghe nhầm); sửa một thói quen có ích hơn danh sách 20 từ đỏ.
+**Hệ quả:** phụ thuộc chữ máy nghe → bị giới hạn bởi Whisper (D-37); GOP chưa dùng ở chế độ này. Test:
+`english_error_patterns_from_real_reading`.
+
 ## B. Những cách làm đã bị loại (đừng lặp lại)
 
 Nguồn: `PHASE2-DANH-GIA-DU-AN-CU.md` §2.2 và §6.

@@ -224,6 +224,37 @@ def ytread_learner_uses_medium_when_on_disk():
 
 
 @case
+def english_error_patterns_from_real_reading():
+    # D-42: ví dụ lấy từ 4 đoạn đọc thật của người dùng (2026-10-24)
+    ep = app.pron_en.error_patterns
+    assert ep("molecules", "molecule") == ["final"]
+    assert ep("senses", "scents") == ["final"]            # mất âm tiết -es
+    assert ep("nose", "lowes") == ["nl"] and "nl" in ep("nose", "lobe")
+    assert ep("the", "some") == ["th"]
+    assert ep("bacon", "back") == ["diph"]
+    assert ep("smell", "mail") == ["cluster"] and ep("sniff", "sit") == ["cluster"]
+    assert ep("is", None) == ["short"]
+    assert ep("much", "two") == [] and ep("trash", "just") == []   # nghe nhầm hẳn → không xếp
+    assert ep("your", "you") == [] and ep("their", "the") == []    # bỏ /r/ cuối không phải lỗi
+    fixes = [{"ti": 0, "word": "molecules", "heard": "molecule"},
+             {"ti": 3, "word": "emotions", "heard": "motion"},
+             {"ti": 5, "word": "nose", "heard": "lowes"},
+             {"ti": 7, "word": "much", "heard": "two"},
+             {"ti": 9, "word": "is", "heard": None, "unread": True}]
+    pv = app.error_pattern_view(fixes)
+    assert [g["code"] for g in pv["groups"]] == ["final", "nl"], pv
+    assert pv["groups"][0]["n"] == 2 and pv["grouped"] == 3 and pv["total"] == 4
+    assert "molecules → “molecule”" in app.pattern_example_text(pv["groups"][0]["examples"])
+    # dừng giữa đoạn: ≥3 từ cuối không nghe thấy → "chưa đọc tới", không thành "từ ngắn bị nuốt"
+    res = app.read_aloud_diff("I like it and there are many more of them here",
+                              "I like it and there", None)
+    v = app.ytread_view(res)
+    assert sum(1 for f in v["fixes"] if f.get("unread")) == 6, v["fixes"]
+    assert "dừng trước 6 từ cuối" in v["summary"], v["summary"]
+    assert not app.error_pattern_view(v["fixes"])["groups"]
+
+
+@case
 def tone_strip_keeps_letters():
     # strip_tone_vi trả chuỗi NFD (giữ dấu chữ như ă/â), nên chuẩn hóa NFC để so.
     import unicodedata

@@ -143,3 +143,11 @@ Thứ tự issue: `score` tăng dần, cùng điểm thì nhiều khung trước
 | Lần chấm thứ hai vẫn chậm | cache mẫu bị clear do quá 24 mục, hoặc `_BROKEN` sau lỗi tải |
 | Điểm GOP 90% nhưng nghe rõ sai | GOP là tương quan log-posterior, không phải phần trăm đúng (I7) |
 | `TypeError` khi `gop.score` trả `None` | UI quên `if g:` trước khi đọc `issues` |
+
+## Mẫu lỗi hay gặp (D-42)
+
+`pron_en.error_patterns(từ_mẫu, từ_nghe)` → mã trong `PATTERNS` (final, th, nl, diph, cluster, short).
+`app.error_pattern_view(fixes)` gom cho panel ÂM HAY SAI (chế độ Từ YouTube). Chống báo oan: âm vị giống
+< `PATTERN_MIN_SIM` (0,3) → không xếp; /r/ cuối không tính; "short" chỉ khi thiếu từ; từ có `unread`
+(người học dừng trước cuối đoạn) bị bỏ qua. Thêm mẫu mới: thêm vào `PATTERNS` + luật trong
+`error_patterns` + ví dụ thật vào test `english_error_patterns_from_real_reading`.

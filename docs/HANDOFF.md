@@ -1155,3 +1155,20 @@ model bản đọc = medium, 0 lỗi callback.
 **Chưa kiểm chứng:** máy không có medium (rơi về model đang chọn — chỉ test hàm thuần).
 **Việc tiếp theo:** R2 ngữ điệu, hoặc mục "âm hay sai" theo mẫu lỗi (âm cuối/-s, n→l, th, nguyên âm đôi,
 cụm s-) — người dùng chọn.
+
+## 2026-10-24 (tiếp 10) — Claude Opus 5.5 — D-42: mục ÂM HAY SAI theo mẫu lỗi
+
+**Người dùng yêu cầu:** gom lỗi theo mẫu (âm cuối/-s, n→l, th, nguyên âm đôi, cụm phụ âm) kèm mẹo + ví dụ.
+**Đã làm:** `pron_en.PATTERNS`, `SHORT_WORDS`, `PATTERN_MIN_SIM`, `error_patterns` (CMUdict: số phụ âm cuối,
+mất âm tiết -es/-ed, TH/DH, N→L đầu từ, nguyên âm đôi bị thay, cụm phụ âm đầu đổi; từ không có trong từ
+điển → đoán theo chữ). `app.error_pattern_view`, `pattern_example_text`, `UNREAD_MIN` + `ytread_view`
+đánh dấu "chưa đọc tới", `_yt_session_patterns`; `_yt_render` thêm mục ÂM HAY SAI ngay dưới điểm. Test
+`english_error_patterns_from_real_reading` (84/84). Tài liệu: D-42, README §4, FEATURES F3.16, skill
+`app-phonemes`, context-map, PROJECT-STATE.
+**Kiểm trên 4 đoạn thật (nghe bằng medium):** Cả video — âm cuối & -s 15 từ, từ ngắn bị nuốt 12, cụm phụ
+âm đầu 3, nguyên âm đôi 3, n→l 2, th 1. Bản đầu báo oan much→"two", your→"you", your→"john" → thêm
+ngưỡng giống nhau, bỏ /r/ cuối, "short" chỉ khi thiếu; đoạn 4 (dừng giữa chừng) không còn đổ 7 từ chưa đọc
+vào "từ ngắn bị nuốt".
+**Đã kiểm chứng:** smoke 84/84, py_compile, context_check; ảnh panel. **Chưa kiểm chứng:** người dùng xem
+trên máy (cửa sổ đang mở là bản cũ).
+**Việc tiếp theo:** R2 ngữ điệu.
