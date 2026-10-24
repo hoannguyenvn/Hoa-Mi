@@ -1783,9 +1783,13 @@ def nav_compact(width, scale):
 SIDE_FRAC, SIDE_MIN, SIDE_MAX = 0.48, 340, 640   # panel kết quả ≈ nửa vùng nội dung
 
 
-def side_width(content_w, scale):
+YT_SIDE_FRAC = 0.34   # Từ YouTube: đoạn văn + cột thu âm cạnh nhau cần chỗ hơn câu ngắn
+YT_REC_COL = 250      # bề rộng chữ trong cột thu âm cạnh đoạn văn (px ở 100 %)
+
+
+def side_width(content_w, scale, frac=SIDE_FRAC):
     """Bề rộng panel kết quả: rộng ra theo cửa sổ để cả kết quả nằm trong một trang."""
-    return int(max(SIDE_MIN * scale, min(SIDE_MAX * scale, SIDE_FRAC * content_w)))
+    return int(max(SIDE_MIN * scale, min(SIDE_MAX * scale, frac * content_w)))
 
 
 def short_mic_name(name, limit=28):
@@ -4730,16 +4734,18 @@ class App(tk.Tk):
         self.p_samples.bind("<Configure>", lambda e: self._layout_pills())
         # đọc to YouTube (D-39): tiêu đề video · đoạn · chế độ · cả đoạn văn (cuộn được)
         self.yt_head = self._frame(inner, bg="card")
+        # ba dòng xếp chồng (không một hàng ngang): cột đoạn văn hẹp vì cột thu âm nằm cạnh
         self.yt_title = self._lbl(self.yt_head, "", fg="muted", size=10, justify="center")
-        self.yt_title.pack()
-        row = self._frame(self.yt_head, bg="card")
-        row.pack(pady=(self.px(8), 0))
-        self.yt_meta = self._lbl(row, "", size=10, weight="bold")
-        self.yt_meta.pack(side="left", padx=(0, self.px(14)))
-        self._yt_seg = self._mk_seg(row, (("listen", "Nghe rồi đọc"), ("read", "Đọc thẳng")),
+        self.yt_title.pack(fill="x")
+        self.yt_meta = self._lbl(self.yt_head, "", size=10, weight="bold")
+        self.yt_meta.pack(pady=(self.px(6), 0))
+        self._yt_seg = self._mk_seg(self.yt_head, (("listen", "Nghe rồi đọc"),
+                                                   ("read", "Đọc thẳng")),
                                     self.yt_listen, self._yt_mode_hint,
                                     locked=lambda: self.p_working or self.recording)
-        self._yt_seg.pack(side="left")
+        self._yt_seg.pack(pady=(self.px(8), 0))
+        self.yt_head.bind("<Configure>", lambda e: self.yt_title.configure(
+            wraplength=max(self.px(120), e.width)))
         self.yt_text = self._mk_text(inner, role="doc", scroll=True, height=6,
                                      font=(self.F, 15), padx=self.px(14), pady=self.px(10),
                                      spacing1=self.px(3), spacing3=self.px(3), cursor="arrow")
@@ -4805,23 +4811,43 @@ class App(tk.Tk):
         elif not on and self.p_status_lbl.winfo_manager():
             self.p_status_lbl.pack_forget()
 
-    def _stage_resized(self, e):
-        w = max(self.px(200), e.width - 2 * self.px(32))
+    def _stage_resized(self, e=None):
+        if e is not None:
+            self._stage_w = e.width
+        w = max(self.px(200), getattr(self, "_stage_w", 0) - 2 * self.px(32))
         self.p_how.configure(wraplength=min(self.px(640), w - self.px(60)))
         self.p_hint.configure(wraplength=w)
-        self.p_status_lbl.configure(wraplength=w)
+        # Từ YouTube: khối thu âm là cột hẹp cạnh đoạn văn → chữ trong cột tự xuống dòng
+        col = self._yt_col() if self.prac_mode.get() == "yt" else w
+        for lb in (self.p_status_lbl, self.p_rec_hint, self.lbl_plevel, self.p_mic_lbl):
+            lb.configure(wraplength=col)
+
+    def _yt_col(self):
+        """Bề rộng cột thu âm cạnh đoạn văn (cửa sổ hẹp: hẹp hơn để đoạn văn còn chỗ)."""
+        return self.px(YT_REC_COL * (0.72 if self._compact else 1.0))
+
+    def _meter_w(self):
+        return min(self.px(260), self._yt_col()) if self.prac_mode.get() == "yt" \
+            else self.px(260)
 
     def _stage_repack(self, custom, ipa, hint, tip):
         """Xếp lại phần trên sân khấu theo thứ tự cố định, bỏ phần trống."""
-        for w in (self.entry_custom, self.p_lead, self.p_words, self.p_ipa, self.p_hint,
-                  self.p_samples, self.p_tip, self.yt_head, self.yt_text.holder):
+        for w in (self.p_recbox, self.entry_custom, self.p_lead, self.p_words, self.p_ipa,
+                  self.p_hint, self.p_samples, self.p_tip, self.yt_head, self.yt_text.holder):
             if w.winfo_manager():
                 w.pack_forget()
+        self._stage_resized()
         if custom == "yt":
+            # đoạn văn và nút thu cạnh nhau: người học nhìn cả đoạn trong lúc đọc (D-39)
+            self.p_recbox.pack(side="right", anchor="n", padx=(self.px(24), 0),
+                               pady=(self.px(56), 0))
             self.yt_head.pack(fill="x")
             self.p_samples.pack(fill="x", pady=(self.px(10), 0))
-            self.yt_text.holder.pack(fill="both", expand=True, pady=(self.px(10), self.px(12)))
+            self.yt_text.holder.pack(fill="both", expand=True, pady=(self.px(10), 0))
+            self._prac_body_resized()
             return
+        self.p_recbox.pack(side="bottom", fill="x")
+        self._prac_body_resized()
         if custom:
             self.entry_custom.pack(fill="x", pady=(0, self.px(14)))
         self.p_lead.pack()
@@ -4990,7 +5016,9 @@ class App(tk.Tk):
     def _draw_meter(self, level=0.0, c=None):
         c, P = c or self.p_meter, self.P
         c.delete("all")
-        W, H, n = self.px(260), self.px(10), 20
+        W, H, n = (self._meter_w() if c is self.p_meter else self.px(260)), self.px(10), 20
+        if int(c.cget("width")) != W:
+            c.configure(width=W)
         gap = max(1, self.px(3))
         cw = (W - gap * (n - 1)) / float(n)
         lit = meter_cells(level, n)
@@ -5014,11 +5042,11 @@ class App(tk.Tk):
         self._prac_mode_changed()
 
     def _nav_labels(self):
-        """Nút bài/đoạn trước–sau; chế độ YouTube ở cửa sổ hẹp chỉ còn mũi tên (ô link rộng)."""
-        if self.prac_mode.get() != "yt":
-            prev, nxt = "◀ Bài trước", "Bài sau ▶"
-        elif self._compact:
+        """Nút bài/đoạn trước–sau; cửa sổ hẹp chỉ còn mũi tên (thanh có 3 chế độ + ô bài/link)."""
+        if self._compact:
             prev, nxt = "◀", "▶"
+        elif self.prac_mode.get() != "yt":
+            prev, nxt = "◀ Bài trước", "Bài sau ▶"
         else:
             prev, nxt = "◀ Đoạn trước", "Đoạn sau ▶"
         self.btn_pprev.configure(text=prev)
@@ -5035,15 +5063,23 @@ class App(tk.Tk):
             self.cb_prac.current((max(0, self.cb_prac.current()) + d) % n)
             self._refresh_practice()
 
-    def _prac_body_resized(self, e):
-        w = side_width(e.width, self.S)
+    def _prac_body_resized(self, e=None):
+        if e is not None:
+            self._prac_body_w = e.width
+        bw = getattr(self, "_prac_body_w", 0)
+        if not bw:
+            return
+        yt = self.prac_mode.get() == "yt"
+        w = side_width(bw, self.S, YT_SIDE_FRAC if yt else SIDE_FRAC)
         if abs(w - int(self.p_side.cget("width"))) > 2:
             self.p_side.configure(width=w)
 
     def _prac_compact(self, compact):
         self.cb_prac.configure(width=22 if compact else 30)
         self.yt_entry.configure(width=16 if compact else 34)
+        self.yt_text.configure(font=(self.F, 13 if compact else 15))
         self._nav_labels()
+        self._stage_resized()
         pad = self.px(20 if compact else 32)
         self._stage_in.pack_configure(padx=pad, pady=(self.px(16 if compact else 28),
                                                       self.px(12 if compact else 18)))

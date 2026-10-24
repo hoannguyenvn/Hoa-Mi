@@ -69,5 +69,8 @@
   quay lại). `_on_close` gọi `close()`.
 - "Bản thu = audio gốc" (`tools/ytread_e2e.py`, Tim Urban đoạn 2): tải 6,8 s, chấm 7,1 s,
   "Hoàn hảo — đúng cả 63 từ".
+- Bố cục (người dùng thử 2026-10-24: thu âm bên dưới làm khuất đoạn văn): cột thu âm nằm **cạnh**
+  đoạn văn (`_stage_repack("yt")` đặt `p_recbox` bên phải, `YT_REC_COL`), panel kết quả hẹp hơn
+  (`YT_SIDE_FRAC` 0,34); cửa sổ hẹp: cột 72 %, chữ 13 pt, nút ◀ ▶ chỉ còn mũi tên.
 - Chưa làm (Y4): so lần trước, "Từ cần luyện", lịch sử theo hồ sơ người học; ô panel tiến bộ
   trống ở chế độ này.

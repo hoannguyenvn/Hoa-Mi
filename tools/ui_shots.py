@@ -238,6 +238,13 @@ def main() -> int:
                         "words": 4, "wpm": 120}]
     A._yt_ready(sess)
     shot("17_yt_idle_light")
+    A._set_prac_state("recording")
+    A.lbl_plevel.configure(text="● Đang thu · 00:12 · đã nghe giọng · đọc xong app tự dừng")
+    A.p_status.set("● ĐANG THU bằng Microphone Array. Đọc to cả đoạn — xong ngừng khoảng "
+                   "4 giây, hoặc bấm ■ Dừng & chấm.")
+    A._draw_meter(0.08)
+    shot("17b_yt_recording_light")
+    A._set_prac_state("idle")
     learner = ("so today I am going to talk about why we put thing off when I was in college "
                "I had to write a ninety page tesis and I planned to start early instead I "
                "watch videos clean my room and read about wells until the deadline was "
@@ -292,6 +299,11 @@ def main() -> int:
     A._prac_mode_changed()
     A._yt_done(0, res, None)
     shot("21_yt_result_min_light")
+    A._set_prac_state("recording")
+    A.lbl_plevel.configure(text="● Đang thu · 00:12 · đã nghe giọng · đọc xong app tự dừng")
+    A._draw_meter(0.08)
+    shot("22_yt_recording_min_light")
+    A._set_prac_state("idle")
     A.destroy()
     print("saved to", out)
     return 0

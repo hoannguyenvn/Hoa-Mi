@@ -1055,3 +1055,20 @@ Test `ytread_view_marks_and_rows` (81/81). Tài liệu: README §4, FEATURES F3.
 **Việc tiếp theo:** người dùng thử tay; rồi Y4 (so lần trước, Từ cần luyện, hồ sơ người học cục bộ).
 **Cảnh báo:** nhãn bước trong panel chờ ("Bấm Nghe mẫu…") vẫn là chữ của bài câu — chấp nhận
 được, sửa cùng Y4 nếu người dùng thấy lạ.
+
+## 2026-10-24 (tiếp 5) — Claude Opus 5.5 — Y3: đoạn văn và nút thu cạnh nhau
+
+**Người dùng thử tay:** lấy transcript chạy tốt; nhưng khi thu, ô đoạn văn và khối thu âm không
+cùng một trang (đoạn văn bị đẩy khuất) → khó đọc hết đoạn. Yêu cầu đặt cạnh nhau.
+
+**Đã làm (`app.py`):** chế độ Từ YouTube: `_stage_repack("yt")` đặt `p_recbox` thành cột bên phải
+đoạn văn; `_yt_col`, `_meter_w` (thanh mức âm theo cột), chữ trong cột tự xuống dòng
+(`_stage_resized`); panel kết quả `YT_SIDE_FRAC` 0,34 (`side_width(…, frac)`); đầu sân khấu
+xếp 3 dòng; cửa sổ hẹp: cột 72 %, chữ đoạn 13 pt; nút ◀ ▶ chỉ mũi tên ở cửa sổ hẹp **mọi chế
+độ** (thêm nút "Từ YouTube" làm "◀ Bài trước" bị cắt). `ui_shots.py` thêm 2 ảnh đang thu.
+
+**Đã kiểm chứng:** smoke 81/81; ảnh đang thu / kết quả ở cửa sổ lớn + tối thiểu, bài câu không đổi;
+`ytread_e2e` lại trên video thật — 0 lỗi callback.
+**Chưa kiểm chứng:** người dùng thử lại bằng mic thật với bố cục mới; màn hình của người dùng
+(độ phân giải/scaling khác máy chụp).
+**Việc tiếp theo:** người dùng thử lại; rồi Y4.

@@ -156,7 +156,8 @@ subs, embed, sub_lang, mic, geometry
   Test: `recording_belongs_to_one_tab`.
 - `self.busy` chỉ khóa Tab 1; `self.p_working` khóa Tab 2 (`scoring` **và** `loading`).
 - Chế độ **Từ YouTube** dùng lại sân khấu Luyện: `_stage_repack("yt", …)` thay câu bằng
-  `yt_head` + `yt_text`; khối thu âm, `p_samples`, panel phải (`pp_yt`) dùng chung. Rẽ nhánh
+  `yt_head` + `yt_text` và đặt khối thu âm thành **cột bên phải** đoạn văn (không bên dưới —
+  người học phải thấy cả đoạn khi thu); panel phải hẹp hơn (`YT_SIDE_FRAC`); khối thu âm, `p_samples`, panel phải (`pp_yt`) dùng chung. Rẽ nhánh
   ở `_prac_start`, `_prac_score`, `_step_lesson`, `_prac_mode_changed`. Hủy tải bằng cờ
   riêng `_yt_cancel` (không dùng `cancel_flag` của Tab 1).
 
