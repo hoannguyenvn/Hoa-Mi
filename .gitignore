@@ -10,6 +10,7 @@ config.json
 practice_history.json
 learners.json
 learners.json.tmp
+sound calibrate/
 
 # Model, file tạm
 *.tmp
