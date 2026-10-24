@@ -83,7 +83,7 @@
 | R2 | NGỮ ĐIỆU: hướng giọng cuối từng câu + độ rộng cao độ, so **cùng câu** của người nói; lọc lỗi bám F0 (nhảy quãng tám, nhạc nền) | ⛔ |
 | R3 | NHẤN & NHỊP: từ được nhấn theo **cụm** (giữa hai chỗ ngừng) bạn vs người nói; từ chức năng (to, of, the…) đọc quá dài/mạnh | ⛔ |
 | R4 | NỐI ÂM: điểm nối (phụ âm cuối + nguyên âm đầu) đánh dấu trong đoạn; báo khi bạn ngắt ở đó mà người nói đọc liền; nuốt âm chỉ là gợi ý | ⛔ |
-| R5 | Bố cục kết quả: tóm tắt "3 điều nên sửa trước" + các mục Từ · Trôi chảy · Ngữ điệu · Nhấn & nhịp · Nối âm | ⛔ |
+| R5 | Báo cáo cuối phiên (D-43): 3 điều nên tập trung, âm hay sai cả bài, trôi chảy, từng đoạn, từ cần luyện, lưu HTML; kết thúc sớm được | ✅ |
 | R6 | So lần trước, Từ cần luyện, lịch sử theo hồ sơ người học cục bộ (Y4 cũ) | ⛔ |
 
 R1 kiểm chứng: `ytread_e2e` (giữ/khôi phục khi đổi đoạn, lưu đủ 4 file, đóng app xóa hết), nhánh

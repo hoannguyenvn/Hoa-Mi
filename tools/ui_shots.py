@@ -285,6 +285,15 @@ def main() -> int:
     shot("20_yt_result_dark")
     theme("light")
     assert len(toks) == res["total"] + res["doubts"]
+    A._yt_done(0, res, None)
+    shot("20b_yt_result_with_report_button_light")
+    A._yt_finish()                    # báo cáo cuối (D-43): 2 đoạn đã đọc / 2
+    shot("20c_yt_report_light")
+    theme("dark")
+    A._yt_finish()
+    shot("20d_yt_report_dark")
+    theme("light")
+    A._yt_report_hide()
 
     # ---- Cài đặt ----
     A._show_screen("set")

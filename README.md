@@ -148,6 +148,10 @@ Ba chế độ:
   - **Âm hay sai**: lỗi được gom theo thói quen — âm cuối & -s số nhiều, âm th, n đọc thành l,
     nguyên âm đôi (bacon, odor), cụm phụ âm đầu (smell, sniff), từ ngắn bị nuốt — kèm số từ, ví dụ
     từ chính bài đọc của bạn, mẹo sửa, ▶ Mẫu / ▶ Bạn đọc. Đọc từ 2 đoạn: thêm tổng cả video.
+  - **Báo cáo cuối**: bấm **Kết thúc · xem báo cáo** bất cứ lúc nào (vd đọc 3/6 đoạn rồi dừng) hoặc
+    **Xem báo cáo →** ở đoạn cuối. Báo cáo gồm tổng điểm, 3 điều nên tập trung, âm hay sai cả bài,
+    trôi chảy, từng đoạn (nghe lại, mở lại đoạn) và từ cần luyện. **Lưu báo cáo** ghi `bao-cao.html`
+    (mở bằng trình duyệt, có nút nghe lại) cùng các bản thu vào Documents\Oriole.
   - **Trôi chảy** (so với người nói, không tính điểm): tốc độ đọc, số từ mỗi hơi, chỗ bạn
     ngừng giữa cụm từ (dấu **/** đỏ trong đoạn), chỗ người nói ngừng mà bạn đọc liền.
   - **Từng câu**: ▶ Mẫu (người nói) và ▶ Bạn đọc cho mỗi câu, kèm thời lượng hai bên.

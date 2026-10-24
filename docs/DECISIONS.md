@@ -446,6 +446,18 @@ n→l 2, th 1 — sau khi lọc nghe nhầm); sửa một thói quen có ích h�
 **Hệ quả:** phụ thuộc chữ máy nghe → bị giới hạn bởi Whisper (D-37); GOP chưa dùng ở chế độ này. Test:
 `english_error_patterns_from_real_reading`.
 
+### D-43 — Từ YouTube: báo cáo cuối phiên, kết thúc sớm được (2026-10-24)
+**Quyết định (người dùng):** giữ phản hồi đầy đủ sau mỗi đoạn **và** thêm báo cáo cuối. Nút "Kết thúc · xem
+báo cáo (n/N đoạn)" hiện từ khi có 1 đoạn được chấm — người học dừng ở đoạn 3/6 vẫn có báo cáo đủ cho 3 đoạn
+đó; đoạn cuối thì nút phụ của panel thành "Xem báo cáo →". Báo cáo (`session_report`, màn toàn bề ngang):
+tổng từ đúng, tốc độ, 3 điều nên tập trung (thói quen nhiều từ nhất → tốc độ < 75 % người nói → ngừng giữa cụm
+≥ 3 chỗ → thói quen thứ hai), âm hay sai cả bài, trôi chảy, từng đoạn (▶ người nói / ▶ bạn đọc cả đoạn, Mở
+đoạn), từ cần luyện. "Lưu báo cáo" → Documents\Oriole\oriole_<video>_<giờ>_baocao\bao-cao.html (`report_html`,
+tự chứa, có thẻ <audio> nghe lại) + bộ file từng đoạn. Đoạn "máy chưa nghe rõ" liệt kê nhưng không tính tổng.
+**Vì sao:** người dùng muốn một kết quả tổng ở cuối thay vì ghép từng đoạn; video dài cần dừng sớm.
+**Hệ quả:** điểm tổng = Σ từ đúng / Σ từ (I4); tốc độ đoạn chỉ chia cho từ đã đọc (`_wpm` theo từ có mốc —
+trước đây dừng giữa đoạn làm tốc độ phồng lên). Test: `session_report_and_html`.
+
 ## B. Những cách làm đã bị loại (đừng lặp lại)
 
 Nguồn: `PHASE2-DANH-GIA-DU-AN-CU.md` §2.2 và §6.

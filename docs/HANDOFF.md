@@ -1172,3 +1172,20 @@ vào "từ ngắn bị nuốt".
 **Đã kiểm chứng:** smoke 84/84, py_compile, context_check; ảnh panel. **Chưa kiểm chứng:** người dùng xem
 trên máy (cửa sổ đang mở là bản cũ).
 **Việc tiếp theo:** R2 ngữ điệu.
+
+## 2026-10-24 (tiếp 11) — Claude Opus 5.5 — D-43: báo cáo cuối phiên + kết thúc sớm
+
+**Người dùng:** muốn báo cáo đầy đủ ở cuối thay vì chỉ từng đoạn; video dài cần dừng sớm (vd 3/6 đoạn) mà vẫn
+có báo cáo. Đã hỏi: giữ phản hồi đầy đủ mỗi đoạn; báo cáo trong app + lưu file.
+**Đã làm (`app.py`):** `session_report` (tổng, 3 điều tập trung, mẫu lỗi cả bài kèm `where` để ▶, trôi
+chảy, từng đoạn, từ cần luyện), `report_html` (HTML tự chứa, <audio>, thoát ký tự), `REPORT_*`;
+`error_pattern_view` thêm `ex_ti`; `_wpm` chỉ đếm từ đã có mốc. Màn báo cáo `yt_report` thay thân màn Luyện
+(`_yt_finish`, `_yt_report_render`, `_yt_report_hide`, `_yt_goto`, `_yt_save_report`); viên thuốc "Kết thúc ·
+xem báo cáo (n/N đoạn)"; đoạn cuối → "Xem báo cáo →". `ui_shots` +3 ảnh; `ytread_e2e` kết thúc ở 2/7 đoạn +
+lưu báo cáo. Test `session_report_and_html` (85/85).
+**Kiểm trên 4 đoạn thật của người dùng:** 164/250 (66 %), tốc độ 112 vs 156 → 3 điều: âm cuối & -s (15 từ),
+tốc độ, từ ngắn bị nuốt; trước khi sửa `_wpm`, đoạn 4 (dừng giữa chừng) báo 174 từ/phút (sai).
+**Đã kiểm chứng:** smoke 85/85, context_check; ảnh sáng/tối; e2e thật: báo cáo 2/7 đoạn, bao-cao.html + 8
+file, 4 thẻ audio, 0 lỗi callback.
+**Chưa kiểm chứng:** mở bao-cao.html bằng trình duyệt thật (nội dung kiểm bằng test); người dùng dùng tay.
+**Việc tiếp theo:** R2 ngữ điệu hoặc R6 lịch sử theo hồ sơ người học.

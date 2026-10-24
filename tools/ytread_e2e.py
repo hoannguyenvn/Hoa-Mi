@@ -117,6 +117,21 @@ def main():
     sub = [d for d in os.listdir(out) if os.path.isdir(os.path.join(out, d))]
     print("lưu tất cả:", sub, sorted(os.listdir(os.path.join(out, sub[0]))) if sub else None)
     print("nút sau khi lưu tất cả:", A.btn_psaveall._pill["text"])
+    # kết thúc sớm (2/N đoạn) → báo cáo → lưu báo cáo HTML
+    print("nút báo cáo:", A.btn_preport._pill["text"])
+    A._yt_finish()
+    A.update()
+    rep = A._yt_rep
+    print("báo cáo: đã đọc %d/%d · %d/%d từ · tập trung %s · màn báo cáo hiện %s" % (
+        rep["n_read"], rep["n_paras"], rep["correct"], rep["total"],
+        [f["title"] for f in rep["focus"]], bool(A.yt_report.winfo_manager())))
+    A._yt_save_report()
+    rdir = [d for d in os.listdir(out) if d.endswith("_baocao")]
+    files = sorted(os.listdir(os.path.join(out, rdir[0]))) if rdir else []
+    page = open(os.path.join(out, rdir[0], "bao-cao.html"), encoding="utf-8").read() \
+        if "bao-cao.html" in files else ""
+    print("lưu báo cáo:", files, "· thẻ audio:", page.count("<audio"))
+    A._yt_report_hide()
     A._yt_step(-1)
     A._yt_step(1)                       # đổi đoạn → màn của đoạn mới, bản thu đoạn cũ được giữ
     print("sau Đoạn sau: kết quả %s · có bản thu %s · file cũ còn %s" % (

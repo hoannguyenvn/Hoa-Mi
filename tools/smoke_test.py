@@ -255,6 +255,36 @@ def english_error_patterns_from_real_reading():
 
 
 @case
+def session_report_and_html():
+    # D-43: báo cáo cuối gom các đoạn đã đọc (dừng sớm được), lưu HTML có nút nghe lại
+    def para(text, heard, step=0.4):
+        res = app.read_aloud_diff(text, heard, None)
+        res["words_t"] = [{"w": w, "s": i * step, "e": i * step + 0.3, "p": 0.9}
+                          for i, w in enumerate(heard.split())]
+        orig = [{"w": w, "s": i * 0.25, "e": i * 0.25 + 0.2, "p": 0.9}
+                for i, w in enumerate(text.split())]
+        return {"text": text, "res": res, "orig_words": orig}
+    d1 = dict(para("The molecules reach the nose and the brain loves it.",
+                   "the molecule reach the nose and the brain loves it"), idx=0)
+    d2 = dict(para("Odor receptors send molecules to the brain right now and here today.",
+                   "odor receptors send molecule to the brain"), idx=2)
+    d3 = dict(para("Bad audio.", "garbage words"), idx=3, gate="garbage")
+    rep = app.session_report({"title": "Smell <TED>", "url": "u", "n_paras": 6,
+                              "date": "24/10/2026"}, [d1, d2, d3])
+    assert rep["n_read"] == 3 and rep["n_scored"] == 2 and rep["n_paras"] == 6
+    assert rep["paras"][2]["state"] == "unsure"
+    assert rep["patterns"][0]["code"] == "final" and rep["patterns"][0]["n"] == 2, rep["patterns"]
+    assert rep["unread"] == 5 and rep["paras"][1]["unread"] == 5        # "right now and here today."
+    assert rep["focus"] and rep["focus"][0]["title"].startswith("Âm cuối")
+    assert rep["wpm_usr"] and rep["wpm_ref"] and rep["wpm_usr"] < rep["wpm_ref"]
+    assert any(w["word"] == "molecules" and w["n"] == 2 for w in rep["words"])
+    html = app.report_html(rep, {0: ("doan01.wav", "doan01_goc.wav")})
+    assert "<audio controls src='doan01.wav'>" in html and "doan01_goc.wav" in html
+    assert "Smell &lt;TED&gt;" in html and "<TED>" not in html           # thoát ký tự HTML
+    assert "3 điều nên tập trung" in html and "đã đọc 3/6 đoạn" in html
+
+
+@case
 def tone_strip_keeps_letters():
     # strip_tone_vi trả chuỗi NFD (giữ dấu chữ như ă/â), nên chuẩn hóa NFC để so.
     import unicodedata

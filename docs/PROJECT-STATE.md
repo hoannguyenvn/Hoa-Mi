@@ -19,7 +19,8 @@
   Người dùng thử với mic: chạy được, yêu cầu phản hồi cả câu → D-40 (R1–R6). **R1 xong** (giữ bản
   thu từng đoạn, Lưu bản thu…, từng câu ▶ Mẫu/▶ Bạn đọc, TRÔI CHẢY). Lưu bản thu thành nút rõ ràng (Documents\Oriole,
   lưu cả các đoạn). Đã phân tích 4 đoạn thật (HANDOFF): `PAUSE_*` giữ nguyên; bản đọc
-  chấm bằng `medium` (D-41). Mục ÂM HAY SAI theo mẫu lỗi (D-42) xong. Kế tiếp: **R2 ngữ điệu**.
+  chấm bằng `medium` (D-41). Mục ÂM HAY SAI (D-42) và báo cáo cuối phiên + kết thúc sớm (D-43) xong. Kế tiếp:
+  **R2 ngữ điệu** hoặc R6 (lịch sử theo hồ sơ người học).
 - [ ] **P4 — Chất lượng thu âm/nhận dạng + hiệu chuẩn điểm:** đợt 1 (D-36) + đợt 2 (D-37) xong.
   Bản thu thật đầu tiên (2026-10-24, `sound calibrate/`, 1 người đọc đoạn văn Việt 66 từ ~20 s,
   mic laptop + AirPods): đã đo, xem HANDOFF; giọng Bắc r/d/gi, s/x, tr/ch nay tính đúng (D-38).
