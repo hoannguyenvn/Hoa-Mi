@@ -370,6 +370,19 @@ Bài Việt chấm chậm hơn (small). Test: `unsure_word_loses_tick_not_points
 `vietnamese_practice_uses_small_when_on_disk`, `snr_estimate_and_quality_note`,
 `recorder_noise_floor_and_practice_silence`, `whisper_model_is_cached`.
 
+### D-38 — Bài tiếng Việt chấp nhận giọng Bắc: r/d/gi, s/x, tr/ch (2026-10-24)
+**Quyết định:** khi chấm bài tiếng Việt (`lang == "vi"`), `score_pronunciation` so từ theo
+`vi_north_key`: phụ âm đầu r/d/gi → z, x → s, tr → ch. Máy nghe "dừng" cho "rừng", "sinh" cho
+"xinh", "chong" cho "trong" → **đúng** (item `ok`, giữ từ máy nghe ở cột heard). Thanh và vần vẫn
+phải đúng: "rủ" nghe "dù" → `tone`. N/L **không** thuộc nhóm này (vẫn báo `warn`). Không áp cho
+tiếng Anh/`auto` ("red"/"dead" vẫn khác).
+**Vì sao:** người dùng quyết 2026-10-24. Giọng Hà Nội nhập r/d/gi và s/x, tr/ch là phát âm chuẩn
+được chấp nhận, không phải lỗi; Whisper ghi đúng chữ theo âm nghe được nên app cũ trừ oan. Bản thu
+thật (đoạn văn 66 từ): AirPods 47→49, mic laptop 43→44 từ đúng.
+**Hệ quả:** người học giọng Nam/Trung đọc nhầm hai âm này cũng không bị báo — chấp nhận; nếu sau
+này có bài luyện riêng r/d/gi, s/x, tr/ch (ROADMAP) thì bài đó cần cách chấm khác (cờ theo bài).
+Mã `đ` không đổi. Test: `northern_accent_is_correct`.
+
 ## B. Những cách làm đã bị loại (đừng lặp lại)
 
 Nguồn: `PHASE2-DANH-GIA-DU-AN-CU.md` §2.2 và §6.

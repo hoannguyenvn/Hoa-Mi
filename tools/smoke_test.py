@@ -95,6 +95,21 @@ def vietnamese_tone_flagged():
 
 
 @case
+def northern_accent_is_correct():
+    # D-38: r/d/gi, s/x, tr/ch giọng Bắc tính là đúng ở bài Việt; thanh vẫn phải đúng
+    r = app.score_pronunciation("rừng xinh trong giữ gì", "dừng sinh chong dữ dì", "vi")
+    assert r["correct"] == 5, r["items"]
+    assert r["items"][0] == ("rừng", "ok", "dừng", None), r["items"]
+    r = app.score_pronunciation("rủ", "dù", "vi")
+    assert r["items"][0][1] == "tone", r["items"]
+    r = app.score_pronunciation("nai", "lai", "vi")      # n/l KHÔNG phải giọng Bắc
+    assert r["items"][0][1] == "warn", r["items"]
+    r = app.score_pronunciation("red", "dead", "en")     # chỉ áp cho tiếng Việt
+    assert r["correct"] == 0, r["items"]
+    assert app.vi_north_key("gìn") == app.vi_north_key("dìn") == "zìn"
+
+
+@case
 def tone_strip_keeps_letters():
     # strip_tone_vi trả chuỗi NFD (giữ dấu chữ như ă/â), nên chuẩn hóa NFC để so.
     import unicodedata

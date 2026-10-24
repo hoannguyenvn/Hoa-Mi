@@ -160,7 +160,8 @@ Kết quả gồm:
    **từ máy nghe được** ("Think" → nghe “tink”) hoặc "(thiếu)". Tiếng Anh có GOP: từ máy
    nghe đúng nhưng có âm **lệch rõ** cũng gạch cam, ghi "âm /θ/ lệch" — vẫn tính là từ
    đúng trong điểm. Từ đúng mà chính máy nghe **rất không chắc** gạch xám, ghi "máy chưa
-   chắc" (vẫn tính đúng, nhưng không hiện "Hoàn hảo").
+   chắc" (vẫn tính đúng, nhưng không hiện "Hoàn hảo"). Bài tiếng Việt chấp nhận giọng
+   Bắc: đọc r/d/gi, s/x, tr/ch như nhau ("rừng" → "dừng") vẫn tính đúng; n/l thì không.
 3. **Cần sửa** — tối đa 4 mục: tiếng Việt gom lỗi N/L, sai dấu thanh, sai vần/dấu
    ("lắm" → "lám", kèm cách đọc tách "l + ăm + thanh sắc"); tiếng Anh theo âm vị.
    Mỗi mục có ▶ Mẫu (nếu có file mẫu) và ▶ Bạn đọc (nghe lại đúng từ đó trong bản thu).

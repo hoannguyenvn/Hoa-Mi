@@ -19,7 +19,7 @@ không đổi điểm.
 
 | Nhóm | Symbol |
 |---|---|
-| Chuẩn hóa | `norm_words`, `strip_tone_vi`, `strip_marks_vi`, `_rest_sim`, `_TONE_MARKS`, `vi_spell` |
+| Chuẩn hóa | `norm_words`, `strip_tone_vi`, `strip_marks_vi`, `vi_north_key`, `_rest_sim`, `_TONE_MARKS`, `vi_spell` |
 | Luật | `flag_pair`, `score_pronunciation` |
 | Worker | `App._w_prac` |
 | Hiển thị | `App._prac_done`, `App._prac_error`, `App._prac_stop_and_score` |
@@ -58,13 +58,15 @@ score = round(100 * correct / total, 1)
 
 1. **Lượt theo vị trí đọc:** với từ thứ `i` của mục tiêu và từ thứ `i` của hyp,
    gọi `flag_pair`. Lưu gợi ý vào `pos_flag` — dùng khi SequenceMatcher xếp cặp khác.
-2. `difflib.SequenceMatcher` trên danh sách từ.
+2. `difflib.SequenceMatcher` trên danh sách từ — bài Việt (`lang == "vi"`) so theo
+   `vi_north_key` (giọng Bắc r/d/gi→z, x→s, tr→ch là **đúng**, D-38; n/l thì không).
 3. Gộp cặp `delete` + `insert` kề nhau thành `replace`: "thiếu A + thừa B" thực chất
    là "đọc A thành B" (ví dụ `nam` → `lam`).
 4. Với mỗi cặp `(target, heard)`:
    - `flag_pair` → `warn` + gợi ý;
-   - tiếng Việt/auto và `strip_tone_vi(t) == strip_tone_vi(h)` → `tone`;
-   - tiếng Việt/auto và `strip_marks_vi(t) == strip_marks_vi(h)` → `rhyme`;
+   - tiếng Việt/auto và `strip_tone_vi(key(t)) == strip_tone_vi(key(h))` → `tone`;
+   - tiếng Việt/auto và `strip_marks_vi(key(t)) == strip_marks_vi(key(h))` → `rhyme`;
+     (`key` = `vi_north_key` với bài Việt, giữ nguyên với `auto`/en);
    - có `pos_flag[i]` → `warn`;
    - còn lại → `bad`.
 5. Target không có hyp tương ứng → `bad` + "thiếu chữ".

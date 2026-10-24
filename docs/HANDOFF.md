@@ -966,3 +966,22 @@ thu vài câu bài bằng chính app (cần cách lưu bản thu luyện ra thư
 file tạm bị xóa).
 **Cảnh báo:** đoạn văn 20 s khác phân phối câu luyện (1 câu ngắn) — đừng chỉnh ngưỡng chỉ
 dựa trên hai file này.
+
+## 2026-10-24 (tiếp) — Claude Opus 5.5 — D-38: giọng Bắc tính là đúng
+
+**Người dùng quyết:** bài tiếng Việt chấp nhận giọng Bắc r/d/gi, s/x, tr/ch.
+
+**Đã làm:** `app.py` thêm `vi_north_key` (r/d/gi→z, x→s, tr→ch ở phụ âm đầu; "gì"/"gìn" chỉ đổi
+g); `score_pronunciation` với `lang == "vi"` căn và so theo khóa này, item `ok` giữ từ máy nghe
+thật ở cột heard (trước đây lặp từ mẫu); kiểm `tone`/`rhyme` cũng qua khóa ("rủ"→"dù" = sai
+thanh, trước là `bad`). Test `northern_accent_is_correct` (75/75).
+Tài liệu: DECISIONS D-38, README §4, FEATURES F3.7, skill `app-pronunciation`, `context-map.json`,
+PROJECT-STATE.
+
+**Kết quả:** bản thu thật AirPods 47→49, mic laptop 43→44 /66; `vi_cau` không có các âm này nên
+không đổi.
+
+**Đã kiểm chứng:** smoke 75/75, py_compile, context_check, `asr_bench --dir` + `--only vi_`.
+**Chưa kiểm chứng:** giao diện app với từ giọng Bắc (chip ✓ — logic `stage_words` không đổi).
+**Việc tiếp theo:** thu câu bài ngắn bằng chính app để kiểm `SNR_LOW_DB`/1,8 s (P4a); Phase 4.
+**Cảnh báo:** nếu thêm bài luyện riêng r/d/gi, s/x, tr/ch thì bài đó phải tắt khóa giọng Bắc.

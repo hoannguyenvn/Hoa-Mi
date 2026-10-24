@@ -18,8 +18,8 @@
   cùng âm tiết; hiện "bạn đọc thanh sắc, mẫu là thanh huyền".
 - [ ] **P4 — Chất lượng thu âm/nhận dạng + hiệu chuẩn điểm:** đợt 1 (D-36) + đợt 2 (D-37) xong.
   Bản thu thật đầu tiên (2026-10-24, `sound calibrate/`, 1 người đọc đoạn văn Việt 66 từ ~20 s,
-  mic laptop + AirPods): đã đo, xem HANDOFF. **Cần người dùng quyết:** giọng Bắc (r/d/gi, s/x)
-  có tính là sai không. Kế tiếp: (a) thu thêm **bằng chính app** (tab Luyện, câu ngắn của bài
+  mic laptop + AirPods): đã đo, xem HANDOFF; giọng Bắc r/d/gi, s/x, tr/ch nay tính đúng (D-38).
+  Kế tiếp: (a) thu thêm **bằng chính app** (tab Luyện, câu ngắn của bài
   — không phải đoạn văn) để kiểm `SNR_LOW_DB`, 1,8 s; (b) cổng SNR khi có dữ liệu phòng ồn thật;
   (c) so với giáo viên, chỉnh ngưỡng trước khi hứa "điểm phát âm".
 
@@ -80,7 +80,7 @@ Ký hiệu: ✅ chạy ổn · 🟡 chạy nhưng có giới hạn · ⛔ chưa 
 | TB | yt-dlp 2026.08 cảnh báo thiếu JS runtime (`deno`) — app ẩn cảnh báo (`no_warnings`) | YouTube có thể trả thiếu format/403 khi đổi API | cân nhắc cài `deno` hoặc gói `yt-dlp[default]`; hiện tải vẫn chạy (2026-10-22) |
 | Thấp | `bv*[ext=mp4]` có thể chọn AV1 (`av01`) | máy thiếu AV1 codec không phát được MP4 | cân nhắc ưu tiên `vcodec^=avc1` — cần quyết định, skill đang khóa chuỗi format |
 | **Cao** | Mic array Intel SST cho tín hiệu yếu (~2% đỉnh, RMS ~0,5%) | phải hạ sàn + tăng gain; chưa kiểm chứng Whisper nhận đúng ở mức này | tăng Microphone Level 100%/Boost; nếu vẫn kém, dùng mic ngoài; theo dõi D-21 |
-| **Cao** | Người Việt đọc trôi chảy đoạn văn 66 từ chỉ được **65–71 %** từ đúng với `small` (2026-10-24); phần lớn "lỗi" là Whisper nghe nhầm, một phần là giọng Bắc (rừng→"dừng", rủ→"dù", xinh→"sinh") | điểm tiếng Việt dễ làm người học nản / hiểu sai | quyết định giọng Bắc; đo lại với câu ngắn của bài; P3 (F0) |
+| **Cao** | Người Việt đọc trôi chảy đoạn văn 66 từ chỉ được **67–74 %** từ đúng với `small` (2026-10-24, sau D-38); phần lớn "lỗi" là Whisper nghe nhầm (hươu nai→"hiệu nay") | điểm tiếng Việt dễ làm người học nản / hiểu sai | đo lại với câu ngắn của bài; P3 (F0) |
 | Thấp | `base` yếu với tiếng Việt (`vi_cau.wav` → "là nằm này lên lắm") | bài Việt nay tự dùng `small` nếu có trên máy (D-37); máy chưa tải `small` vẫn dùng `base` | nút/hướng dẫn tải `small` nếu người dùng gặp |
 | TB | GOP tải model 1,2 GB lần đầu | lần chấm đầu rất chậm | thông báo tiến trình, cache, có nút cài |
 | Thấp | Chưa có icon/ bản cài | khó phát hành | packaging sau khi 2A ổn |

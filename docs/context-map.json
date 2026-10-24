@@ -122,6 +122,7 @@
       "App._render_result",
       "App._src_label",
       "strip_marks_vi",
+      "vi_north_key",
       "evidence_gate",
       "vi_spell",
       "has_ipa",

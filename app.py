@@ -778,6 +778,27 @@ def strip_tone_vi(w):
     return "".join(c for c in unicodedata.normalize("NFD", w) if c not in _TONE_MARKS)
 
 
+def vi_north_key(w):
+    """Khóa so sánh chấp nhận giọng Bắc (D-38): r/d/gi → z, x → s, tr → ch ở phụ âm đầu.
+
+    "rừng"/"dừng" → "zừng", "giữ"/"dữ" → "zữ", "gì"/"dì" → "zì", "xinh"/"sinh" → "sinh",
+    "trong"/"chong" → "chong". Thanh và vần giữ nguyên. Chỉ dùng cho bài tiếng Việt.
+    """
+    import unicodedata
+    w = unicodedata.normalize("NFC", (w or "").lower())
+    if len(w) > 1 and w[0] == "g" and strip_marks_vi(w[1]) == "i":
+        # "gi" + nguyên âm ("giữ") → bỏ cả "gi"; "gì"/"gìn" (i là vần) → chỉ đổi g
+        vowel = len(w) > 2 and strip_marks_vi(w[2]) in "aeiouy"
+        return "z" + (w[2:] if vowel and w[1] == "i" else w[1:])
+    if w[:2] == "tr":
+        return "ch" + w[2:]
+    if w[:1] in ("r", "d"):
+        return "z" + w[1:]
+    if w[:1] == "x":
+        return "s" + w[1:]
+    return w
+
+
 def strip_marks_vi(w):
     """Bỏ MỌI dấu (thanh + mũ/trăng/móc, đ→d) — chỉ còn chữ cái gốc: "lắm" → "lam"."""
     import unicodedata
@@ -1184,7 +1205,10 @@ def score_pronunciation(target, hyp, lang):
         fl = flag_pair(t, h, lang)
         if fl:
             pos_flag[i] = fl[1]
-    sm = difflib.SequenceMatcher(None, tw, hw)
+    # Bài Việt so theo khóa giọng Bắc (D-38): "rừng" đọc thành "dừng" vẫn là đúng
+    key = vi_north_key if lang == "vi" else (lambda w: w)
+    tk, hk = [key(w) for w in tw], [key(w) for w in hw]
+    sm = difflib.SequenceMatcher(None, tk, hk)
     # Gộp cặp delete+insert kề nhau thành replace: cùng vị trí đọc thì
     # "thiếu chữ A + thừa chữ B" thực chất là "đọc A thành B" (vd: nam->lam).
     ops, i = [], 0
@@ -1207,8 +1231,8 @@ def score_pronunciation(target, hyp, lang):
     ti = 0  # chỉ số từ mục tiêu (để tra gợi ý theo vị trí đọc ở lượt 1)
     for tag, i1, i2, j1, j2 in ops:
         if tag == "equal":
-            for w in tw[i1:i2]:
-                items.append((w, "ok", w, None))
+            for t, h in zip(tw[i1:i2], hw[j1:j2]):
+                items.append((t, "ok", h, None))
                 ti += 1
         else:
             ts, hs = tw[i1:i2], hw[j1:j2]
@@ -1219,10 +1243,12 @@ def score_pronunciation(target, hyp, lang):
                     fl = flag_pair(t, h, lang)
                     if fl:
                         items.append((t, "warn", h, fl[1]))
-                    elif lang in ("vi", "auto") and strip_tone_vi(t) == strip_tone_vi(h):
+                    elif lang in ("vi", "auto") and \
+                            strip_tone_vi(key(t)) == strip_tone_vi(key(h)):
                         items.append((t, "tone", h,
                                       "“%s” nghe thành “%s” — sai dấu thanh" % (t, h)))
-                    elif lang in ("vi", "auto") and strip_marks_vi(t) == strip_marks_vi(h):
+                    elif lang in ("vi", "auto") and \
+                            strip_marks_vi(key(t)) == strip_marks_vi(key(h)):
                         # cùng chữ cái gốc, khác dấu phụ (ă/â/ê/ô/ơ/ư/đ) ± dấu thanh:
                         # "lắm" → "lám". Vẫn là từ sai (không tính đúng), chỉ đặt tên rõ (S-4).
                         items.append((t, "rhyme", h,
