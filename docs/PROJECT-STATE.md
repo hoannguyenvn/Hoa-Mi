@@ -1,6 +1,6 @@
 # PROJECT STATE — Oriole
 
-- **Cập nhật lần cuối:** 2026-10-23 (D-36 + D-37: front-end âm thanh, tham số Whisper, `asr_bench`; "máy chưa chắc", small cho bài Việt, ghi chú ồn, Recorder)
+- **Cập nhật lần cuối:** 2026-10-24 (đo bản thu thật đầu tiên — mic laptop + AirPods; `asr_bench` đọc m4a)
 - **Phiên bản code:** 2.3 (`VERSION` trong `app.py`)
 - **Trạng thái:** chạy được trên máy hiện tại; git repo `main` (D-33); chưa có test tự động đầy đủ.
 - **Nguồn sự thật:** code + `docs/context-map.json`. Tài liệu này chỉ tóm tắt.
@@ -17,18 +17,19 @@
 - [ ] **P3 — Thanh điệu tiếng Việt bằng F0:** phân loại 6 thanh từ contour, so với mẫu
   cùng âm tiết; hiện "bạn đọc thanh sắc, mẫu là thanh huyền".
 - [ ] **P4 — Chất lượng thu âm/nhận dạng + hiệu chuẩn điểm:** đợt 1 (D-36) + đợt 2 (D-37) xong.
-  Kế tiếp: (a) **người dùng sẽ gửi bản thu thật** (mic array laptop, AirPods đang đeo; `x.wav`
-  16-bit + `x.txt`) → `tools/asr_bench.py --dir … -v` với `base` và `small`; kiểm lại
-  `WORD_UNSURE_P`, `SNR_LOW_DB`, 1,8 s; (b) cân nhắc cổng SNR khi có dữ liệu phòng ồn thật;
+  Bản thu thật đầu tiên (2026-10-24, `sound calibrate/`, 1 người đọc đoạn văn Việt 66 từ ~20 s,
+  mic laptop + AirPods): đã đo, xem HANDOFF. **Cần người dùng quyết:** giọng Bắc (r/d/gi, s/x)
+  có tính là sai không. Kế tiếp: (a) thu thêm **bằng chính app** (tab Luyện, câu ngắn của bài
+  — không phải đoạn văn) để kiểm `SNR_LOW_DB`, 1,8 s; (b) cổng SNR khi có dữ liệu phòng ồn thật;
   (c) so với giáo viên, chỉnh ngưỡng trước khi hứa "điểm phát âm".
 
 Việc đang dở (nếu có): **chẩn đoán micro** — đã sửa 4 lỗi: lọc WDM-KS, ưu tiên
 DirectSound, hạ sàn tín hiệu + gain +24 dB (D-20/D-21), hỗ trợ **mic ngoài** (Quét lại,
 cảnh báo tai nghe bluetooth thiếu Hands-Free — D-22) và **thu bằng callback + queue**
 (D-23: `stream.read` trên DirectSound trả toàn số 0 — nguyên nhân thật của "mic im lặng").
-Còn **chưa kiểm chứng**: thu âm thật end-to-end sau D-23; hai bản ghi AirPods của người
-dùng (4,6 s và 5,7 s) có năng lượng nhưng Whisper `base` **và** `small` đều không nhận ra
-chữ nào → nghi tai nghe chưa đeo đúng hoặc mic HFP kém; cần thử lại khi đã đeo tai nghe.
+Còn **chưa kiểm chứng**: thu âm thật end-to-end **trong app** sau D-23. Bản ghi AirPods mới
+(2026-10-24, thu bằng app Ghi âm Windows) đã nhận dạng tốt ngang mic laptop → lỗi "không ra
+chữ" trước đó là do cách đeo/mic HFP, không phải pipeline.
 
 ## 2. Trạng thái từng tính năng
 
@@ -54,7 +55,7 @@ Ký hiệu: ✅ chạy ổn · 🟡 chạy nhưng có giới hạn · ⛔ chưa 
 | Biểu đồ ngữ điệu (F0, bán cung) | ✅ | câu nhận xét + nhãn từ; trọng âm + tốc độ (D-34); chỉ mô tả, **không chấm điểm** |
 | Lịch sử tiến bộ | ✅ | lưu từng lần (`tries` ≤ 30, D-30), đường xu hướng 10 lần, âm hay sai theo ngôn ngữ |
 | Mic: chọn, kiểm tra, tự dò mic có tín hiệu | 🟡 | lọc WDM-KS, ưu tiên DirectSound, sàn 0,8% + gain +24 dB (D-20/D-21), thu bằng callback + queue (D-23) |
-| Mic ngoài (USB/bluetooth): Quét lại, cảnh báo Hands-Free | 🟡 | `rescan_audio_devices`, `headset_mic_missing` (D-22); AirPods đã lên thiết bị thu (WASAPI) nhưng bản ghi thử chưa nhận dạng được — xem mục 3 |
+| Mic ngoài (USB/bluetooth): Quét lại, cảnh báo Hands-Free | 🟡 | `rescan_audio_devices`, `headset_mic_missing` (D-22); bản ghi AirPods 2026-10-24 nhận dạng ngang mic laptop (chưa thử thu trong app) |
 | Context + skills cho AI | ✅ | `AGENTS.md`, `docs/`, 11 skill; `context_check` 40 OK |
 | Test tự động | 🟡 | 74 test khói + `context_check` + `tools/ui_shots.py` (chụp UI, xem bằng mắt) + `tools/asr_bench.py` (thu → nhận dạng trên mẫu TTS + mic giả lập, D-36); chưa có test mic thật |
 | Đóng gói `.exe` | ⛔ | chỉ có `run.bat` + Conda Python |
@@ -79,7 +80,7 @@ Ký hiệu: ✅ chạy ổn · 🟡 chạy nhưng có giới hạn · ⛔ chưa 
 | TB | yt-dlp 2026.08 cảnh báo thiếu JS runtime (`deno`) — app ẩn cảnh báo (`no_warnings`) | YouTube có thể trả thiếu format/403 khi đổi API | cân nhắc cài `deno` hoặc gói `yt-dlp[default]`; hiện tải vẫn chạy (2026-10-22) |
 | Thấp | `bv*[ext=mp4]` có thể chọn AV1 (`av01`) | máy thiếu AV1 codec không phát được MP4 | cân nhắc ưu tiên `vcodec^=avc1` — cần quyết định, skill đang khóa chuỗi format |
 | **Cao** | Mic array Intel SST cho tín hiệu yếu (~2% đỉnh, RMS ~0,5%) | phải hạ sàn + tăng gain; chưa kiểm chứng Whisper nhận đúng ở mức này | tăng Microphone Level 100%/Boost; nếu vẫn kém, dùng mic ngoài; theo dõi D-21 |
-| **Cao** | Hai bản ghi AirPods (4,6 s / 5,7 s) có năng lượng nói nhưng Whisper `base` và `small` đều **không ra chữ** (hallucination) | chưa chấm được điểm; dễ hiểu nhầm là "app nhận dạng sai" | thử lại khi **đeo** tai nghe (mic AirPods nằm trên thân); nếu vẫn kém → mic USB hoặc mic array |
+| **Cao** | Người Việt đọc trôi chảy đoạn văn 66 từ chỉ được **65–71 %** từ đúng với `small` (2026-10-24); phần lớn "lỗi" là Whisper nghe nhầm, một phần là giọng Bắc (rừng→"dừng", rủ→"dù", xinh→"sinh") | điểm tiếng Việt dễ làm người học nản / hiểu sai | quyết định giọng Bắc; đo lại với câu ngắn của bài; P3 (F0) |
 | Thấp | `base` yếu với tiếng Việt (`vi_cau.wav` → "là nằm này lên lắm") | bài Việt nay tự dùng `small` nếu có trên máy (D-37); máy chưa tải `small` vẫn dùng `base` | nút/hướng dẫn tải `small` nếu người dùng gặp |
 | TB | GOP tải model 1,2 GB lần đầu | lần chấm đầu rất chậm | thông báo tiến trình, cache, có nút cài |
 | Thấp | Chưa có icon/ bản cài | khó phát hành | packaging sau khi 2A ổn |

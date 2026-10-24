@@ -930,3 +930,39 @@ numpy cũng chậm tương ứng, không phải do code.
 Việt bằng small trong app thật (chậm hơn base bao nhiêu); ngưỡng SNR với phòng ồn thật.
 
 **Việc tiếp theo:** chờ bản thu thật của người dùng → `asr_bench --dir` (PROJECT-STATE P4a).
+
+## 2026-10-24 — Claude Opus 5.5 — P4a: đo bản thu thật đầu tiên
+
+**Dữ liệu:** người dùng để `sound calibrate/Mic-Airpod.m4a` + `mic-may.m4a` (không commit — dữ
+liệu cá nhân, §8). Một người đọc cùng một đoạn văn Việt 66 từ (~20 s), thu bằng app Ghi âm của
+Windows (48 kHz AAC), AirPods và mic laptop. Không có file câu mẫu — câu mẫu do agent dựng lại
+từ bản nhận dạng ("Nắng đã nhạt màu trên những vòm cây, … long lanh trong nắng."), **người
+dùng cần xác nhận**.
+
+**Đã làm:** `tools/asr_bench.py` đọc thẳng `.m4a/.mp3/.flac/.ogg/.aac/.wma` (ffmpeg của app,
+mono 48 kHz, qua stdout — không file tạm) và ghi thêm `bad_p` (xác suất Whisper của từ chấm
+sai). Skill `app-recording`, PROJECT-STATE §1/§2/§3.
+
+**Kết quả (`small`, app tự chọn cho bài Việt):** AirPods 47/66 (WER 0,30), mic laptop 43/66
+(0,36); `base` không được dùng cho vi khi có `small`. Cổng bằng chứng không chặn; 0 từ "máy
+chưa chắc".
+- AirPods **đã ổn** (lỗi "không ra chữ" phiên trước là do cách đeo/HFP).
+- `WORD_UNSURE_P` 0,25: giữ. Từ chấm đúng min p 0,33 (0 báo oan / 90 từ); từ chấm sai trung vị
+  ~0,7 → xác suất không tách được đúng/sai (khớp D-37).
+- `SNR_LOW_DB` / 1,8 s: **không đo được** — m4a của Ghi âm Windows có nền gần 0 giữa các từ
+  (lọc ồn), SNR chạm trần 60 dB cả hai mic.
+- Phần lớn từ sai là Whisper nghe nhầm (hươu nai→"hiệu nay/heo lai", bầy vượn→"bày vận").
+  Lặp lại ở cả hai mic: rừng→"dừng", rủ→"dù/chú", nắng→"lắng" (luật n/l báo) — có thể là
+  giọng Bắc thật (r/d/gi), app hiện tính là sai.
+- Chạy nhầm ngôn ngữ (`en` trên giọng Việt): `base` lặp "the sun will rise" ×30 — đúng loại
+  bịa câu mà `evidence_gate` phải chặn (chưa kiểm trên đường app vì app chọn ngôn ngữ theo bài).
+
+**Đã kiểm chứng:** smoke 74/74, py_compile, context_check; `asr_bench --dir` với m4a cho kết
+quả trùng khi đổi trước sang WAV.
+**Chưa kiểm chứng:** thu trong app (tab Luyện) bằng AirPods/mic laptop; câu ngắn của bài.
+
+**Việc tiếp theo:** người dùng quyết giọng Bắc (r/d/gi, s/x, tr/ch) có tính sai không → D-xx;
+thu vài câu bài bằng chính app (cần cách lưu bản thu luyện ra thư mục — hiện `last_wav` là
+file tạm bị xóa).
+**Cảnh báo:** đoạn văn 20 s khác phân phối câu luyện (1 câu ngắn) — đừng chỉnh ngưỡng chỉ
+dựa trên hai file này.

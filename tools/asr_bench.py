@@ -9,8 +9,10 @@ Hai nguồn dữ liệu:
 - Mặc định: câu mẫu trong `mau/` (TTS) + biến dạng giả lập mic (48 kHz, mic yếu,
   ồn, tiếng click). Chỉ để **so sánh trước/sau** một thay đổi của pipeline —
   TTS không dùng để hiệu chuẩn điểm (I13).
-- `--dir THƯ_MỤC`: bản ghi người thật, mỗi `x.wav` kèm `x.txt` (dòng 1 = câu mẫu).
-  Chạy nguyên trạng, không thêm biến dạng.
+- `--dir THƯ_MỤC`: bản ghi người thật, mỗi `x.wav` (hoặc `.m4a/.mp3/.flac…`, giải mã bằng
+  ffmpeg) kèm `x.txt` (dòng 1 = câu mẫu). Chạy nguyên trạng, không thêm biến dạng.
+  Lưu ý: bản m4a từ app Ghi âm của Windows (2026-10-24) có nền giữa các từ gần 0 (lọc ồn)
+  nên SNR chạm trần 60 dB; muốn đo SNR phải thu bằng chính app (tab Luyện).
 
 Ví dụ:
     python tools\\asr_bench.py --out bench_before.json
@@ -60,6 +62,24 @@ def read_wav(path):
     return x, sr
 
 
+AUDIO_EXTS = (".wav", ".m4a", ".mp3", ".flac", ".ogg", ".aac", ".wma")
+
+
+def read_audio(path):
+    """WAV 16-bit đọc trực tiếp; định dạng khác (m4a của Ghi âm Windows…) giải mã bằng
+    ffmpeg của app sang mono 48 kHz — giữ rate mic để chạy qua bộ resample của app."""
+    if path.suffix.lower() == ".wav":
+        return read_wav(path)
+    import subprocess
+    ff = app.yt_ffmpeg_location()
+    if not ff:
+        raise RuntimeError("thiếu ffmpeg (imageio-ffmpeg) để đọc %s" % path.name)
+    raw = subprocess.run([ff, "-v", "error", "-i", str(path), "-ac", "1", "-ar",
+                          str(MIC_RATE), "-f", "s16le", "-"],
+                         capture_output=True, check=True).stdout
+    return np.frombuffer(raw, dtype="<i2").astype(np.float32) / 32768.0, MIC_RATE
+
+
 def builtin_items():
     """Câu mẫu có sẵn: 14 bài Anh (thường + chậm) + câu mẫu Việt/Anh cơ bản."""
     items = []
@@ -77,7 +97,9 @@ def builtin_items():
 
 def dir_items(folder):
     items = []
-    for p in sorted(Path(folder).glob("*.wav")):
+    for p in sorted(Path(folder).iterdir()):
+        if p.suffix.lower() not in AUDIO_EXTS:
+            continue
         t = p.with_suffix(".txt")
         if not t.exists():
             print("bỏ qua %s (thiếu %s)" % (p.name, t.name))
@@ -139,11 +161,14 @@ def run_one(model, frames, rate, target, lang, overrides):
              if it[1] == "ok"}
     idx = app.map_to_target(target, [w["w"] for w in asr["words_t"]])
     ok_p = [round(w["p"], 3) for w, ti in zip(asr["words_t"], idx) if ti in ok_ti]
+    # …và của từ chấm SAI — ngưỡng chỉ có ích nếu hai nhóm tách nhau
+    bad_p = [round(w["p"], 3) for w, ti in zip(asr["words_t"], idx)
+             if ti is not None and ti not in ok_ti]
     return {"hyp": asr["hyp"], "wer": round(wer(target, asr["hyp"]), 3),
             "correct": res["correct"], "total": res["total"],
             "conf": round(res["conf"], 3), "gate": gate,
             "peak0": round(float(info.get("peak0", 0)), 4),
-            "snr_db": info.get("snr_db"), "unsure": unsure, "ok_p": ok_p,
+            "snr_db": info.get("snr_db"), "unsure": unsure, "ok_p": ok_p, "bad_p": bad_p,
             "t_front": round(t_front, 3), "t_asr": round(t_asr, 3)}
 
 
@@ -220,7 +245,7 @@ def main():
     for k, (name, path, target, lang) in enumerate(items):
         # chọn model như app (bài Việt dùng small nếu đã có trên máy — practice_model)
         model = app.load_model(app.practice_model(a.model, lang)[0])
-        x, sr = read_wav(path)
+        x, sr = read_audio(path)
         for cname, peak, noise, click in conds:
             if a.dir:
                 frames, rate = (np.clip(x, -1, 1) * 32767).astype(np.int16), sr

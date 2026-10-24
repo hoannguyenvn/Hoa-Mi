@@ -166,7 +166,8 @@ $env:PYTHONIOENCODING='utf-8'
 # trước/sau khi đổi resample/gain/tham số Whisper (~1 phút/lần, model base):
 & "C:\Users\ADMIN\miniforge3\python.exe" tools\asr_bench.py --out $env:TEMP\b_before.json
 & "C:\Users\ADMIN\miniforge3\python.exe" tools\asr_bench.py --compare $env:TEMP\b_before.json
-# bản ghi người thật: thư mục x.wav + x.txt (dòng 1 = câu mẫu)
+# bản ghi người thật: thư mục x.wav (hoặc .m4a/.mp3…, giải mã bằng ffmpeg) + x.txt (dòng 1 = câu mẫu)
+# m4a của app Ghi âm Windows đã lọc ồn → SNR chạm trần 60 dB; đo SNR phải thu bằng app
 & "C:\Users\ADMIN\miniforge3\python.exe" tools\asr_bench.py --dir D:\ban_ghi -v
 ```
 
