@@ -267,3 +267,11 @@ subs, embed, sub_lang, mic, geometry
 | Nhãn hàng Cài đặt bị cắt ở cửa sổ hẹp | điều khiển rộng đặt bên phải — với hàng có ≥ 2 nút, dùng `vertical=True` và xếp nút dưới chữ |
 | Glyph thành ô vuông (vd "⬇") | Be Vietnam Pro thiếu ký tự — chỉ dùng ▶ ■ ● ✓ ✕ (đã thử) hoặc bỏ ký hiệu |
 | Thanh cuộn panel không hiện | pack thanh cuộn sau Canvas đã `expand` — phải `before=cv` |
+
+## Biểu đồ báo cáo (D-47)
+
+Một nguồn dữ liệu `report_charts(rep)` → hai cách vẽ: `App._report_charts` (Canvas, các thẻ biểu đồ xếp
+bằng `_flow`, tự xuống hàng) và `report_svg` (SVG trong bao-cao.html). Quy tắc: không trục đôi (mỗi thước
+đo một biểu đồ/cặp thanh), màu chuỗi lấy từ `CHART_COLORS` theo theme (xanh = bạn, cam = người nói), chữ và
+nhãn dùng màu chữ của theme, đầu thanh bo 4 px, giá trị ghi ở đầu thanh. Thêm biểu đồ mới: thêm vào
+`report_charts` rồi vẽ ở cả hai nơi; kiểm sáng/tối bằng `tools/ui_shots.py`.

@@ -150,13 +150,16 @@ Ba chế độ:
     từ chính bài đọc của bạn, mẹo sửa, ▶ Mẫu / ▶ Bạn đọc. Đọc từ 2 đoạn: thêm tổng cả video.
   - **Báo cáo cuối**: bấm **Kết thúc · xem báo cáo** bất cứ lúc nào (vd đọc 3/6 đoạn rồi dừng) hoặc
     **Xem báo cáo →** ở đoạn cuối. Báo cáo gồm tổng điểm, 3 điều nên tập trung, âm hay sai cả bài,
-    trôi chảy, từng đoạn (nghe lại, mở lại đoạn) và từ cần luyện. **Lưu báo cáo** ghi `bao-cao.html`
+    trôi chảy, từng đoạn (nghe lại, mở lại đoạn) và từ cần luyện, kèm **biểu đồ**: % từ đúng từng
+    đoạn, bạn vs người nói (tốc độ, dao động cao độ, độ dài từ ngắn), số từ theo mẫu lỗi. **Lưu báo cáo** ghi `bao-cao.html`
     (mở bằng trình duyệt, có nút nghe lại) cùng các bản thu vào Documents\Oriole.
   - **Ngữ điệu**: so độ dao động cao độ mỗi câu của bạn với người nói (vd bạn ~5 bán cung, người
     nói ~12 → "giọng bạn đều hơn nhiều"), kèm đường cao độ thu nhỏ từng câu (chấm = người nói,
     liền = bạn) để bắt chước chỗ lên/xuống giọng. Chỉ mô tả, không tính điểm.
   - **Nhịp**: so độ dài từ ngắn (to, of, the, and…) của bạn với người nói — người Việt hay đọc
     đều từng tiếng nên kéo dài từ ngắn (vd bạn ~380 ms, người nói ~200 ms), kèm ví dụ và ▶.
+  - **Đoạn văn dễ đọc**: các câu cách nhau rõ; **từ nên nhấn in đậm**, chỗ nối âm gạch chân (gợi ý để
+    tập — bấm "Ẩn gợi ý" để tắt).
   - **Nối âm**: chỗ nên đọc nối (phụ âm cuối + nguyên âm đầu: talk about, think of) được gạch chân
     ở mối nối ngay trong đoạn trước khi đọc (bấm "Ẩn gạch chân nối âm" để tắt); mục NỐI ÂM có
     ▶ Mẫu / ▶ Bạn đọc từng cụm. App chỉ chỉ ra để tập, không chấm nối/ngắt.

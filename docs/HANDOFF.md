@@ -1233,3 +1233,19 @@ liền". Gạch cả cụm thì rối → chỉ gạch mối nối; "‿" thiế
 **Đã kiểm chứng:** smoke 88/88, context_check; ảnh; e2e thật 0 lỗi callback.
 **Chưa kiểm chứng:** người dùng xem trên máy. Nuốt âm (elision) chưa làm.
 **Việc tiếp theo:** R6 — lịch sử theo hồ sơ người học cục bộ (chọn tên, không đăng nhập — D-39).
+
+## 2026-10-24 (tiếp 15) — Claude Opus 5.5 — D-47: tách câu, in đậm từ nên nhấn, biểu đồ báo cáo
+
+**Người dùng thử R2–R4:** muốn (1) câu tách riêng, (2) từ nhấn in đậm + nối âm gạch chân, (3) báo cáo có biểu
+đồ; làm xong rồi mới sang R6.
+**Đã làm:** `pron_en.stress_word` (từ nội dung/số/phủ định đậm; từ chức năng, I'm/it's/gonna thường);
+`_yt_fill_text` tách câu (khoảng trắng rộng; "·" khi không có dấu chấm), tag `yk_stress`/`yk_sep`, cỡ chữ tag
+theo `_yt_font_size` (cửa sổ hẹp 13), chú thích + "Ẩn gợi ý". `report_charts`, `report_svg`, `CHART_COLORS`,
+`_num`; `session_report` thêm `func_usr/func_ref`; HTML: mục Biểu đồ (SVG co giãn, tooltip, CSS sáng/tối), bảng
+từng đoạn cuộn riêng (thẻ audio làm tràn ngang ở 377 px); màn báo cáo: `_report_charts` (Canvas, `_flow`).
+Đã nạp skill dataviz: ô màu 1–2 tham chiếu, không trục đôi, đầu thanh bo 4 px, chữ màu chữ. Test
+`report_charts_and_stress_hints` (89/89).
+**Đã kiểm chứng:** smoke 89/89, context_check; ảnh đoạn văn + báo cáo sáng/tối; bao-cao.html dựng từ 4 đoạn thật
+xem bằng trình duyệt trong app (sáng/tối, không tràn ngang ở 377 px); e2e thật 0 lỗi callback.
+**Chưa kiểm chứng:** người dùng xem trên máy.
+**Việc tiếp theo:** R6 — hồ sơ người học cục bộ + lịch sử tiến bộ.

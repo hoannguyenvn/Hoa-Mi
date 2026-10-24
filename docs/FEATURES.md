@@ -53,6 +53,8 @@ và skill nào cần nạp. Dùng file này thay vì grep toàn repo.
 | F3.18 | Ngữ điệu theo câu (D-44) | NGỮ ĐIỆU: dải cao độ bạn vs người nói; đường cao độ thu nhỏ từng câu; "Giọng đều" trong báo cáo | `prosody.pitch_track`, `prosody.segment_pitch`, `intonation_view`, `ytread_orig_pitch` | `app-prosody` | 4 đoạn thật: bạn ~5,3 · người nói ~12,4 bán cung |
 | F3.19 | Nhịp — từ chức năng (D-45) | NHỊP: từ ngắn bạn vs người nói + ví dụ; báo cáo gộp, "Tốc độ & nhịp" | `pron_en.FUNCTION_WORDS`, `pron_en.syllables`, `rhythm_samples`, `rhythm_view` | `app-prosody` | 4 đoạn thật: ~380 vs ~200 ms |
 | F3.20 | Nối âm — dạy, không chấm (D-46) | gạch chân mối nối trong đoạn (bật/tắt), NỐI ÂM + ▶ từng cụm, báo cáo liệt kê cụm | `pron_en.link_points`, `linking_view`, `App._yt_toggle_links` | `app-phonemes` | "talk about", "think of" được gạch |
+| F3.21 | Đoạn văn tách câu + in đậm từ nên nhấn (D-47) | khoảng trắng/· giữa câu, in đậm, gạch chân nối âm, "Ẩn gợi ý" | `pron_en.stress_word`, `App._yt_fill_text` | `app-ui` | "talk" đậm, "the" thường |
+| F3.22 | Biểu đồ báo cáo (D-47) | 3 biểu đồ trong app (Canvas) và bao-cao.html (SVG) | `report_charts`, `report_svg`, `App._report_charts`, `CHART_COLORS` | `app-ui` | báo cáo có mục BIỂU ĐỒ |
 | F3.12 | Mic & kiểm tra | chọn, làm mới, kiểm tra | `_refresh_mics`, `_test_mic`, `_find_mic_auto` | `app-recording` | nói "a" → dB/TỐT |
 
 ## 4. Cài đặt & nền tảng (Tab 3)

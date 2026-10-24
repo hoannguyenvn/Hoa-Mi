@@ -2134,10 +2134,123 @@ def session_report(info, done):
             "focus": focus[:3], "patterns": groups, "fluency": fluency, "paras": paras,
             "intonation": intonation, "range_usr": ru, "range_ref": rr, "flat": flat,
             "linking": links[:REPORT_WORDS],
+            "func_usr": rhythm["func_usr"], "func_ref": rhythm["func_ref"],
             "rhythm": rhythm["lines"][:1] + (["Ví dụ đọc quá dài: " + ", ".join(
                 "%s %d ms (người nói %d)" % (w, round(a * 1000, -1), round(b * 1000, -1))
                 for w, a, b, _k in rhythm["ex"])] if rhythm["ex"] else []),
             "words": practise}
+
+
+# Màu biểu đồ báo cáo (D-47): ô 1–2 của bảng màu tham chiếu (đã kiểm CVD cả sáng/tối) —
+# xanh = BẠN, cam = NGƯỜI NÓI; biểu đồ một chuỗi dùng xanh. Chữ luôn dùng màu chữ, không màu chuỗi.
+CHART_COLORS = {"light": {"you": "#2a78d6", "ref": "#eb6834"},
+                "dark": {"you": "#3987e5", "ref": "#d95926"}}
+
+
+def report_charts(rep):
+    """Báo cáo → dữ liệu 3 biểu đồ (dùng chung cho màn Tk và HTML). Hàm thuần.
+
+    paras: [(nhãn, % từ đúng | None)]; compare: [{title, unit, you, ref}] — mỗi thước đo một
+    biểu đồ riêng (không chung trục: đơn vị khác nhau); patterns: [(tên mẫu, số từ)]."""
+    paras = [("Đoạn %d" % (p["idx"] + 1),
+              round(100.0 * p["correct"] / p["total"]) if p["state"] == "result" and p["total"]
+              else None) for p in rep.get("paras", [])]
+    compare = []
+    for title, unit, a, b, k in (("Tốc độ đọc", "từ/phút", rep.get("wpm_usr"), rep.get("wpm_ref"), 1),
+                                 ("Dao động cao độ", "bán cung", rep.get("range_usr"),
+                                  rep.get("range_ref"), 1),
+                                 ("Độ dài từ ngắn", "ms", rep.get("func_usr"),
+                                  rep.get("func_ref"), 1000)):
+        if a is not None and b is not None:
+            compare.append({"title": title, "unit": unit, "you": round(a * k, 1),
+                            "ref": round(b * k, 1)})
+    patterns = [(g["title"], g["n"]) for g in rep.get("patterns", [])]
+    return {"paras": paras, "compare": compare, "patterns": patterns}
+
+
+def _num(v):
+    return _vn_num(v).replace(",0", "") if isinstance(v, float) else str(v)
+
+
+def report_svg(charts):
+    """Ba biểu đồ SVG nội tuyến cho bao-cao.html (màu qua biến CSS, có tooltip <title>)."""
+    import html as _h
+    out = []
+    # 1) % từ đúng từng đoạn — cột dọc
+    ps = charts["paras"]
+    if ps:
+        W, H, top, bot = max(260, 70 * len(ps) + 40), 200, 24, 30
+        bw = min(46, (W - 40) / len(ps) - 14)
+        s = ["<svg class='viz' viewBox='0 0 %d %d' style='width:100%%;max-width:%dpx;height:auto' role='img' "
+             "aria-label='Phần trăm từ đúng từng đoạn'>" % (W, H, W)]
+        for g in (50, 100):
+            y = top + (H - top - bot) * (1 - g / 100.0)
+            s.append("<line x1='30' x2='%d' y1='%.1f' y2='%.1f' class='grid'/>"
+                     "<text x='26' y='%.1f' class='axis' text-anchor='end'>%d%%</text>"
+                     % (W - 6, y, y, y + 4, g))
+        for i, (lab, v) in enumerate(ps):
+            x = 40 + i * (W - 40) / len(ps) + 6
+            if v is None:
+                s.append("<text x='%.1f' y='%d' class='axis' text-anchor='middle'>?</text>"
+                         % (x + bw / 2, H - bot - 4))
+            else:
+                h = max(6.0, (H - top - bot) * v / 100.0)
+                y = H - bot - h
+                s.append("<g><title>%s: %d%% từ đúng</title><path class='you' d='M%.1f,%.1f "
+                         "v%.1f a4,4 0 0 1 4,-4 h%.1f a4,4 0 0 1 4,4 v%.1f z'/>"
+                         "<text x='%.1f' y='%.1f' class='val' text-anchor='middle'>%d%%</text></g>"
+                         % (_h.escape(lab), v, x, H - bot, -(h - 4), bw - 8, h - 4,
+                            x + bw / 2, y - 6, v))
+            s.append("<text x='%.1f' y='%d' class='axis' text-anchor='middle'>%s</text>"
+                     % (x + bw / 2, H - 10, _h.escape(lab)))
+        s.append("<line x1='30' x2='%d' y1='%d' y2='%d' class='base'/></svg>" % (W - 6, H - bot,
+                                                                                H - bot))
+        out.append(("Kết quả từng đoạn (% từ đúng)", "".join(s)))
+    # 2) bạn vs người nói — mỗi thước đo một cặp thanh ngang
+    cs = charts["compare"]
+    if cs:
+        W, rowh = 340, 74
+        H = 30 + rowh * len(cs)
+        s = ["<svg class='viz' viewBox='0 0 %d %d' style='width:100%%;max-width:%dpx;height:auto' role='img' "
+             "aria-label='So sánh bạn và người nói'>" % (W, H, W),
+             "<rect x='0' y='6' width='10' height='10' rx='2' class='you'/>"
+             "<text x='16' y='15' class='axis'>Bạn</text>"
+             "<rect x='60' y='6' width='10' height='10' rx='2' class='ref'/>"
+             "<text x='76' y='15' class='axis'>Người nói</text>"]
+        for i, c in enumerate(cs):
+            y0 = 30 + i * rowh
+            mx = max(c["you"], c["ref"], 1e-6) * 1.25
+            s.append("<text x='0' y='%d' class='lab'>%s (%s)</text>" % (
+                y0 + 12, _h.escape(c["title"]), _h.escape(c["unit"])))
+            for j, (who, v) in enumerate((("you", c["you"]), ("ref", c["ref"]))):
+                y = y0 + 20 + j * 22
+                w = max(6, (W - 70) * v / mx)
+                s.append("<g><title>%s: %s %s</title><path class='%s' d='M0,%d h%.1f a4,4 0 0 1 4,4 "
+                         "v10 a4,4 0 0 1 -4,4 h%.1f z'/><text x='%.1f' y='%d' class='val'>%s</text>"
+                         "</g>" % ("Bạn" if who == "you" else "Người nói", _num(v),
+                                   _h.escape(c["unit"]), who, y, w - 4, -(w - 4), w + 6, y + 13,
+                                   _num(v)))
+        s.append("</svg>")
+        out.append(("Bạn và người nói", "".join(s)))
+    # 3) âm hay sai — thanh ngang, một chuỗi
+    pt = charts["patterns"]
+    if pt:
+        W, rowh = 360, 26
+        H = rowh * len(pt) + 6
+        mx = max(n for _t, n in pt)
+        s = ["<svg class='viz' viewBox='0 0 %d %d' style='width:100%%;max-width:%dpx;height:auto' role='img' "
+             "aria-label='Số từ theo mẫu lỗi'>" % (W, H, W)]
+        for i, (t, n) in enumerate(pt):
+            y = 4 + i * rowh
+            w = max(6, 140 * n / float(mx))
+            s.append("<g><title>%s: %d từ</title><text x='186' y='%d' class='lab' "
+                     "text-anchor='end'>%s</text><path class='you' d='M194,%d h%.1f a4,4 0 0 1 4,4 "
+                     "v10 a4,4 0 0 1 -4,4 h%.1f z'/><text x='%.1f' y='%d' class='val'>%d</text></g>"
+                     % (_h.escape(t), n, y + 13, _h.escape(t if len(t) <= 30 else t[:29] + "…"),
+                        y, w - 4, -(w - 4), 200 + w, y + 13, n))
+        s.append("</svg>")
+        out.append(("Âm hay sai — số từ", "".join(s)))
+    return out
 
 
 def report_html(rep, audio=None):
@@ -2158,9 +2271,23 @@ def report_html(rep, audio=None):
            "margin:28px 0 8px;border-bottom:1px solid #d1d9e0;padding-bottom:4px}"
            ".muted{color:#59636e}.big{font-size:28px;font-weight:700}.card{background:#f6f8fa;"
            "border-radius:8px;padding:10px 14px;margin:8px 0}.ex{color:#59636e;font-size:14px}"
-           "table{border-collapse:collapse;width:100%}td,th{text-align:left;padding:6px 8px;"
+           "table{border-collapse:collapse;width:100%%}td,th{text-align:left;padding:6px 8px;"
            "border-bottom:1px solid #d1d9e0;font-size:14px;vertical-align:top}"
-           "audio{height:30px;vertical-align:middle}</style></head><body>",
+           "audio{height:30px;vertical-align:middle;width:220px;max-width:100%%}"
+           ".tw{overflow-x:auto}"
+           ".charts{display:flex;flex-wrap:wrap;gap:20px 36px}.charts figure{margin:0}"
+           ".charts figcaption{font-size:13px;color:#59636e;margin-bottom:6px}"
+           ".viz{--you:%s;--ref:%s;--grid:#e6e8eb;--ink:#1f2328;--ink2:#59636e;overflow:visible}"
+           ".viz .you{fill:var(--you)}.viz .ref{fill:var(--ref)}.viz .grid{stroke:var(--grid)}"
+           ".viz .base{stroke:var(--ink2)}.viz text{font-size:12px;fill:var(--ink2)}"
+           ".viz .val{fill:var(--ink);font-weight:600}.viz .lab{fill:var(--ink)}"
+           ".viz g:hover path{opacity:.8}"
+           "@media (prefers-color-scheme:dark){body{background:#1a1a19;color:#f0efec}"
+           ".muted,.ex,h2,.charts figcaption{color:#c3c2b7}.card{background:#262624}"
+           "td,th,h2{border-color:#383835}.viz{--you:%s;--ref:%s;--grid:#383835;"
+           "--ink:#f0efec;--ink2:#c3c2b7}}</style></head><body>" % (
+               CHART_COLORS["light"]["you"], CHART_COLORS["light"]["ref"],
+               CHART_COLORS["dark"]["you"], CHART_COLORS["dark"]["ref"]),
            "<h1>Báo cáo luyện đọc to</h1>",
            "<p class='muted'>%s<br>%s · đã đọc %d/%d đoạn</p>" % (
                e(rep["title"]), e(rep["date"]), rep["n_read"], rep["n_paras"]),
@@ -2173,6 +2300,12 @@ def report_html(rep, audio=None):
         out.append("<br><span class='muted'>%d từ không tính (phụ đề có thể sai)</span>"
                    % rep["doubts"])
     out.append("</p>")
+    figs = report_svg(report_charts(rep))
+    if figs:
+        out.append("<h2>Biểu đồ</h2><div class='charts'>")
+        out += ["<figure><figcaption>%s</figcaption>%s</figure>" % (e(cap), svg)
+                for cap, svg in figs]
+        out.append("</div>")
     if rep["focus"]:
         out.append("<h2>3 điều nên tập trung</h2><ol>")
         out += ["<li><b>%s</b><br><span class='ex'>%s</span></li>" % (e(f["title"]),
@@ -2198,7 +2331,7 @@ def report_html(rep, audio=None):
         out.append("<h2>Trôi chảy</h2><ul>")
         out += ["<li>%s</li>" % e(x) for x in rep["fluency"]]
         out.append("</ul>")
-    out.append("<h2>Từng đoạn</h2><table><tr><th>Đoạn</th><th>Kết quả</th>"
+    out.append("<h2>Từng đoạn</h2><div class='tw'><table><tr><th>Đoạn</th><th>Kết quả</th>"
                "<th>Tốc độ</th><th>Nghe lại</th></tr>")
     for p in rep["paras"]:
         sp = ("%s từ/phút" % p["wpm_usr"] + (" (người nói %s)" % p["wpm_ref"]
@@ -2211,7 +2344,7 @@ def report_html(rep, audio=None):
               "</audio>" % (e(a[0]), e(a[1]))) if a else ""
         out.append("<tr><td>%d</td><td>%s</td><td>%s</td><td>%s</td></tr>" % (
             p["idx"] + 1, e(res_txt), e(sp), au))
-    out.append("</table>")
+    out.append("</table></div>")
     if rep.get("linking"):
         out.append("<h2>Nối âm — tập đọc liền</h2><p>%s</p>" % e(", ".join(rep["linking"])))
     if rep["words"]:
@@ -5381,9 +5514,14 @@ class App(tk.Tk):
                                     locked=lambda: self.p_working or self.recording)
         self._yt_seg.pack(pady=(self.px(8), 0))
         self.yt_show_links = tk.BooleanVar(value=True)
-        self.yt_link_toggle = self._link_lbl(self.yt_head, "Ẩn gạch chân nối âm",
-                                             self._yt_toggle_links, size=9)
-        self.yt_link_toggle.pack(pady=(self.px(6), 0))
+        hint_row = self._frame(self.yt_head, bg="card")
+        hint_row.pack(pady=(self.px(6), 0))
+        self.yt_hint_key = self._lbl(hint_row, "In đậm = từ nên nhấn · gạch chân = chỗ nối âm  ·",
+                                     fg="muted", size=9)
+        self.yt_hint_key.pack(side="left", padx=(0, self.px(6)))
+        self.yt_link_toggle = self._link_lbl(hint_row, "Ẩn gợi ý", self._yt_toggle_links,
+                                             size=9)
+        self.yt_link_toggle.pack(side="left")
         self.yt_head.bind("<Configure>", lambda e: self.yt_title.configure(
             wraplength=max(self.px(120), e.width)))
         self.yt_text = self._mk_text(inner, role="doc", scroll=True, height=6,
@@ -5733,7 +5871,9 @@ class App(tk.Tk):
     def _prac_compact(self, compact):
         self.cb_prac.configure(width=22 if compact else 30)
         self.yt_entry.configure(width=16 if compact else 34)
-        self.yt_text.configure(font=(self.F, 13 if compact else 15))
+        self._yt_font_size = 13 if compact else 15
+        self.yt_text.configure(font=(self.F, self._yt_font_size))
+        self._yt_tags()
         self._nav_labels()
         self._stage_resized()
         pad = self.px(20 if compact else 32)
@@ -6920,12 +7060,16 @@ class App(tk.Tk):
         t.tag_configure("yk_bad", foreground=P["bad_fg"], background=P["bad_bg"])
         t.tag_configure("yk_plain", foreground=P["fg"], background="")
         t.tag_configure("yk_hint", foreground=P["muted"], font=(self.F, 12))
-        t.tag_configure("yk_pause", foreground=P["bad_fg"], font=(self.F, 15, "bold"))
+        size = getattr(self, "_yt_font_size", 15)
+        t.tag_configure("yk_pause", foreground=P["bad_fg"], font=(self.F, size, "bold"))
         t.tag_configure("yk_link", underline=True)
+        t.tag_configure("yk_stress", font=(self.F, size, "bold"))    # từ nên nhấn (D-47)
+        t.tag_configure("yk_sep", foreground=P["muted"])            # · tách câu không có dấu
 
     def _yt_fill_text(self, marks, pauses=None):
         """Cả đoạn trong ô chữ; marks {chỉ số từ: kind} tô màu sau khi chấm; pauses {chỉ số
         từ: "extra"} → dấu "/" đỏ sau từ đó (bạn ngừng giữa cụm từ, R1)."""
+        import yt_read
         self._yt_text_state = (marks, pauses)
         t = self.yt_text
         t.configure(state="normal")
@@ -6937,15 +7081,26 @@ class App(tk.Tk):
                      "cả đoạn, rồi xem từ nào khác với phụ đề.", "yk_hint")
         else:
             words = s.paragraphs[self._yt_idx]["text"].split()
+            hints = self.yt_show_links.get()
+            # cuối câu (D-47): thêm khoảng trắng; câu không có dấu chấm (phụ đề tự động) → "·"
+            ends = {w1 for _w0, w1 in yt_read.sentence_ranges(" ".join(words))}
             pos = []
             for i, w in enumerate(words):
                 a = t.index("end-1c")
-                t.insert("end", w, "yk_" + ((marks or {}).get(i) or "plain"))
+                tags = ("yk_" + ((marks or {}).get(i) or "plain"),)
+                if hints and pron_en.stress_word(w):
+                    tags += ("yk_stress",)
+                t.insert("end", w, tags)
                 pos.append((a, t.index("end-1c")))
                 t.insert("end", " ")
                 if (pauses or {}).get(i):
                     t.insert("end", "/ ", "yk_pause")
-            if self.yt_show_links.get():
+                if i in ends and i < len(words) - 1:
+                    if yt_read.is_clause_end(w):
+                        t.insert("end", "   ")
+                    else:
+                        t.insert("end", "·   ", "yk_sep")
+            if hints:
                 # chỗ nên đọc nối (D-46): chỉ gạch chân MỐI NỐI (chữ cuối · khoảng trắng · chữ
                 # đầu) — gạch cả cụm thì các chỗ nối liền nhau thành một vạch dài, khó đọc
                 for wi, _k in pron_en.link_points(words):
@@ -6955,8 +7110,12 @@ class App(tk.Tk):
 
     def _yt_toggle_links(self):
         self.yt_show_links.set(not self.yt_show_links.get())
-        self.yt_link_toggle.configure(text="Ẩn gạch chân nối âm" if self.yt_show_links.get()
-                                      else "Hiện chỗ nối âm (gạch chân)")
+        on = self.yt_show_links.get()
+        self.yt_link_toggle.configure(text="Ẩn gợi ý" if on else "Hiện gợi ý nhấn & nối âm")
+        if on and not self.yt_hint_key.winfo_manager():
+            self.yt_hint_key.pack(side="left", padx=(0, self.px(6)), before=self.yt_link_toggle)
+        elif not on and self.yt_hint_key.winfo_manager():
+            self.yt_hint_key.pack_forget()
         self._yt_fill_text(*getattr(self, "_yt_text_state", (None, None)))
 
     def _yt_mode_hint(self):
@@ -7234,6 +7393,105 @@ class App(tk.Tk):
             self._yt_idx = idx
             self._yt_refresh()
 
+    def _report_charts(self, box, ch, caps):
+        """Ba biểu đồ của báo cáo (D-47) trên Canvas: % từ đúng từng đoạn · bạn vs người nói
+        (mỗi thước đo một cặp thanh, thang riêng) · số từ theo mẫu lỗi. Tự xuống hàng khi hẹp."""
+        if not (ch["paras"] or ch["compare"] or ch["patterns"]):
+            return
+        P = self.P
+        col = CHART_COLORS["dark" if self.theme_name.get() == "dark" else "light"]
+        caps("BIỂU ĐỒ")
+        wrap = self._frame(box, bg="card", height=1)
+        wrap.pack(fill="x")
+        fnt, fb = (self.F, 9), (self.F, 9, "bold")
+
+        def card(title, w, h):
+            fr = self._frame(wrap, bg="card")
+            self._lbl(fr, title, fg="muted", size=9, anchor="w").pack(fill="x")
+            cv = tk.Canvas(fr, width=self.px(w), height=self.px(h), bd=0, highlightthickness=0,
+                           bg=P["card"])
+            cv.pack(anchor="w", pady=(self.px(4), 0))
+            return cv
+
+        def bar_v(cv, x0, x1, ybase, ytop, color):    # cột: đầu tròn 4 px, gốc phẳng
+            r = min(self.px(4), (x1 - x0) / 2.0, max(0, ybase - ytop))
+            cv.create_rectangle(x0, ytop + r, x1, ybase, fill=color, outline="")
+            cv.create_oval(x0, ytop, x0 + 2 * r, ytop + 2 * r, fill=color, outline="")
+            cv.create_oval(x1 - 2 * r, ytop, x1, ytop + 2 * r, fill=color, outline="")
+            cv.create_rectangle(x0 + r, ytop, x1 - r, ytop + r + 1, fill=color, outline="")
+
+        def bar_h(cv, x0, x1, y0, y1, color):         # thanh ngang: đầu phải tròn
+            r = min(self.px(4), (y1 - y0) / 2.0, max(0, x1 - x0))
+            cv.create_rectangle(x0, y0, x1 - r, y1, fill=color, outline="")
+            cv.create_oval(x1 - 2 * r, y0, x1, y0 + 2 * r, fill=color, outline="")
+            cv.create_oval(x1 - 2 * r, y1 - 2 * r, x1, y1, fill=color, outline="")
+            cv.create_rectangle(x1 - r - 1, y0 + r, x1, y1 - r, fill=color, outline="")
+
+        if ch["paras"]:
+            n = len(ch["paras"])
+            W, H = max(260, 64 * n + 50), 190
+            cv = card("Kết quả từng đoạn (% từ đúng)", W, H)
+            L, T, B = self.px(34), self.px(22), self.px(26)
+            Wp, Hp = self.px(W), self.px(H)
+            for g in (50, 100):
+                y = T + (Hp - T - B) * (1 - g / 100.0)
+                cv.create_line(L, y, Wp - 4, y, fill=P["border"])
+                cv.create_text(L - 6, y, text="%d%%" % g, anchor="e", fill=P["muted"], font=fnt)
+            slot = (Wp - L - 8) / float(n)
+            bw = min(self.px(40), slot - self.px(14))
+            for i, (lab, v) in enumerate(ch["paras"]):
+                xc = L + 8 + slot * (i + 0.5)
+                if v is not None:
+                    yt = Hp - B - max(self.px(6), (Hp - T - B) * v / 100.0)
+                    bar_v(cv, xc - bw / 2, xc + bw / 2, Hp - B, yt, col["you"])
+                    cv.create_text(xc, yt - self.px(8), text="%d%%" % v, fill=P["fg"], font=fb)
+                else:
+                    cv.create_text(xc, Hp - B - self.px(10), text="?", fill=P["muted"], font=fnt)
+                cv.create_text(xc, Hp - self.px(12), text=lab, fill=P["muted"], font=fnt)
+            cv.create_line(L, Hp - B, Wp - 4, Hp - B, fill=P["muted"])
+        if ch["compare"]:
+            W, rowh = 320, 66
+            cv = card("Bạn và người nói", W, 26 + rowh * len(ch["compare"]))
+            Wp = self.px(W)
+            for k, (name, key) in enumerate((("Bạn", "you"), ("Người nói", "ref"))):
+                x = self.px(k * 80)
+                cv.create_rectangle(x, self.px(5), x + self.px(10), self.px(15), fill=col[key],
+                                    outline="")
+                cv.create_text(x + self.px(16), self.px(10), text=name, anchor="w",
+                               fill=P["muted"], font=fnt)
+            for i, c in enumerate(ch["compare"]):
+                y0 = self.px(26 + i * rowh)
+                mx = max(c["you"], c["ref"], 1e-6) * 1.3
+                cv.create_text(0, y0 + self.px(8), text="%s (%s)" % (c["title"], c["unit"]),
+                               anchor="w", fill=P["fg"], font=fnt)
+                for j, key in enumerate(("you", "ref")):
+                    y = y0 + self.px(18 + j * 20)
+                    w = max(self.px(6), (Wp - self.px(50)) * c[key] / mx)
+                    bar_h(cv, 0, w, y, y + self.px(14), col[key])
+                    cv.create_text(w + self.px(6), y + self.px(7), text=_num(c[key]), anchor="w",
+                                   fill=P["fg"], font=fb)
+        if ch["patterns"]:
+            rowh = 24
+            cv = card("Âm hay sai — số từ", 380, rowh * len(ch["patterns"]) + 6)
+            mx = max(nn for _t, nn in ch["patterns"])
+            lab_x = self.px(206)                       # cột nhãn đủ cho "Nguyên âm đôi /eɪ/ /oʊ/ /aɪ/"
+            for i, (t, nn) in enumerate(ch["patterns"]):
+                y = self.px(4 + i * rowh)
+                cv.create_text(lab_x, y + self.px(8), anchor="e", fill=P["fg"],
+                               font=(FONT_IPA, 9) if has_ipa(t) else fnt,
+                               text=t if len(t) <= 30 else t[:29] + "…")
+                w = max(self.px(6), self.px(130) * nn / float(mx))
+                bar_h(cv, lab_x + self.px(8), lab_x + self.px(8) + w, y + self.px(1),
+                      y + self.px(15), col["you"])
+                cv.create_text(lab_x + self.px(14) + w, y + self.px(8), text=str(nn), anchor="w",
+                               fill=P["fg"], font=fb)
+        key = [None]
+
+        def relayout(_e=None):
+            key[0] = self._flow(wrap, self.px(36), self.px(18), key[0])
+        wrap.bind("<Configure>", relayout)
+        self.after_idle(relayout)
+
     def _yt_report_render(self, rep):
         """Màn báo cáo toàn bề ngang: tóm tắt, 3 điều tập trung, âm hay sai cả bài, trôi chảy,
         từng đoạn (▶ cả đoạn, mở lại đoạn), từ cần luyện; nút Lưu báo cáo / Quay lại."""
@@ -7308,6 +7566,7 @@ class App(tk.Tk):
             bits.append("còn %d đoạn chưa đọc" % (rep["n_paras"] - rep["n_read"]))
         if bits:
             lbl(box, " · ".join(bits), fg="muted").pack(fill="x")
+        self._report_charts(box, report_charts(rep), caps)
 
         if rep["focus"]:
             caps("3 ĐIỀU NÊN TẬP TRUNG")

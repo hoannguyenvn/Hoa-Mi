@@ -522,3 +522,22 @@ def link_points(words):
         elif pa[-1] not in VOWELS and pa[-1] == pb[0]:
             out.append((i, "cc"))
     return out
+
+
+# ---------------------------------------------------------------- từ nên nhấn (D-47)
+_NEG = {"not", "no", "never", "nothing", "nobody", "none", "cannot"}
+
+
+def stress_word(word):
+    """Từ NÊN nhấn trong câu tiếng Anh (gợi ý để dạy, không đo): từ nội dung — danh từ, động
+    từ chính, tính từ, trạng từ — và từ phủ định (not, never, can't…); từ chức năng đọc lướt."""
+    raw = (word or "").lower().replace("’", "'").strip(".,;:?!\"()“”")
+    if re.search(r"\d", raw):
+        return True                     # con số là nội dung (90 page, 400 receptors)
+    if raw in _NEG or raw.endswith("n't"):
+        return True
+    # I'm, it's, you're, we'll, let's… và gonna/wanna/gotta là dạng rút gọn của từ chức năng
+    if "'" in raw or raw in ("gonna", "wanna", "gotta"):
+        return False
+    w = _letters(raw)
+    return bool(w) and w not in FUNCTION_WORDS

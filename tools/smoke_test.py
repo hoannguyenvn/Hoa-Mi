@@ -357,6 +357,28 @@ def linking_points_teaching_only():
 
 
 @case
+def report_charts_and_stress_hints():
+    # D-47: biểu đồ báo cáo (dữ liệu chung Tk + SVG) và gợi ý in đậm từ nên nhấn
+    rep = {"paras": [{"idx": 0, "state": "result", "correct": 49, "total": 62},
+                     {"idx": 1, "state": "unsure", "correct": 0, "total": 0}],
+           "wpm_usr": 112, "wpm_ref": 156, "range_usr": 5.3, "range_ref": 12.4,
+           "func_usr": 0.38, "func_ref": 0.2,
+           "patterns": [{"title": "Âm cuối & -s số nhiều", "n": 15},
+                        {"title": "N đọc thành L", "n": 2}]}
+    ch = app.report_charts(rep)
+    assert ch["paras"] == [("Đoạn 1", 79), ("Đoạn 2", None)]
+    assert [c["unit"] for c in ch["compare"]] == ["từ/phút", "bán cung", "ms"]
+    assert ch["compare"][2]["you"] == 380.0 and ch["patterns"][0] == ("Âm cuối & -s số nhiều", 15)
+    figs = app.report_svg(ch)
+    assert len(figs) == 3 and all(s.startswith("<svg") for _c, s in figs)
+    assert "<title>Đoạn 1: 79% từ đúng</title>" in figs[0][1]          # tooltip khi rê chuột
+    assert "class='ref'" in figs[1][1] and "Người nói" in figs[1][1]    # chú giải 2 chuỗi
+    sw = app.pron_en.stress_word
+    assert sw("talk") and sw("molecules,") and sw("can't") and sw("90")
+    assert not sw("the") and not sw("I'm") and not sw("gonna") and not sw("of")
+
+
+@case
 def tone_strip_keeps_letters():
     # strip_tone_vi trả chuỗi NFD (giữ dấu chữ như ă/â), nên chuẩn hóa NFC để so.
     import unicodedata

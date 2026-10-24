@@ -134,6 +134,9 @@
       "rhythm_samples",
       "rhythm_view",
       "linking_view",
+      "report_charts",
+      "report_svg",
+      "App._report_charts",
       "App._yt_toggle_links",
       "ytread_orig_pitch",
       "session_report",
@@ -230,7 +233,8 @@
       "LETTER_TIPS",
       "error_patterns",
       "syllables",
-      "link_points"
+      "link_points",
+      "stress_word"
     ],
     "gop.py": [
       "available",

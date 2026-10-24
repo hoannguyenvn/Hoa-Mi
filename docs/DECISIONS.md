@@ -494,6 +494,20 @@ YouTube; âm tắc /k t p/ cũng tạo khoảng lặng ngắn → năng lượng
 **Hệ quả:** gạch cả cụm làm các chỗ nối liền nhau thành vạch dài → chỉ gạch mối nối. Ký tự "‿" không có trong
 font Be Vietnam → viết cụm trong ngoặc kép. Test: `linking_points_teaching_only`.
 
+### D-47 — Đoạn văn: tách câu, in đậm từ nên nhấn; báo cáo có biểu đồ (2026-10-24)
+**Người dùng yêu cầu:** (1) giữ câu tách riêng (dấu chấm hoặc khoảng trắng đôi); (2) từ nhấn in đậm, nối âm
+gạch chân; (3) báo cáo trực quan hơn, có biểu đồ.
+**Quyết định:** (1) sau mỗi câu (`yt_read.sentence_ranges`) chèn khoảng trắng rộng; câu không có dấu chấm
+(phụ đề tự động) thêm "·" mờ. (2) `pron_en.stress_word`: in đậm từ NÊN nhấn (từ nội dung, số, phủ định; từ
+chức năng và dạng rút gọn I'm/it's/gonna đọc lướt) — **gợi ý để dạy, không đo** (khác R-16: không so với
+cách người học nhấn); dòng chú thích "In đậm = từ nên nhấn · gạch chân = chỗ nối âm" + "Ẩn gợi ý". (3) Báo
+cáo có 3 biểu đồ, cùng dữ liệu (`report_charts`) cho màn Tk (`_report_charts`, Canvas, tự xuống hàng) và
+HTML (`report_svg`, SVG co giãn, tooltip `<title>`, màu qua biến CSS, tối/sáng): % từ đúng từng đoạn (cột),
+bạn vs người nói (mỗi thước đo một cặp thanh, thang riêng — không trục đôi), số từ theo mẫu lỗi (thanh ngang).
+Màu: ô 1–2 bảng màu tham chiếu đã kiểm CVD (`CHART_COLORS`: xanh = bạn, cam = người nói); chữ luôn màu chữ.
+**Hệ quả:** bảng "Từng đoạn" trong HTML cuộn ngang riêng (thẻ audio rộng). Test:
+`report_charts_and_stress_hints`.
+
 ## B. Những cách làm đã bị loại (đừng lặp lại)
 
 Nguồn: `PHASE2-DANH-GIA-DU-AN-CU.md` §2.2 và §6.
