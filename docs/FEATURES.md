@@ -47,7 +47,7 @@ và skill nào cần nạp. Dùng file này thay vì grep toàn repo.
 | F3.11 | Tiến bộ | đường xu hướng ≤ 10 lần + "tốt nhất c/t" + âm hay sai theo ngôn ngữ | `progress_summary`, `_update_prog`, `_draw_spark` | `app-pronunciation` | luyện 2 lần → hiện đường xu hướng |
 | F3.13 | Đọc to transcript YouTube (D-39) | link → đoạn 20–45 s → nghe gốc/đọc → đoạn tô màu, "phụ đề có thể sai" không tính | `ytread_prepare`, `ytread_orig_hyp`, `read_aloud_diff`, `ytread_view`, `App._yt_*` | `app-youtube`, `app-pronunciation` | `tools/ytread_e2e.py <link>` đọc = audio gốc → "Hoàn hảo" |
 | F3.14 | Trôi chảy + từng câu (D-40 R1) | tốc độ, từ/hơi, ngừng giữa cụm "/" , ▶ Mẫu/▶ Bạn đọc mỗi câu | `fluency_view`, `yt_read.sentence_ranges`, `App._yt_render` | `app-prosody` | `tools/ytread_e2e.py` in "trôi chảy: …" |
-| F3.15 | Lưu bản thu | x.wav + x.txt + x.json (+ x_goc.wav) | `App._save_recording` | `app-recording` | lưu rồi `asr_bench --dir` đọc được |
+| F3.15 | Lưu bản thu | nút "Lưu bản thu" / "Lưu cả N đoạn đã đọc" → Documents\Oriole: x.wav + x.txt + x.json (+ x_goc.wav), hộp xác nhận nơi lưu, "Đã lưu ✓" | `recordings_dir`, `App._save_recording`, `App._save_all`, `App._save_bundle`, `App._sync_rec_pills` | `app-recording` | `ytread_e2e` in "Đã lưu cả 2 đoạn ✓" |
 | F3.12 | Mic & kiểm tra | chọn, làm mới, kiểm tra | `_refresh_mics`, `_test_mic`, `_find_mic_auto` | `app-recording` | nói "a" → dB/TỐT |
 
 ## 4. Cài đặt & nền tảng (Tab 3)

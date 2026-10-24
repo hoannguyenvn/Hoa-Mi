@@ -414,6 +414,9 @@ ngừng mà bạn đọc liền, ngập ngừng ≥ 1 s) + dấu "/" đỏ trong
 giọng cuối câu có lúc sai hẳn (một câu "lên 43,5 st/s") và từ được nhấn tính trên cả câu dài
 chọn sai ("that,", "to") → ngữ điệu (R2) phải so cùng câu với người nói + lọc lỗi bám F0, nhấn (R3)
 tính theo cụm giữa hai chỗ ngừng. Nuốt âm (elision) không phát hiện tin cậy → chỉ là gợi ý (R4).
+**Bổ sung (người dùng thử 2026-10-24: không thấy link "Lưu bản thu…" nhỏ):** lưu bằng **nút**
+cạnh "Bản thu của bạn", ghi thẳng vào Documents\Oriole (không hỏi thư mục), hộp xác nhận nơi lưu,
+"Lưu cả N đoạn đã đọc", trạng thái "Đã lưu ✓". Bỏ link nhỏ.
 **Hệ quả:** `PAUSE_MIN` 0,30 / `PAUSE_LINKED` 0,12 / `PAUSE_REF_MIN` 0,40 / `PAUSE_HESIT` 1,0 s chưa
 hiệu chuẩn với người học thật — chỉnh khi có bản lưu. Transcript do Whisper tạo vẫn giữ mốc từ
 (`all_words`) để có ▶ Mẫu và so tốc độ (không có "phụ đề có thể sai"). Test:

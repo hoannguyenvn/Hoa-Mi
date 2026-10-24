@@ -86,16 +86,40 @@ def main():
         for ln in flu.get("lines", []):
             print("  trôi chảy:", ln)
         print("  %d câu" % len(flu.get("sentences", [])))
-    # "Lưu bản thu…" ra thư mục tạm (không hỏi hộp thoại)
+    # "Lưu bản thu" ra thư mục tạm thay Documents\Oriole; hộp "Mở thư mục?" → Không
     out = tempfile.mkdtemp(prefix="oriole_e2e_save_")
-    app.filedialog.asksaveasfilename = lambda **kw: os.path.join(out, kw["initialfile"])
+    app.recordings_dir = lambda: out
+    app.messagebox.askyesno = lambda *a, **k: False
     A._save_recording()
-    saved = sorted(os.listdir(out))
-    print("đã lưu:", saved)
+    print("đã lưu:", sorted(os.listdir(out)))
+    print("nút sau khi lưu:", A.btn_psave._pill["text"])
     kept = A.last_wav
+    # đọc thêm đoạn kế tiếp (cũng bằng audio gốc) → "Lưu cả 2 đoạn đã đọc"
+    A._yt_step(1)
+    p2 = s.paragraphs[A._yt_idx]
+    fd, wav2 = tempfile.mkstemp(prefix="luyen_e2e_", suffix=".wav")
+    os.close(fd)
+    with wave.open(s.wav, "rb") as r, wave.open(wav2, "wb") as w:
+        a, b = app.wav_segment_bounds(r.getnframes(), r.getframerate(), p2["start"], p2["end"], 0.3)
+        r.setpos(a)
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(r.getframerate())
+        w.writeframes(r.readframes(b - a))
+    A._set_last_wav(wav2)
+    A._prac_score(wav2)
+    wait(A, lambda: A.prac_state != "scoring", 300)
+    print("đoạn 2:", A._yt_view and A._yt_view["headline"])
+    print("nút lưu tất cả:", A.btn_psaveall._pill["text"],
+          "· đang hiện:", not getattr(A.btn_psaveall, "_hidden", True))
+    A._save_all()
+    sub = [d for d in os.listdir(out) if os.path.isdir(os.path.join(out, d))]
+    print("lưu tất cả:", sub, sorted(os.listdir(os.path.join(out, sub[0]))) if sub else None)
+    print("nút sau khi lưu tất cả:", A.btn_psaveall._pill["text"])
+    A._yt_step(-1)
     A._yt_step(1)                       # đổi đoạn → màn của đoạn mới, bản thu đoạn cũ được giữ
-    print("sau Đoạn sau: kết quả %s · last_wav %s · file cũ còn %s" % (
-        A._yt_view, A.last_wav, os.path.exists(kept)))
+    print("sau Đoạn sau: kết quả %s · có bản thu %s · file cũ còn %s" % (
+        A._yt_view and A._yt_view["headline"], bool(A.last_wav), os.path.exists(kept)))
     A._yt_step(-1)                      # quay lại → kết quả + bản thu hiện lại
     print("quay lại: %s · last_wav khớp %s" % (
         A._yt_view and A._yt_view["headline"], A.last_wav == kept))

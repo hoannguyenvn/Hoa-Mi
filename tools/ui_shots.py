@@ -266,7 +266,16 @@ def main() -> int:
     for i, w in enumerate(ow):
         sess.orig_words[0].append({"w": w, "s": round(t, 2), "e": round(t + 0.22, 2), "p": 0.9})
         t += 0.23 + (0.5 if w == "college" else 0.0)
-    A.last_wav = None
+    # bản thu giả = BẢN SAO TẠM của âm mẫu (app có thể xóa last_wav — không đưa file repo vào)
+    import shutil
+    tmp_wavs = []
+    for _ in range(2):
+        fd, p = tempfile.mkstemp(prefix="luyen_shot_", suffix=".wav")
+        os.close(fd)
+        shutil.copyfile(ref, p)
+        tmp_wavs.append(p)
+    A._yt_keep[1] = {"wav": tmp_wavs[1], "res": res, "gate": None}
+    A.last_wav = tmp_wavs[0]
     A._yt_done(0, res, None)
     shot("18_yt_result_light")
     A._yt_done(0, res, "garbage")
@@ -311,6 +320,9 @@ def main() -> int:
     A._draw_meter(0.08)
     shot("22_yt_recording_min_light")
     A._set_prac_state("idle")
+    A._yt_drop_keep()                 # xóa bản sao tạm
+    for p in tmp_wavs:
+        app.remove_temp(p)
     A.destroy()
     print("saved to", out)
     return 0

@@ -146,9 +146,11 @@ Ba chế độ:
   - **Trôi chảy** (so với người nói, không tính điểm): tốc độ đọc, số từ mỗi hơi, chỗ bạn
     ngừng giữa cụm từ (dấu **/** đỏ trong đoạn), chỗ người nói ngừng mà bạn đọc liền.
   - **Từng câu**: ▶ Mẫu (người nói) và ▶ Bạn đọc cho mỗi câu, kèm thời lượng hai bên.
-  - Bản thu + kết quả của từng đoạn được giữ khi chuyển đoạn qua lại. **Lưu bản thu…** (dưới
-    nút thu) lưu ra thư mục bạn chọn: bản đọc `.wav`, đoạn văn `.txt`, chi tiết `.json`, đoạn
-    gốc `_goc.wav` — dùng để xem lại hoặc gửi cho người hướng dẫn.
+  - Bản thu + kết quả của từng đoạn được giữ khi chuyển đoạn qua lại. Nút **Lưu bản thu**
+    (cạnh "Bản thu của bạn") lưu ngay vào **Documents\Oriole**: bản đọc `.wav`, đoạn văn `.txt`,
+    chi tiết `.json`, đoạn gốc `_goc.wav`; hộp xác nhận ghi rõ thư mục và hỏi có mở không.
+    Đã đọc từ 2 đoạn trở lên: **Lưu cả N đoạn đã đọc** gom tất cả vào một thư mục con. Đã lưu
+    thì nút đổi thành **Đã lưu ✓** (bấm để mở thư mục). Luyện câu cũng có nút Lưu bản thu.
   - Phiên dùng một lần: âm thanh gốc và bản thu nằm trong thư mục tạm, xóa khi lấy video khác
     hoặc đóng app. Ngữ điệu, nhấn & nhịp, nối âm, lịch sử theo người học: bản sau (D-40).
 

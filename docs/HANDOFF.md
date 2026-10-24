@@ -1096,3 +1096,26 @@ thật (lần này phụ đề YouTube timeout → nhánh Whisper 230 s, vẫn c
 dùng); nghe ▶ từng câu bằng tai.
 **Việc tiếp theo:** người dùng đọc một đoạn và bấm "Lưu bản thu…" gửi lại thư mục → phân tích thật,
 chỉnh `PAUSE_*`; rồi R2 (ngữ điệu theo câu).
+
+## 2026-10-24 (tiếp 7) — Claude Opus 5.5 — Lưu bản thu thành nút rõ ràng
+
+**Người dùng:** đọc trọn đoạn nhưng không thấy chỗ lưu, không biết đã lưu chưa. **Chẩn đoán trước
+khi sửa (theo yêu cầu):** chụp cửa sổ Oriole đang mở bằng PrintWindow — đúng bản R1; link "Lưu bản
+thu…" có nhưng là chữ xanh cỡ 9 giữa hai link khác ở cột thu âm, panel kết quả không nhắc gì →
+khó thấy; chưa lưu file nào; 4 bản thu vẫn còn trong %TEMP% khi cửa sổ còn mở. (Lần kiểm tra đầu
+tiên của agent báo nhầm "bản thu đã mất" — sai, đã đính chính.)
+
+**Đã làm (`app.py`):** `documents_dir` (SHGetFolderPathW, theo OneDrive), `recordings_dir` →
+Documents\Oriole; `_mk_pill(icon=False)`, `_pill_size`, `_pill_set_text`; `_mk_rec_pills` +
+`_sync_rec_pills` (▶ Bản thu của bạn · Lưu bản thu / Đã lưu ✓ · Lưu cả N đoạn đã đọc / Đã lưu cả N
+đoạn ✓ — dùng cho cả Luyện câu); `_save_bundle`, `_save_recording` (không hỏi thư mục),
+`_save_all` (thư mục con `oriole_<vid>_<giờ>`, `doanNN.*`), `_saved_dialog` (nơi lưu + danh sách
+file + "Mở thư mục?"), `_open_folder_of`; bỏ link nhỏ. `ytread_e2e.py` kiểm tra lưu 1 + lưu cả 2
+đoạn (thư mục tạm); `ui_shots.py` dùng **bản sao tạm** của âm mẫu làm bản thu giả (app có thể xóa
+`last_wav` — không đưa file repo vào).
+
+**Đã kiểm chứng:** smoke 82/82; ảnh kết quả có nút; `ytread_e2e` thật: 4 file / 8 file, nhãn nút đổi
+đúng, đóng app dọn hết, 0 lỗi callback; `mau/en/en_th.wav` nguyên vẹn.
+**Chưa kiểm chứng:** hộp xác nhận + mở Explorer bằng tay (e2e trả "Không").
+**Việc tiếp theo:** người dùng lưu 4 đoạn (cửa sổ cũ vẫn mở, dùng link nhỏ) hoặc đọc lại ở bản mới →
+phân tích bản thu thật (nghi Whisper nghe nhầm "shown→sold", "just→shot"), chỉnh `PAUSE_*`; R2.

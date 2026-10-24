@@ -17,7 +17,8 @@
 - [ ] **P5 — Đọc to transcript YouTube tiếng Anh (D-39, `docs/YT-READING-PLAN.md`):** Y1–Y3
   xong — chế độ **Từ YouTube** trong Luyện chạy được (thử bằng `ytread_e2e`, chưa thử mic thật).
   Người dùng thử với mic: chạy được, yêu cầu phản hồi cả câu → D-40 (R1–R6). **R1 xong** (giữ bản
-  thu từng đoạn, Lưu bản thu…, từng câu ▶ Mẫu/▶ Bạn đọc, TRÔI CHẢY). Kế tiếp **R2 ngữ điệu**.
+  thu từng đoạn, Lưu bản thu…, từng câu ▶ Mẫu/▶ Bạn đọc, TRÔI CHẢY). Lưu bản thu thành nút rõ ràng (Documents\Oriole,
+  lưu cả các đoạn). Kế tiếp: phân tích bản lưu thật của người dùng, chỉnh `PAUSE_*`; rồi **R2 ngữ điệu**.
 - [ ] **P4 — Chất lượng thu âm/nhận dạng + hiệu chuẩn điểm:** đợt 1 (D-36) + đợt 2 (D-37) xong.
   Bản thu thật đầu tiên (2026-10-24, `sound calibrate/`, 1 người đọc đoạn văn Việt 66 từ ~20 s,
   mic laptop + AirPods): đã đo, xem HANDOFF; giọng Bắc r/d/gi, s/x, tr/ch nay tính đúng (D-38).

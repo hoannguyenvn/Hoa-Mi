@@ -776,6 +776,25 @@ def yt_progress_fraction(d):
 
 
 # ---------- đọc to transcript YouTube (D-39, docs/YT-READING-PLAN.md) ----------
+def documents_dir():
+    """Thư mục Documents thật của người dùng (kể cả khi OneDrive chuyển hướng)."""
+    try:
+        import ctypes
+        buf = ctypes.create_unicode_buffer(260)
+        if ctypes.windll.shell32.SHGetFolderPathW(None, 5, None, 0, buf) == 0 and buf.value:
+            return buf.value                        # CSIDL_PERSONAL
+    except Exception:
+        pass
+    return os.path.join(os.path.expanduser("~"), "Documents")
+
+
+def recordings_dir():
+    """Nơi "Lưu bản thu" ghi file: Documents\\Oriole (tạo nếu chưa có)."""
+    d = os.path.join(documents_dir(), "Oriole")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
 YTREAD_PAD_SEC = 0.4   # nới hai đầu đoạn khi nghe audio gốc: mốc phụ đề lệch, đừng cắt mất từ
 YT_SILENCE_SEC = 3.5   # đọc cả đoạn hay ngừng để dò dòng → tự dừng muộn hơn câu ngắn (1,8 s)
 YT_MAX_SEC = 150       # đoạn ≤ 45 s; người học đọc chậm gấp 2–3 lần vẫn đủ
@@ -4126,8 +4145,7 @@ class App(tk.Tk):
         self._rec_ctl = c
         self._draw_rec_btn()
         self.p_rec_label.configure(text=c["rec_label"])
-        if getattr(self, "btn_preplay", None) is not None:
-            self._pill_show(self.btn_preplay, c["replay_enabled"])
+        self._sync_rec_pills()
         # đang thu: thanh mức âm + dòng đồng hồ thay cho dòng micro
         rec = state == "recording"
         for w in (self.p_meter, self.lbl_plevel):
@@ -4815,6 +4833,7 @@ class App(tk.Tk):
         self._yt_sess, self._yt_idx, self._yt_cancel = None, 0, False
         self._yt_listening, self._yt_res, self._yt_view = False, None, None
         self._yt_keep = {}   # đoạn → {"wav", "res", "gate"}: bản thu + kết quả gần nhất (R1)
+        self._saved = {}     # bản thu tạm (đường dẫn) → nơi đã lưu: nút "Đã lưu ✓"
         self._seg = self._mk_seg(bar, (("set", "Luyện câu"), ("guide", "Học âm"),
                                        ("yt", "Từ YouTube")),
                                  self.prac_mode, self._prac_mode_changed,
@@ -4935,8 +4954,6 @@ class App(tk.Tk):
         self._p_links = links
         # dòng trạng thái chỉ chiếm chỗ khi có nội dung
         self.p_status.trace_add("write", lambda *_: self._sync_status_line())
-        self._link_lbl(links, "Lưu bản thu…", self._save_recording, size=9).pack(side="left")
-        self._lbl(links, "  ·  ", fg="muted", size=9).pack(side="left")
         self._link_lbl(links, "Chấm file có sẵn…", self._prac_from_file, size=9).pack(side="left")
         self._lbl(links, "  ·  ", fg="muted", size=9).pack(side="left")
         self._link_lbl(links, "Dừng phát", self._stop_play, size=9).pack(side="left")
@@ -5096,17 +5113,31 @@ class App(tk.Tk):
                x0 + r, y1, x0, y1, x0, y1 - r, x0, y0 + r, x0, y0]
         return c.create_polygon(pts, smooth=True, **kw)
 
-    def _mk_pill(self, parent, text, command, enabled=True):
+    def _mk_pill(self, parent, text, command, enabled=True, icon=True):
+        """Nút viên thuốc; icon=True vẽ ▶ (nghe), False chỉ có chữ (vd Lưu bản thu)."""
         import tkinter.font as tkfont
         f = tkfont.Font(family=self.F, size=10)
         h = f.metrics("linespace") + self.px(14)
-        w = f.measure(text) + self.px(32) + self.px(12)
-        cv = tk.Canvas(parent, width=w, height=h, bd=0, highlightthickness=0, cursor="hand2")
-        cv._pill = {"text": text, "cmd": command, "enabled": enabled, "font": f}
+        cv = tk.Canvas(parent, width=1, height=h, bd=0, highlightthickness=0, cursor="hand2")
+        cv._pill = {"text": text, "cmd": command, "enabled": enabled, "font": f, "icon": icon}
+        self._pill_size(cv)
         cv.bind("<Button-1>", lambda e: cv._pill["enabled"] and cv._pill["cmd"]())
         self._pills.append(cv)
         self._draw_pill(cv)
         return cv
+
+    def _pill_size(self, cv):
+        d = cv._pill
+        cv.configure(width=d["font"].measure(d["text"]) + self.px(32)
+                     + (self.px(12) if d["icon"] else 0))
+
+    def _pill_set_text(self, cv, text):
+        if cv._pill["text"] != text:
+            cv._pill["text"] = text
+            self._pill_size(cv)
+            self._draw_pill(cv)
+            self._pills_key = None
+            self.after_idle(self._layout_pills)
 
     def _draw_pill(self, cv):
         P, d = self.P, cv._pill
@@ -5116,8 +5147,10 @@ class App(tk.Tk):
         self._round_rect(cv, 1, 1, w - 1, h - 1, h // 2, fill=P["card2"], outline=P["border"])
         fg = P["fg"] if d["enabled"] else P["disabled_fg"]
         x, y, t = self.px(16), h / 2.0, self.px(5)
-        cv.create_polygon(x, y - t, x, y + t, x + t * 1.6, y, fill=fg, outline="")
-        cv.create_text(x + self.px(16), y, text=d["text"], anchor="w", fill=fg, font=d["font"])
+        if d["icon"]:
+            cv.create_polygon(x, y - t, x, y + t, x + t * 1.6, y, fill=fg, outline="")
+            x += self.px(16)
+        cv.create_text(x, y, text=d["text"], anchor="w", fill=fg, font=d["font"])
 
     def _redraw_pills(self):
         alive = []
@@ -5535,8 +5568,33 @@ class App(tk.Tk):
             pill = self._mk_pill(self.p_samples, "Nghe mẫu" if label == "Cả câu" else label,
                                  lambda p=p: self._play_sample(p), os.path.exists(p))
             self._pill_show(pill, True)
+        self._mk_rec_pills()
+
+    def _mk_rec_pills(self):
+        """▶ Bản thu của bạn · Lưu bản thu · (Từ YouTube) Lưu cả N đoạn — hiện khi có bản thu."""
         self.btn_preplay = self._mk_pill(self.p_samples, "Bản thu của bạn", self._prac_replay)
-        self._pill_show(self.btn_preplay, self._rec_ctl.get("replay_enabled", False))
+        self.btn_psave = self._mk_pill(self.p_samples, "Lưu bản thu", self._save_recording,
+                                       icon=False)
+        self.btn_psaveall = self._mk_pill(self.p_samples, "Lưu cả các đoạn đã đọc",
+                                          self._save_all, icon=False)
+        self._sync_rec_pills()
+
+    def _sync_rec_pills(self):
+        """Hiện/ẩn + đổi chữ các nút bản thu theo trạng thái (đã lưu chưa — R1)."""
+        if getattr(self, "btn_psave", None) is None:
+            return
+        busy = getattr(self, "prac_state", "idle") in ("recording", "scoring", "loading")
+        has = bool(self.last_wav and os.path.exists(self.last_wav))
+        self._pill_show(self.btn_preplay, has and not busy)
+        self._pill_set_text(self.btn_psave, "Đã lưu ✓" if self.last_wav in self._saved
+                            else "Lưu bản thu")
+        self._pill_show(self.btn_psave, has and not busy)
+        kept = [k["wav"] for k in self._yt_keep.values()
+                if k.get("wav") and os.path.exists(k["wav"])] \
+            if self.prac_mode.get() == "yt" else []
+        self._pill_set_text(self.btn_psaveall, ("Đã lưu cả %d đoạn ✓" if all(
+            w in self._saved for w in kept) else "Lưu cả %d đoạn đã đọc") % len(kept))
+        self._pill_show(self.btn_psaveall, len(kept) >= 2 and not busy)
 
     def _play_sample(self, path):
         if self.playing:
@@ -5832,7 +5890,7 @@ class App(tk.Tk):
             return
         path, secs, info = save_frames_wav(frames, "luyen_", rate)
         self._set_last_wav(path)
-        self._pill_show(self.btn_preplay, True)
+        self._sync_rec_pills()
         peak0 = float(info.get("peak0", 0.0) or 0.0)
         if peak0 < MIC_MIN_PEAK:
             # Gần như im lặng: KHÔNG đưa cho Whisper (dễ bịa ra câu lặp vô nghĩa).
@@ -6251,18 +6309,77 @@ class App(tk.Tk):
                           else "Lỗi — xem chi tiết trong hộp thoại.")
         messagebox.showerror("Lỗi", msg)
 
+    def _save_bundle(self, stem, wav, target, res, yt_idx=None):
+        """Ghi một bộ bản thu: stem.wav + stem.txt (dòng 1 = câu/đoạn mẫu, định dạng
+        `asr_bench --dir`) + stem.json (lời máy nghe, mốc từ) [+ stem_goc.wav: đoạn gốc YouTube].
+        Trả danh sách tên file đã ghi."""
+        shutil.copyfile(wav, stem + ".wav")
+        with open(stem + ".txt", "w", encoding="utf-8") as f:
+            f.write(target.strip() + "\n")
+        files = [stem + ".wav", stem + ".txt"]
+        info = {"app": "Oriole %s" % VERSION, "saved": time.strftime("%Y-%m-%d %H:%M"),
+                "target": target, "hyp": (res or {}).get("hyp"),
+                "items": (res or {}).get("items"), "words_t": (res or {}).get("words_t"),
+                "model": (res or {}).get("model")}
+        s = self._yt_sess
+        if yt_idx is not None and s and s.wav:
+            p = s.paragraphs[yt_idx]
+            a = max(0.0, p["start"] - YTREAD_PAD_SEC)
+            with wave.open(s.wav, "rb") as r, wave.open(stem + "_goc.wav", "wb") as w:
+                i0, i1 = wav_segment_bounds(r.getnframes(), r.getframerate(),
+                                            p["start"], p["end"], pad=YTREAD_PAD_SEC)
+                r.setpos(i0)
+                w.setnchannels(1)
+                w.setsampwidth(2)
+                w.setframerate(r.getframerate())
+                w.writeframes(r.readframes(i1 - i0))
+            files.append(stem + "_goc.wav")
+            info.update(url=s.url, title=s.title, sub_kind=s.sub_kind, paragraph=yt_idx + 1,
+                        start=p["start"], end=p["end"], orig_hyp=s._orig.get(yt_idx),
+                        # mốc từ của audio gốc tính theo file stem_goc.wav
+                        orig_words=[dict(w, s=round(w["s"] - a, 3), e=round(w["e"] - a, 3))
+                                    for w in s.orig_words.get(yt_idx) or []])
+        with open(stem + ".json", "w", encoding="utf-8") as f:
+            json.dump(info, f, ensure_ascii=False, indent=1, default=str)
+        files.append(stem + ".json")
+        self._saved[wav] = stem
+        return [os.path.basename(x) for x in files]
+
+    def _open_folder_of(self, stem):
+        folder = os.path.dirname(stem)
+        self.p_status.set("Bản thu này đã lưu ở %s" % folder)
+        try:
+            os.startfile(folder)
+        except Exception as e:
+            self.p_status.set("Không mở được thư mục: %s" % e)
+
+    def _saved_dialog(self, folder, files, n):
+        self._sync_rec_pills()
+        self.p_status.set("Đã lưu %d bản thu vào %s" % (n, folder))
+        self._log("Đã lưu %d bản thu vào %s" % (n, folder))
+        shown = "\n".join("•  " + f for f in files[:8]) + (
+            "\n…  và %d file khác" % (len(files) - 8) if len(files) > 8 else "")
+        if messagebox.askyesno("Đã lưu bản thu",
+                               "Đã lưu %d bản thu vào thư mục:\n%s\n\n%s\n\nMở thư mục này?"
+                               % (n, folder, shown)):
+            try:
+                os.startfile(folder)
+            except Exception as e:
+                self.p_status.set("Không mở được thư mục: %s" % e)
+
     def _save_recording(self):
-        """Lưu bản thu gần nhất ra thư mục người dùng chọn: x.wav + x.txt (dòng 1 = câu/đoạn
-        mẫu — đúng định dạng `asr_bench --dir`) + x.json (lời máy nghe, mốc từng từ). Chế độ
-        Từ YouTube lưu thêm x_goc.wav (đoạn gốc của video) để so sánh. Dữ liệu chỉ nằm trên
-        máy người dùng (R1)."""
+        """Lưu bản thu đang xem vào Documents\\Oriole (không hỏi thư mục) rồi báo nơi lưu.
+        Dữ liệu chỉ nằm trên máy người dùng (R1)."""
         if self.recording or self.p_working:
             return
         if not self.last_wav or not os.path.exists(self.last_wav):
             self.p_status.set("Chưa có bản thu để lưu — thu âm trước đã.")
             return
+        if self.last_wav in self._saved:          # nút "Đã lưu ✓": mở chỗ đã lưu, không lưu trùng
+            self._open_folder_of(self._saved[self.last_wav])
+            return
         yt = self.prac_mode.get() == "yt" and self._yt_sess
-        stamp = time.strftime("%Y%m%d-%H%M")
+        stamp = time.strftime("%Y%m%d-%H%M%S")
         if yt:
             s, idx = self._yt_sess, self._yt_idx
             name = "oriole_%s_doan%d_%s" % (safe_stem(s.vid or "video"), idx + 1, stamp)
@@ -6270,44 +6387,41 @@ class App(tk.Tk):
         else:
             sid = self._current_set_id() or self.prac_mode.get()
             name = "oriole_%s_%s" % (sid, stamp)
-            target, res = self._current_practice()[0], self._last_res
-        path = filedialog.asksaveasfilename(title="Lưu bản thu", initialfile=name + ".wav",
-                                            defaultextension=".wav",
-                                            filetypes=[("WAV", "*.wav")])
-        if not path:
-            return
-        stem = os.path.splitext(path)[0]
+            target, res, idx = self._current_practice()[0], self._last_res, None
         try:
-            shutil.copyfile(self.last_wav, stem + ".wav")
-            with open(stem + ".txt", "w", encoding="utf-8") as f:
-                f.write(target.strip() + "\n")
-            info = {"app": "Oriole %s" % VERSION, "saved": stamp, "target": target,
-                    "hyp": (res or {}).get("hyp"), "items": (res or {}).get("items"),
-                    "words_t": (res or {}).get("words_t"), "model": (res or {}).get("model")}
-            if yt:
-                p = s.paragraphs[idx]
-                a = max(0.0, p["start"] - YTREAD_PAD_SEC)
-                with wave.open(s.wav, "rb") as r, wave.open(stem + "_goc.wav", "wb") as w:
-                    i0, i1 = wav_segment_bounds(r.getnframes(), r.getframerate(),
-                                                p["start"], p["end"], pad=YTREAD_PAD_SEC)
-                    r.setpos(i0)
-                    w.setnchannels(1)
-                    w.setsampwidth(2)
-                    w.setframerate(r.getframerate())
-                    w.writeframes(r.readframes(i1 - i0))
-                info.update(url=s.url, title=s.title, sub_kind=s.sub_kind,
-                            paragraph=idx + 1, start=p["start"], end=p["end"],
-                            orig_hyp=s._orig.get(idx),
-                            # mốc từ của audio gốc tính theo file x_goc.wav
-                            orig_words=[dict(w, s=round(w["s"] - a, 3), e=round(w["e"] - a, 3))
-                                        for w in s.orig_words.get(idx) or []])
-            with open(stem + ".json", "w", encoding="utf-8") as f:
-                json.dump(info, f, ensure_ascii=False, indent=1, default=str)
+            folder = recordings_dir()
+            files = self._save_bundle(os.path.join(folder, name), self.last_wav, target, res,
+                                      idx if yt else None)
         except Exception as e:
             messagebox.showerror("Không lưu được", str(e))
             return
-        self.p_status.set("Đã lưu bản thu: %s" % os.path.basename(stem + ".wav"))
-        self._log("Đã lưu bản thu: %s" % (stem + ".wav"))
+        self._saved_dialog(folder, files, 1)
+
+    def _save_all(self):
+        """Từ YouTube: lưu MỌI đoạn đã đọc của video vào một thư mục con của Documents\\Oriole."""
+        s = self._yt_sess
+        if not s or self.recording or self.p_working:
+            return
+        kept = sorted((i, k) for i, k in self._yt_keep.items()
+                      if k.get("wav") and os.path.exists(k["wav"]))
+        if not kept:
+            self.p_status.set("Chưa có đoạn nào đã đọc để lưu.")
+            return
+        if all(k["wav"] in self._saved for _i, k in kept):
+            self._open_folder_of(self._saved[kept[0][1]["wav"]])
+            return
+        try:
+            folder = os.path.join(recordings_dir(), "oriole_%s_%s" % (
+                safe_stem(s.vid or "video"), time.strftime("%Y%m%d-%H%M%S")))
+            os.makedirs(folder, exist_ok=True)
+            files = []
+            for i, k in kept:
+                files += self._save_bundle(os.path.join(folder, "doan%02d" % (i + 1)), k["wav"],
+                                           s.paragraphs[i]["text"], k["res"], i)
+        except Exception as e:
+            messagebox.showerror("Không lưu được", str(e))
+            return
+        self._saved_dialog(folder, files, len(kept))
 
     # ================= đọc to transcript YouTube (D-39, YT-READING-PLAN Y3) =================
     def _yt_tags(self):
@@ -6369,8 +6483,7 @@ class App(tk.Tk):
             ch.destroy()
         pill = self._mk_pill(self.p_samples, "Nghe đoạn gốc", self._yt_play_para, bool(s))
         self._pill_show(pill, True)
-        self.btn_preplay = self._mk_pill(self.p_samples, "Bản thu của bạn", self._prac_replay)
-        self._pill_show(self.btn_preplay, self._rec_ctl.get("replay_enabled", False))
+        self._mk_rec_pills()
         self._yt_res = self._yt_view = None
         if not self.p_working:
             self._clear_prac_result()
@@ -6387,7 +6500,7 @@ class App(tk.Tk):
             if self.last_wav and not self._yt_kept_wav(self.last_wav):
                 remove_temp(self.last_wav)      # bản thu chưa chấm được (lỗi) — không giữ
             self.last_wav = k["wav"] if ok else None
-            self._pill_show(self.btn_preplay, ok)
+            self._sync_rec_pills()
             if ok:
                 self._yt_show(k["res"], k["gate"])
 
@@ -6569,6 +6682,7 @@ class App(tk.Tk):
             if k.get("wav") and k["wav"] != self.last_wav:
                 remove_temp(k["wav"])
         self._yt_keep = {}
+        self._saved = {}
         self._set_last_wav(None)
 
     def _yt_kept_wav(self, path):
