@@ -1220,3 +1220,16 @@ ngắn. Test `rhythm_function_words_not_stress` (87/87).
 **Đã kiểm chứng:** smoke 87/87, context_check; ảnh; e2e thật 0 lỗi callback. **Chưa kiểm chứng:** người dùng
 xem trên máy.
 **Việc tiếp theo:** R4 nối âm (điểm nối phụ âm cuối + nguyên âm đầu; báo khi bạn ngắt mà người nói đọc liền).
+
+## 2026-10-24 (tiếp 14) — Claude Opus 5.5 — D-46: R4 nối âm (dạy, không chấm)
+
+**Đo trước khi làm (4 đoạn thật):** mốc Whisper trong cụm dính nhau (0 ms ở 22/22 điểm nối, cả hai người);
+đáy năng lượng chuẩn hóa theo nền từng file: người học 23 % vs người nói 23 % gần im ở điểm nối — chênh lệch
+thô (50 % vs 14 %) là do nền nhạc/ồn YouTube; âm tắc /k t p/ cũng tạo khoảng lặng → không chấm (R-17).
+**Đã làm:** `pron_en.link_points`; `app.linking_view`, `LINK_SHOW`; ô chữ gạch chân mối nối (`yk_link`,
+`_yt_toggle_links`, "Ẩn/Hiện gạch chân nối âm"), mục NỐI ÂM + 3 cụm có ▶, báo cáo + HTML "Nối âm — tập đọc
+liền". Gạch cả cụm thì rối → chỉ gạch mối nối; "‿" thiếu trong font → ngoặc kép. Test
+`linking_points_teaching_only` (88/88).
+**Đã kiểm chứng:** smoke 88/88, context_check; ảnh; e2e thật 0 lỗi callback.
+**Chưa kiểm chứng:** người dùng xem trên máy. Nuốt âm (elision) chưa làm.
+**Việc tiếp theo:** R6 — lịch sử theo hồ sơ người học cục bộ (chọn tên, không đăng nhập — D-39).

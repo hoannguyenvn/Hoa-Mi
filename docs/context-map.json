@@ -133,6 +133,8 @@
       "intonation_view",
       "rhythm_samples",
       "rhythm_view",
+      "linking_view",
+      "App._yt_toggle_links",
       "ytread_orig_pitch",
       "session_report",
       "report_html",
@@ -227,7 +229,8 @@
       "TIPS",
       "LETTER_TIPS",
       "error_patterns",
-      "syllables"
+      "syllables",
+      "link_points"
     ],
     "gop.py": [
       "available",

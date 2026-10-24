@@ -500,3 +500,25 @@ def syllables(word):
     if ph:
         return max(1, sum(p in VOWELS for p in ph))
     return max(1, len(re.findall(r"[aeiouy]+", _letters(word or ""))))
+
+
+# ---------------------------------------------------------------- nối âm (D-46)
+# Chỉ để DẠY: đo trên bản thu thật (mốc Whisper, năng lượng) không phân biệt được ngắt/nối → không chấm.
+def link_points(words):
+    """[từ gốc của đoạn] → [(chỉ số từ đầu, "cv" | "cc")]: chỗ nên đọc nối với từ sau.
+
+    cv = phụ âm cuối + nguyên âm đầu (talk‿about, think‿of); cc = cùng một phụ âm (big‿game,
+    this‿side). Không nối qua dấu câu (, . ? ! ; :). Từ ngoài CMUdict bỏ qua. Hàm thuần."""
+    out = []
+    for i in range(len(words) - 1):
+        a, b = words[i], words[i + 1]
+        if re.search(r"[,.;:?!\"')\]]$", a or ""):
+            continue
+        pa, pb = phonemes(a), phonemes(b)
+        if not pa or not pb:
+            continue
+        if pa[-1] not in VOWELS and pb[0] in VOWELS:
+            out.append((i, "cv"))
+        elif pa[-1] not in VOWELS and pa[-1] == pb[0]:
+            out.append((i, "cc"))
+    return out

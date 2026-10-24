@@ -157,6 +157,9 @@ Ba chế độ:
     liền = bạn) để bắt chước chỗ lên/xuống giọng. Chỉ mô tả, không tính điểm.
   - **Nhịp**: so độ dài từ ngắn (to, of, the, and…) của bạn với người nói — người Việt hay đọc
     đều từng tiếng nên kéo dài từ ngắn (vd bạn ~380 ms, người nói ~200 ms), kèm ví dụ và ▶.
+  - **Nối âm**: chỗ nên đọc nối (phụ âm cuối + nguyên âm đầu: talk about, think of) được gạch chân
+    ở mối nối ngay trong đoạn trước khi đọc (bấm "Ẩn gạch chân nối âm" để tắt); mục NỐI ÂM có
+    ▶ Mẫu / ▶ Bạn đọc từng cụm. App chỉ chỉ ra để tập, không chấm nối/ngắt.
   - **Trôi chảy** (so với người nói, không tính điểm): tốc độ đọc, số từ mỗi hơi, chỗ bạn
     ngừng giữa cụm từ (dấu **/** đỏ trong đoạn), chỗ người nói ngừng mà bạn đọc liền.
   - **Từng câu**: ▶ Mẫu (người nói) và ▶ Bạn đọc cho mỗi câu, kèm thời lượng hai bên.

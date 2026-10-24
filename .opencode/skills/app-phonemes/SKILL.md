@@ -151,3 +151,8 @@ Thứ tự issue: `score` tăng dần, cùng điểm thì nhiều khung trước
 < `PATTERN_MIN_SIM` (0,3) → không xếp; /r/ cuối không tính; "short" chỉ khi thiếu từ; từ có `unread`
 (người học dừng trước cuối đoạn) bị bỏ qua. Thêm mẫu mới: thêm vào `PATTERNS` + luật trong
 `error_patterns` + ví dụ thật vào test `english_error_patterns_from_real_reading`.
+
+## Nối âm (D-46)
+
+`pron_en.link_points(words)` → [(i, "cv" | "cc")]: chỗ nên nối với từ sau (không qua dấu câu). Chỉ để dạy:
+`app.linking_view` trả cụm + mốc để nghe; KHÔNG chấm ngắt/nối (R-17). Gạch chân trong ô chữ chỉ ở mối nối.

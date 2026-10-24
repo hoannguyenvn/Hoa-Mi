@@ -338,6 +338,25 @@ def rhythm_function_words_not_stress():
 
 
 @case
+def linking_points_teaching_only():
+    # D-46: chỉ chỉ ra chỗ nên nối + mốc để nghe; không chấm nối/ngắt (R-17)
+    lp = app.pron_en.link_points
+    w = "let's talk about how smell works, from big games we think of".split()
+    pairs = [w[i] + "‿" + w[i + 1] for i, _k in lp(w)]
+    assert "talk‿about" in pairs and "think‿of" in pairs, pairs
+    assert "works,‿from" not in pairs                     # không nối qua dấu phẩy
+    assert dict((w[i], k) for i, k in lp(w))["big"] == "cc"
+    text = "We talk about it every day."
+    res = app.read_aloud_diff(text, text.lower().rstrip("."), None)
+    sp = app.token_spans([{"w": x, "s": i * 0.3, "e": i * 0.3 + 0.25, "p": 0.9}
+                          for i, x in enumerate(res["target"].split())], res["target"])
+    v = app.linking_view(text, res, sp, sp)
+    assert [x["text"] for x in v["links"]] == ["“talk about”", "“about it”", "“it every”"], v
+    assert v["links"][0]["usr"] == (0.3, 0.85) and v["lines"]
+    assert not any("sai" in ln or "đúng" in ln for ln in v["lines"])   # không phán
+
+
+@case
 def tone_strip_keeps_letters():
     # strip_tone_vi trả chuỗi NFD (giữ dấu chữ như ă/â), nên chuẩn hóa NFC để so.
     import unicodedata

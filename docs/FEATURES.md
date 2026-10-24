@@ -52,6 +52,7 @@ và skill nào cần nạp. Dùng file này thay vì grep toàn repo.
 | F3.17 | Báo cáo cuối phiên (D-43) | Kết thúc sớm, màn báo cáo, Lưu báo cáo (HTML + bản thu) | `session_report`, `report_html`, `App._yt_finish`, `App._yt_report_render`, `App._yt_save_report` | `app-ui` | `ytread_e2e` in "lưu báo cáo: [bao-cao.html …]" |
 | F3.18 | Ngữ điệu theo câu (D-44) | NGỮ ĐIỆU: dải cao độ bạn vs người nói; đường cao độ thu nhỏ từng câu; "Giọng đều" trong báo cáo | `prosody.pitch_track`, `prosody.segment_pitch`, `intonation_view`, `ytread_orig_pitch` | `app-prosody` | 4 đoạn thật: bạn ~5,3 · người nói ~12,4 bán cung |
 | F3.19 | Nhịp — từ chức năng (D-45) | NHỊP: từ ngắn bạn vs người nói + ví dụ; báo cáo gộp, "Tốc độ & nhịp" | `pron_en.FUNCTION_WORDS`, `pron_en.syllables`, `rhythm_samples`, `rhythm_view` | `app-prosody` | 4 đoạn thật: ~380 vs ~200 ms |
+| F3.20 | Nối âm — dạy, không chấm (D-46) | gạch chân mối nối trong đoạn (bật/tắt), NỐI ÂM + ▶ từng cụm, báo cáo liệt kê cụm | `pron_en.link_points`, `linking_view`, `App._yt_toggle_links` | `app-phonemes` | "talk about", "think of" được gạch |
 | F3.12 | Mic & kiểm tra | chọn, làm mới, kiểm tra | `_refresh_mics`, `_test_mic`, `_find_mic_auto` | `app-recording` | nói "a" → dB/TỐT |
 
 ## 4. Cài đặt & nền tảng (Tab 3)

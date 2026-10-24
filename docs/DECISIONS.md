@@ -482,6 +482,18 @@ từ chính gần bằng (220–330 vs 180–260 ms) — nhất quán. Nhấn th
 cụm, và "từ nhấn" của chính người nói hay rơi vào of/to/the/about/in → thước đo sai ngay trên giọng chuẩn.
 **Hệ quả:** R-16. Test: `rhythm_function_words_not_stress`.
 
+### D-46 — Từ YouTube: R4 nối âm chỉ để DẠY, không chấm (2026-10-24)
+**Quyết định:** chỉ ra chỗ nên đọc nối (`pron_en.link_points`: phụ âm cuối + nguyên âm đầu "cv", cùng phụ âm
+"cc"; không nối qua dấu câu) — gạch chân **mối nối** trong đoạn (chữ cuối · khoảng trắng · chữ đầu, bật/tắt
+được, có trước khi đọc), mục NỐI ÂM liệt kê cụm + ▶ Mẫu / ▶ Bạn đọc đúng cụm đó (`app.linking_view`), báo cáo
+có danh sách cụm để tập. **Không** báo "bạn ngắt chỗ nối" (R-17). Nuốt âm (elision) chưa làm.
+**Vì sao:** đo trên 4 đoạn thật: (1) mốc từ Whisper trong cụm luôn dính nhau (khoảng lặng 0 ms ở 22/22 điểm
+nối, cả hai người) → không thấy ngắt ngắn; (2) đáy năng lượng ở ranh giới: trước khi chuẩn hóa theo nền mỗi file
+có vẻ người học ngắt 50 % vs 14 %, sau khi chuẩn hóa 23 % vs 23 % — chênh lệch là do nền nhạc/ồn của audio
+YouTube; âm tắc /k t p/ cũng tạo khoảng lặng ngắn → năng lượng không tách được ngắt với âm tắc.
+**Hệ quả:** gạch cả cụm làm các chỗ nối liền nhau thành vạch dài → chỉ gạch mối nối. Ký tự "‿" không có trong
+font Be Vietnam → viết cụm trong ngoặc kép. Test: `linking_points_teaching_only`.
+
 ## B. Những cách làm đã bị loại (đừng lặp lại)
 
 Nguồn: `PHASE2-DANH-GIA-DU-AN-CU.md` §2.2 và §6.
@@ -504,6 +516,7 @@ Nguồn: `PHASE2-DANH-GIA-DU-AN-CU.md` §2.2 và §6.
 | R-14 | Cookie tài khoản trong repo | bảo mật |
 | R-15 | Phán "cuối câu bạn lên/xuống giọng sai" trên đoạn văn YouTube | hướng F0 cuối câu không ổn định (D-44) |
 | R-16 | So "từ được nhấn" từng cụm với người nói (`word_stress` trên đoạn văn) | chính người nói bị chấm nhấn vào of/to/the (D-45) |
+| R-17 | Chấm "bạn ngắt chỗ nối âm" bằng mốc Whisper hoặc năng lượng | mốc dính nhau; năng lượng lệch theo nền + âm tắc (D-46) |
 
 ## C. Quyết định đang chờ người dùng
 

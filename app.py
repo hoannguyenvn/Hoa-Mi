@@ -1841,6 +1841,41 @@ def rhythm_view(samples):
     return {"even": even, "lines": lines, "ex": ex, "func_usr": fu, "func_ref": fr}
 
 
+LINK_SHOW = 6        # số chỗ nối âm liệt kê trong panel / báo cáo
+
+
+def linking_view(text, res, mine, orig):
+    """Nối âm (D-46): chỗ NÊN đọc nối trong đoạn + mốc để nghe người nói / bạn ở đúng chỗ đó.
+    Chỉ để DẠY — không chấm (R-17: mốc Whisper và năng lượng không phân biệt được ngắt/nối).
+    → {"links": [{"wi", "text", "kind", "usr", "ref"}], "lines"}. Hàm thuần."""
+    words = (text or "").split()
+    src = res.get("src_idx") or [] if res else []
+    first, last = {}, {}
+    for k, wi in enumerate(src):
+        if wi is not None:
+            first.setdefault(wi, k)
+            last[wi] = k
+
+    def span(sp, wi):
+        a, b = (sp or {}).get(first.get(wi)), (sp or {}).get(last.get(wi + 1))
+        return (a[0], b[1]) if a and b and a[0] is not None and b[1] is not None else None
+    out = []
+    for wi, kind in pron_en.link_points(words):
+        a, b = words[wi].strip("\"'(“”"), words[wi + 1].strip(".,;:?!\"')“”")
+        # "‿" không có trong font Be Vietnam (hiện thành "_") → viết cụm trong ngoặc kép
+        out.append({"wi": wi, "text": "“%s %s”" % (a, b), "kind": kind,
+                    "usr": span(mine, wi), "ref": span(orig, wi)})
+    lines = []
+    if out:
+        lines.append("Đoạn này có %d chỗ nên đọc nối (gạch chân ở mối nối trong đoạn): %s%s" % (
+            len(out), ", ".join(x["text"] for x in out[:LINK_SHOW]),
+            " …" if len(out) > LINK_SHOW else ""))
+        lines.append("Phụ âm cuối nối thẳng sang nguyên âm của từ sau như một từ: talk about → "
+                     "“tal-ka-bout”, think of → “thin-kof”. Đừng ngắt hay chèn tiếng tắc trước "
+                     "nguyên âm. Hai phụ âm giống nhau (big game) chỉ đọc một lần, giữ lâu hơn.")
+    return {"links": out, "lines": lines}
+
+
 UNREAD_MIN = 3       # ≥ ngần này từ cuối đoạn không nghe thấy → "chưa đọc tới" (người học dừng)
 PATTERN_SHOW = 4     # số mẫu lỗi tối đa trong mục ÂM HAY SAI
 PATTERN_EXAMPLES = 4
@@ -2086,6 +2121,11 @@ def session_report(info, done):
             _vn_num(ru).replace(",0", ""), _vn_num(rr).replace(",0", ""),
             " — giọng bạn đều hơn nhiều" if flat else ""))
     practise = sorted(words.values(), key=lambda e: (-e["n"], e["word"]))[:REPORT_WORDS]
+    links = []
+    for d in done:
+        for x in linking_view(d["text"], d["res"], {}, {})["links"]:
+            if x["text"].lower() not in [y.lower() for y in links]:
+                links.append(x["text"])
     return {"title": info.get("title", ""), "url": info.get("url", ""),
             "sub_kind": info.get("sub_kind"), "date": info.get("date", ""),
             "n_paras": info.get("n_paras", 0), "n_read": len(paras), "n_scored": len(scored),
@@ -2093,6 +2133,7 @@ def session_report(info, done):
             "doubts": doubts, "unread": unread, "wpm_usr": wpm_u, "wpm_ref": wpm_r,
             "focus": focus[:3], "patterns": groups, "fluency": fluency, "paras": paras,
             "intonation": intonation, "range_usr": ru, "range_ref": rr, "flat": flat,
+            "linking": links[:REPORT_WORDS],
             "rhythm": rhythm["lines"][:1] + (["Ví dụ đọc quá dài: " + ", ".join(
                 "%s %d ms (người nói %d)" % (w, round(a * 1000, -1), round(b * 1000, -1))
                 for w, a, b, _k in rhythm["ex"])] if rhythm["ex"] else []),
@@ -2171,6 +2212,8 @@ def report_html(rep, audio=None):
         out.append("<tr><td>%d</td><td>%s</td><td>%s</td><td>%s</td></tr>" % (
             p["idx"] + 1, e(res_txt), e(sp), au))
     out.append("</table>")
+    if rep.get("linking"):
+        out.append("<h2>Nối âm — tập đọc liền</h2><p>%s</p>" % e(", ".join(rep["linking"])))
     if rep["words"]:
         out.append("<h2>Từ cần luyện</h2><p>%s</p>" % ", ".join(
             "<b>%s</b>%s%s" % (e(w["word"]), " ×%d" % w["n"] if w["n"] > 1 else "",
@@ -5337,6 +5380,10 @@ class App(tk.Tk):
                                     self.yt_listen, self._yt_mode_hint,
                                     locked=lambda: self.p_working or self.recording)
         self._yt_seg.pack(pady=(self.px(8), 0))
+        self.yt_show_links = tk.BooleanVar(value=True)
+        self.yt_link_toggle = self._link_lbl(self.yt_head, "Ẩn gạch chân nối âm",
+                                             self._yt_toggle_links, size=9)
+        self.yt_link_toggle.pack(pady=(self.px(6), 0))
         self.yt_head.bind("<Configure>", lambda e: self.yt_title.configure(
             wraplength=max(self.px(120), e.width)))
         self.yt_text = self._mk_text(inner, role="doc", scroll=True, height=6,
@@ -6874,10 +6921,12 @@ class App(tk.Tk):
         t.tag_configure("yk_plain", foreground=P["fg"], background="")
         t.tag_configure("yk_hint", foreground=P["muted"], font=(self.F, 12))
         t.tag_configure("yk_pause", foreground=P["bad_fg"], font=(self.F, 15, "bold"))
+        t.tag_configure("yk_link", underline=True)
 
     def _yt_fill_text(self, marks, pauses=None):
         """Cả đoạn trong ô chữ; marks {chỉ số từ: kind} tô màu sau khi chấm; pauses {chỉ số
         từ: "extra"} → dấu "/" đỏ sau từ đó (bạn ngừng giữa cụm từ, R1)."""
+        self._yt_text_state = (marks, pauses)
         t = self.yt_text
         t.configure(state="normal")
         t.delete("1.0", "end")
@@ -6887,13 +6936,28 @@ class App(tk.Tk):
                      "Oriole chia lời nói thành từng đoạn ~20–45 giây. Bạn nghe đoạn gốc, đọc to "
                      "cả đoạn, rồi xem từ nào khác với phụ đề.", "yk_hint")
         else:
-            for i, w in enumerate(s.paragraphs[self._yt_idx]["text"].split()):
+            words = s.paragraphs[self._yt_idx]["text"].split()
+            pos = []
+            for i, w in enumerate(words):
+                a = t.index("end-1c")
                 t.insert("end", w, "yk_" + ((marks or {}).get(i) or "plain"))
+                pos.append((a, t.index("end-1c")))
                 t.insert("end", " ")
                 if (pauses or {}).get(i):
                     t.insert("end", "/ ", "yk_pause")
+            if self.yt_show_links.get():
+                # chỗ nên đọc nối (D-46): chỉ gạch chân MỐI NỐI (chữ cuối · khoảng trắng · chữ
+                # đầu) — gạch cả cụm thì các chỗ nối liền nhau thành một vạch dài, khó đọc
+                for wi, _k in pron_en.link_points(words):
+                    t.tag_add("yk_link", "%s-1c" % pos[wi][1], "%s+1c" % pos[wi + 1][0])
         t.configure(state="disabled")
         t.yview_moveto(0)
+
+    def _yt_toggle_links(self):
+        self.yt_show_links.set(not self.yt_show_links.get())
+        self.yt_link_toggle.configure(text="Ẩn gạch chân nối âm" if self.yt_show_links.get()
+                                      else "Hiện chỗ nối âm (gạch chân)")
+        self._yt_fill_text(*getattr(self, "_yt_text_state", (None, None)))
 
     def _yt_mode_hint(self):
         if self.prac_mode.get() != "yt" or self.p_working or self.recording:
@@ -7305,6 +7369,9 @@ class App(tk.Tk):
             lbl(col, txt, weight="bold", margin=self.px(300)).pack(fill="x")
             if sub_:
                 lbl(col, " · ".join(sub_), fg="muted", margin=self.px(300)).pack(fill="x")
+        if rep.get("linking"):
+            caps("NỐI ÂM — TẬP ĐỌC LIỀN CÁC CỤM NÀY")
+            lbl(box, ",  ".join(rep["linking"])).pack(fill="x")
         if rep["words"]:
             caps("TỪ CẦN LUYỆN")
             lbl(box, ",  ".join(w["word"] + (" ×%d" % w["n"] if w["n"] > 1 else "")
@@ -7513,6 +7580,13 @@ class App(tk.Tk):
                 row(P["warn_line"], "Đọc quá dài: " + ", ".join(
                     "“%s” %d ms (người nói %d)" % (w_, round(a * 1000, -1), round(b * 1000, -1))
                     for w_, a, b, _k in rhy["ex"]), mine.get(k), orig.get(k))
+        lk = linking_view(text, res, mine, orig) if v["state"] == "result" else None
+        if lk and lk["lines"]:
+            caps("NỐI ÂM — nghe người nói nối, rồi so với bạn")
+            for ln in lk["lines"]:
+                note(ln)
+            for x in [x for x in lk["links"] if x["ref"]][:3]:
+                row(P["accent"], x["text"], x["usr"], x["ref"])
         if flu and flu["sentences"]:
             caps("TỪNG CÂU — cao độ: chấm = người nói, liền = bạn")
             for i, st in enumerate(flu["sentences"], 1):
