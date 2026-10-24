@@ -1031,3 +1031,27 @@ danh sách đoạn, ▶ đoạn gốc (`play_wav_segment`), thu tối đa ~60 s,
 khi đổi video/đóng app.
 **Cảnh báo:** lệnh thử trong phiên này lỡ tạo `D:\c\Users\ADMIN\AppData\Local\Temp\claude\…\vtt\a.en.vtt`
 (đường dẫn kiểu Git Bash đưa vào Python) — không thuộc repo, người dùng tự xóa `D:\c` được.
+
+## 2026-10-24 (tiếp 4) — Claude Opus 5.5 — Y3: chế độ "Từ YouTube" trong Luyện phát âm
+
+**Đã làm (`app.py`):** nút ghép thứ ba "Từ YouTube"; ô link + "Lấy transcript" thay combobox
+(`yt_bar`); sân khấu `yt_head` (tiêu đề video, giờ/số từ/từ-phút, Nghe rồi đọc · Đọc thẳng) +
+`yt_text` (cả đoạn, cuộn, tô màu theo từ); state mới `loading` (Esc hủy qua `_yt_cancel`);
+`_yt_load/_w_ytload/_yt_ready/_yt_fail`, `_yt_step`, `_yt_start` (nghe đoạn gốc rồi tự thu,
+bấm nút đỏ để thu ngay), `_yt_rec_start` (tự dừng 3,5 s, tối đa 150 s), `_yt_score/_w_ytscore`
+(Whisper bản thu + đoạn gốc → `read_aloud_diff` → `evidence_gate`), `_yt_done/_yt_render` (panel
+CẦN SỬA, PHỤ ĐỀ CÓ THỂ SAI — KHÔNG TÍNH, ĐỌC THÊM; ▶ Mẫu = từ trong video, ▶ Bạn đọc).
+Hàm thuần `token_spans`, `ytread_view`; `ytread_orig_hyp` lưu thêm `orig_words` (mốc tuyệt đối).
+Nút ◀ ▶ đổi nhãn theo chế độ, cửa sổ hẹp chỉ còn mũi tên (`_nav_labels`). Phiên đóng khi lấy
+video khác / đóng app. `tools/ytread_e2e.py` mới; `ui_shots.py` thêm 7 trạng thái YouTube.
+Test `ytread_view_marks_and_rows` (81/81). Tài liệu: README §4, FEATURES F3.13, YT-READING-PLAN
+§3/§6, skill `app-ui`, AGENTS §5, context-map, PROJECT-STATE.
+
+**Đã kiểm chứng:** smoke 81/81, py_compile, context_check; ảnh sáng/tối/cửa sổ hẹp đã xem;
+`ytread_e2e` trên video TED thật: tải 6,8 s, chấm 7,1 s, đọc = audio gốc → "Hoàn hảo — đúng cả
+63 từ", đổi đoạn xóa kết quả + bản thu, thư mục phiên bị xóa khi đóng, 0 lỗi callback.
+**Chưa kiểm chứng:** **thu bằng mic thật** (Nghe rồi đọc → tự thu → tự dừng 3,5 s); phát ▶ Mẫu
+/ ▶ Bạn đọc nghe thật; Esc giữa lúc tải video thật; video không phụ đề / có nhạc nền.
+**Việc tiếp theo:** người dùng thử tay; rồi Y4 (so lần trước, Từ cần luyện, hồ sơ người học cục bộ).
+**Cảnh báo:** nhãn bước trong panel chờ ("Bấm Nghe mẫu…") vẫn là chữ của bài câu — chấp nhận
+được, sửa cùng Y4 nếu người dùng thấy lạ.

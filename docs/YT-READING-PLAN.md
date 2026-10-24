@@ -34,7 +34,7 @@
 |---|---|---|
 | Y1 | Hàm thuần + test: `yt_read.py` (làm sạch phụ đề, chia đoạn, chuẩn hóa tiếng Anh) + `read_aloud_diff` trong `app.py` | ✅ |
 | Y2 | `ytread_prepare` (link → phụ đề tiếng Anh + audio gốc 16 kHz vào thư mục tạm, Hủy qua `cancel()`, dọn khi lỗi) + `ytread_orig_hyp` (Whisper đoạn gốc, khi cần, có cache) + `tools/ytread_bench.py`. Thread worker gắn UI làm ở Y3 | ✅ |
-| Y3 | Màn "Từ YouTube" trong Luyện: danh sách đoạn, ▶ gốc, thu tối đa ~60 s, kết quả cả đoạn (cuộn) | ⛔ |
+| Y3 | Chế độ "Từ YouTube" trong Luyện: ô link + Lấy transcript (state `loading`, Esc hủy), ◀ ▶ đoạn, Nghe rồi đọc / Đọc thẳng, ô chữ cả đoạn tô màu (`ytread_view`), panel CẦN SỬA + PHỤ ĐỀ CÓ THỂ SAI với ▶ Mẫu / ▶ Bạn đọc từng từ (`token_spans`); tự dừng sau 3,5 s im lặng, tối đa 150 s | ✅ |
 | Y4 | Đọc lại + so lần trước, "Từ cần luyện", lịch sử theo người học (hồ sơ cục bộ) | ⛔ |
 | Y5 | GOP/ngữ điệu so audio gốc khi đoạn đủ sạch (không nhạc nền) | ⛔ |
 
@@ -62,3 +62,12 @@
   phần còn lại do Whisper bỏ từ khi nói nhanh. Cờ chỉ hiện khi người học **cũng** khác phụ đề.
 - Phụ đề tự động không có dấu câu → đoạn bị cắt ở 45 s (~120 từ, dài). Xem lại ở Y3 sau khi thử
   đọc thật; có thể hạ `PARA_MAX_SEC` cho phụ đề tự động.
+
+## 6. Y3 — ghi chú
+
+- Phiên giữ đến khi lấy video khác hoặc đóng app (không xóa khi đổi chế độ — người học có thể
+  quay lại). `_on_close` gọi `close()`.
+- "Bản thu = audio gốc" (`tools/ytread_e2e.py`, Tim Urban đoạn 2): tải 6,8 s, chấm 7,1 s,
+  "Hoàn hảo — đúng cả 63 từ".
+- Chưa làm (Y4): so lần trước, "Từ cần luyện", lịch sử theo hồ sơ người học; ô panel tiến bộ
+  trống ở chế độ này.

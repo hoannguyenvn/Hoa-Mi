@@ -95,6 +95,10 @@ Worker **không** gọi widget, kể cả `StringVar.set`. Chỉ `self._queue.pu
 | `prac_autostop` | `reason`: `"silence"`/`"nospeech"`/`"max"` | `_prac_stop_and_score(reason)` |
 | `prac_done` | `res` dict | `_prac_done` |
 | `prac_error` | `str` | `_prac_error` |
+| `yt_ready` | `YtReadSession` | `_yt_ready` (đọc to YouTube, D-39) |
+| `yt_fail` | `str` hoặc `"__cancelled__"` | `_yt_fail` |
+| `yt_done` | `(idx, res, gate)` | `_yt_done` → `ytread_view` → `_yt_render` |
+| `yt_listen_done` | `(id(phiên), idx)` | nghe xong đoạn gốc → bắt đầu thu (chế độ Nghe rồi đọc) |
 | `mic_found` | `(idx, name, api, peak)` hoặc `None` | chọn micro nếu `peak >= MIC_MIN_PEAK` |
 
 Thêm loại mới: xử lý trong `_poll`, không tạo `after` riêng trong thread.
@@ -150,7 +154,11 @@ subs, embed, sub_lang, mic, geometry
   (Luyện: nút tròn "Thu âm" + `lbl_plevel` + thanh mức âm; Văn bản: `lbl_rec_level`).
   `Esc` dùng nó.
   Test: `recording_belongs_to_one_tab`.
-- `self.busy` chỉ khóa Tab 1; `self.p_working` khóa Tab 2.
+- `self.busy` chỉ khóa Tab 1; `self.p_working` khóa Tab 2 (`scoring` **và** `loading`).
+- Chế độ **Từ YouTube** dùng lại sân khấu Luyện: `_stage_repack("yt", …)` thay câu bằng
+  `yt_head` + `yt_text`; khối thu âm, `p_samples`, panel phải (`pp_yt`) dùng chung. Rẽ nhánh
+  ở `_prac_start`, `_prac_score`, `_step_lesson`, `_prac_mode_changed`. Hủy tải bằng cờ
+  riêng `_yt_cancel` (không dùng `cancel_flag` của Tab 1).
 
 ## 9. Font, chỉ báo, thanh cuộn (B1 — D-28/D-32)
 

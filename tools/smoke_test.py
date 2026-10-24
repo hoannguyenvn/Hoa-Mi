@@ -154,6 +154,30 @@ def read_aloud_diff_doubts():
 
 
 @case
+def ytread_view_marks_and_rows():
+    para = "So today I'm gonna show you 3 tricks, really."
+    res = app.read_aloud_diff(para, "so today I am going to show you three trick",
+                              "so today I am going to show you three tricks")
+    res["words_t"] = [{"w": w, "s": i, "e": i + 0.5, "p": 0.9 if w != "today" else 0.1}
+                      for i, w in enumerate("so today I am going to show you three trick".split())]
+    v = app.ytread_view(res)
+    words = para.split()
+    # "tricks," (từ 7) nuốt âm cuối → warn; "really." (từ 8) người học và video đều không đọc
+    # → phụ đề có thể sai
+    assert v["marks"][7] == "warn" and v["marks"][8] == "doubt", v["marks"]
+    assert v["marks"][1] == "unsure", v["marks"]           # "today" p 0,1 → máy chưa chắc
+    assert words[7].startswith("tricks") and len(v["fixes"]) == 1, v["fixes"]
+    assert v["fixes"][0]["text"].startswith("“tricks”"), v["fixes"]
+    assert "phụ đề có thể sai" not in v["doubts"][0]["text"], v["doubts"]   # tiêu đề đã nói
+    assert v["headline"] == "Đúng %d/%d từ" % (res["correct"], res["total"])
+    assert app.token_spans(res["words_t"], res["target"])[1][:2] == (1, 1.5)
+    u = app.ytread_view(res, "garbage")
+    assert u["state"] == "unsure" and not u["marks"] and u["ring"]["text"] == "?"
+    c = app.prac_controls("loading", True)
+    assert not c["rec_enabled"] and not c["replay_enabled"] and c["show_pbar"]
+
+
+@case
 def tone_strip_keeps_letters():
     # strip_tone_vi trả chuỗi NFD (giữ dấu chữ như ă/â), nên chuẩn hóa NFC để so.
     import unicodedata

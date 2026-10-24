@@ -45,6 +45,7 @@ và skill nào cần nạp. Dùng file này thay vì grep toàn repo.
 | F3.10 | Ngữ điệu | một câu nhận xét + đồ thị có nhãn từ (không trục số) | `prosody.compare`, `inton_view`, `_draw_intonation` | `app-prosody` | bài Anh có mẫu → "Cuối câu bạn … giống mẫu ✓" |
 | F3.10b | Trọng âm + tốc độ | chấm nhấn bạn/mẫu, "Mẫu nhấn …, bạn nhấn …", "Bạn đọc chậm hơn mẫu ~x %" — không điểm | `prosody.word_stress`, `stress_note`, `speed_note`, `mau/en/word_times.json` | `app-prosody` | bài Anh → có câu trọng âm + tốc độ |
 | F3.11 | Tiến bộ | đường xu hướng ≤ 10 lần + "tốt nhất c/t" + âm hay sai theo ngôn ngữ | `progress_summary`, `_update_prog`, `_draw_spark` | `app-pronunciation` | luyện 2 lần → hiện đường xu hướng |
+| F3.13 | Đọc to transcript YouTube (D-39) | link → đoạn 20–45 s → nghe gốc/đọc → đoạn tô màu, "phụ đề có thể sai" không tính | `ytread_prepare`, `ytread_orig_hyp`, `read_aloud_diff`, `ytread_view`, `App._yt_*` | `app-youtube`, `app-pronunciation` | `tools/ytread_e2e.py <link>` đọc = audio gốc → "Hoàn hảo" |
 | F3.12 | Mic & kiểm tra | chọn, làm mới, kiểm tra | `_refresh_mics`, `_test_mic`, `_find_mic_auto` | `app-recording` | nói "a" → dB/TỐT |
 
 ## 4. Cài đặt & nền tảng (Tab 3)

@@ -1,6 +1,6 @@
 # PROJECT STATE — Oriole
 
-- **Cập nhật lần cuối:** 2026-10-24 (D-38 giọng Bắc; D-39 đọc to transcript YouTube — Y1 + Y2; sửa phụ đề tự động bị gấp đôi)
+- **Cập nhật lần cuối:** 2026-10-24 (D-38 giọng Bắc; D-39 đọc to transcript YouTube — Y1–Y3; sửa phụ đề tự động bị gấp đôi)
 - **Phiên bản code:** 2.3 (`VERSION` trong `app.py`)
 - **Trạng thái:** chạy được trên máy hiện tại; git repo `main` (D-33); chưa có test tự động đầy đủ.
 - **Nguồn sự thật:** code + `docs/context-map.json`. Tài liệu này chỉ tóm tắt.
@@ -14,10 +14,9 @@
   — người dùng thử tay: file thật, YouTube thật, ghi âm 15 phút, luyện VI + EN, Esc giữa
   chừng, đổi bài, tối, cửa sổ nhỏ; scaling 100/150 % nếu có máy khác. Rồi Phase 5 (đóng
   gói tài liệu).
-- [ ] **P5 — Đọc to transcript YouTube tiếng Anh (D-39, `docs/YT-READING-PLAN.md`):** Y1 + Y2
-  xong (hàm thuần, `ytread_prepare`, `ytread_orig_hyp`, `ytread_bench`). Kế tiếp **Y3**: màn "Từ
-  YouTube" trong Luyện (worker thread, danh sách đoạn, ▶ gốc, thu ~60 s, kết quả cả đoạn).
-  Lịch sử theo **hồ sơ người học cục bộ** (Y4).
+- [ ] **P5 — Đọc to transcript YouTube tiếng Anh (D-39, `docs/YT-READING-PLAN.md`):** Y1–Y3
+  xong — chế độ **Từ YouTube** trong Luyện chạy được (thử bằng `ytread_e2e`, chưa thử mic thật).
+  Kế tiếp **Y4**: đọc lại + so lần trước, "Từ cần luyện", lịch sử theo **hồ sơ người học cục bộ**.
 - [ ] **P4 — Chất lượng thu âm/nhận dạng + hiệu chuẩn điểm:** đợt 1 (D-36) + đợt 2 (D-37) xong.
   Bản thu thật đầu tiên (2026-10-24, `sound calibrate/`, 1 người đọc đoạn văn Việt 66 từ ~20 s,
   mic laptop + AirPods): đã đo, xem HANDOFF; giọng Bắc r/d/gi, s/x, tr/ch nay tính đúng (D-38).

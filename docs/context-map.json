@@ -121,6 +121,13 @@
       "App._set_stt_state",
       "App._set_prac_state",
       "App._render_result",
+      "App._yt_load",
+      "App._yt_start",
+      "App._yt_score",
+      "App._w_ytscore",
+      "App._yt_render",
+      "token_spans",
+      "ytread_view",
       "App._src_label",
       "strip_marks_vi",
       "vi_north_key",
@@ -233,6 +240,9 @@
       "main"
     ],
     "tools/smoke_test.py": [
+      "main"
+    ],
+    "tools/ytread_e2e.py": [
       "main"
     ],
     "tools/ytread_bench.py": [

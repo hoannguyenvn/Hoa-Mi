@@ -124,14 +124,27 @@ Phím tắt: `Ctrl+O` chọn file · `Ctrl+Enter` bắt đầu · `Ctrl+S` lưu 
 
 ## 4. Luyện phát âm
 
-Chọn chế độ ở góc trên (**Luyện câu** | **Học âm**), chọn bài ở ô bên cạnh hoặc bấm
-**◀ Bài trước / Bài sau ▶**. Trong lúc thu và chấm, không đổi được bài.
+Chọn chế độ ở góc trên (**Luyện câu** | **Học âm** | **Từ YouTube**), chọn bài ở ô bên
+cạnh hoặc bấm **◀ Bài trước / Bài sau ▶**. Trong lúc thu và chấm, không đổi được bài.
 
-Hai chế độ:
+Ba chế độ:
 
 - **Luyện câu**: 3 bộ tiếng Việt (n/l), **14 bài tiếng Anh**, và `Tùy chỉnh`.
 - **Học âm**: N, L, so sánh N–L, TH, S/SH — hướng dẫn đặt lưỡi/luồng hơi
   và nút nghe **âm mẫu** giọng bản ngữ (offline).
+- **Từ YouTube** (tiếng Anh, cần mạng để tải): dán link video, bấm **Lấy transcript**.
+  Oriole lấy phụ đề tiếng Anh gốc (không có thì Whisper tự tạo) và âm thanh gốc, chia
+  thành **đoạn ~20–45 giây** (◀ Đoạn trước / Đoạn sau ▶).
+  - **Nghe rồi đọc** (mặc định): bấm Thu âm → app phát đoạn gốc → nghe xong tự bắt đầu
+    thu. **Đọc thẳng**: thu ngay. Đọc hết đoạn, ngừng ~4 giây là app tự chấm.
+  - Kết quả: cả đoạn tô màu — đỏ (sai/thiếu), cam (lỗi quen thuộc, vd nuốt âm cuối), xám
+    (**phụ đề có thể sai**: chính người nói trong video cũng không nói như phụ đề — từ này
+    **không tính** điểm). Panel phải liệt kê từng từ với ▶ Mẫu (giọng trong video) và
+    ▶ Bạn đọc. "Đọc lại đoạn này" để thử lại.
+  - Cách viết khác nhau vẫn tính là đúng: I'm = I am, gonna = going to, 1990 = nineteen
+    ninety; từ đệm (um, uh) bỏ qua.
+  - Phiên dùng một lần: âm thanh gốc nằm trong thư mục tạm, xóa khi lấy video khác hoặc
+    đóng app. Lịch sử theo người học sẽ có ở bản sau.
 
 Mỗi bài tiếng Anh có: câu mẫu, **IPA**, âm trọng tâm, cặp dễ lẫn (`think–tink`),
 nút nghe **Nghe mẫu / Chậm / 2 từ khoá**, và hộp gợi ý khẩu hình. Sau khi thu, có thêm

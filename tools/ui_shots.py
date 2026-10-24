@@ -217,6 +217,52 @@ def main() -> int:
     A._prac_done(result(en_t, en_bad, "en", inton=prosody.compare(ref, slow)))
     shot("08_prac_en_result_dark")
 
+    # ---- Từ YouTube (D-39): phiên giả, không mạng ----
+    theme("light")
+    A.prac_mode.set("yt")
+    A._prac_mode_changed()
+    shot("16_yt_empty_light")
+    A._set_prac_state("loading")
+    A.p_status.set("Đang tải âm thanh gốc… 64%")
+    shot("16b_yt_loading_light")
+    para = ("So today I'm gonna talk about why we put things off. When I was in college "
+            "I had to write a 90 page thesis, and I really planned to start early. "
+            "Instead I watched videos, cleaned my room, and read about whales until "
+            "the deadline was three days away.")
+    sess = app.YtReadSession(None)
+    sess.title, sess.vid, sess.sub_kind, sess.wav = ("Why we put things off | Demo talk",
+                                                     "demo", "auto", ref)
+    sess.paragraphs = [{"start": 12.6, "end": 34.6, "text": para, "words": len(para.split()),
+                        "wpm": 151},
+                       {"start": 35.9, "end": 57.8, "text": "Second paragraph text here.",
+                        "words": 4, "wpm": 120}]
+    A._yt_ready(sess)
+    shot("17_yt_idle_light")
+    learner = ("so today I am going to talk about why we put thing off when I was in college "
+               "I had to write a ninety page tesis and I planned to start early instead I "
+               "watch videos clean my room and read about wells until the deadline was "
+               "three days away")
+    orig = ("so today I'm going to talk about why we put things off when I was in college "
+            "I had to write a ninety page thesis and I planned to start early instead I "
+            "watched videos cleaned my room and read about whales until the deadline was "
+            "three days away")
+    res = app.read_aloud_diff(para, learner, orig)
+    toks = res["target"].split()
+    res["words_t"] = [{"w": w, "s": 0.4 * i, "e": 0.4 * i + 0.3, "p": 0.9}
+                      for i, w in enumerate(learner.split())]
+    sess.orig_words[0] = [{"w": w, "s": 0.1 * i, "e": 0.1 * i + 0.08, "p": 0.9}
+                          for i, w in enumerate(orig.split())]
+    A.last_wav = None
+    A._yt_done(0, res, None)
+    shot("18_yt_result_light")
+    A._yt_done(0, res, "garbage")
+    shot("19_yt_unsure_light")
+    theme("dark")
+    A._yt_done(0, res, None)
+    shot("20_yt_result_dark")
+    theme("light")
+    assert len(toks) == res["total"] + res["doubts"]
+
     # ---- Cài đặt ----
     A._show_screen("set")
     shot("09_settings_dark")
@@ -241,6 +287,11 @@ def main() -> int:
     shot("14_stt_youtube_min_light")
     A._show_screen("set")
     shot("15_settings_min_light")
+    A._show_screen("prac")
+    A.prac_mode.set("yt")
+    A._prac_mode_changed()
+    A._yt_done(0, res, None)
+    shot("21_yt_result_min_light")
     A.destroy()
     print("saved to", out)
     return 0

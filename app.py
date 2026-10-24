@@ -777,6 +777,9 @@ def yt_progress_fraction(d):
 
 # ---------- đọc to transcript YouTube (D-39, docs/YT-READING-PLAN.md) ----------
 YTREAD_PAD_SEC = 0.4   # nới hai đầu đoạn khi nghe audio gốc: mốc phụ đề lệch, đừng cắt mất từ
+YT_SILENCE_SEC = 3.5   # đọc cả đoạn hay ngừng để dò dòng → tự dừng muộn hơn câu ngắn (1,8 s)
+YT_MAX_SEC = 150       # đoạn ≤ 45 s; người học đọc chậm gấp 2–3 lần vẫn đủ
+YT_REC_HINT = "Đọc hết đoạn — ngừng khoảng 4 giây là app tự dừng và chấm"
 
 
 def pick_en_subtitle(info, prefer="manual"):
@@ -814,6 +817,7 @@ class YtReadSession:
         self.paragraphs = []       # yt_read.build_paragraphs
         self.wav = None            # audio gốc, mono 16 kHz
         self._orig = {}            # chỉ số đoạn → lời Whisper nghe trên audio gốc
+        self.orig_words = {}       # chỉ số đoạn → [{w, s, e, p}] của audio gốc
 
     def close(self):
         if self.work_dir:
@@ -933,7 +937,16 @@ def ytread_orig_hyp(session, i, model):
             x = np.frombuffer(w.readframes(b - a), dtype=np.int16).astype(np.float32) / 32768.0
         segs, _info = model.transcribe(x, language="en",
                                        **dict(PRAC_ASR_OPTS, vad_filter=True))
-        session._orig[i] = " ".join(" ".join(seg.text.split()) for seg in segs).strip()
+        off, texts, words = a / float(REC_RATE), [], []
+        for seg in segs:
+            texts.append(" ".join(seg.text.split()))
+            for w in (getattr(seg, "words", None) or []):
+                t = (w.word or "").strip()
+                if t and w.start is not None and w.end is not None:
+                    words.append({"w": t, "s": round(off + w.start, 3),
+                                  "e": round(off + w.end, 3), "p": round(w.probability, 3)})
+        session._orig[i] = " ".join(texts).strip()
+        session.orig_words[i] = words      # mốc tuyệt đối trong session.wav (▶ Mẫu từng từ)
     return session._orig[i]
 
 
@@ -1500,7 +1513,83 @@ def read_aloud_diff(sub_text, learner_hyp, orig_hyp=None):
     return {"items": items, "correct": correct, "total": total, "doubts": doubts,
             "score": round(100.0 * correct / total, 1) if total else 0.0,
             "warns": sum(1 for it in items if it[1] == "warn"), "tones": 0, "rhymes": 0,
-            "hyp": res["hyp"], "src_idx": src}
+            "hyp": res["hyp"], "src_idx": src, "target": target}
+
+
+def token_spans(words_t, target):
+    """Từ Whisper có mốc [{w, s, e, p}] → {chỉ số token mẫu: (s, e, p)} sau `en_tokens`.
+
+    target = chuỗi token (res["target"] của read_aloud_diff). Dùng cho ▶ Bạn đọc / ▶ Mẫu
+    từng từ và dấu "máy chưa chắc" của đoạn đọc to. Hàm thuần.
+    """
+    import yt_read
+    toks = [(t, w) for w in (words_t or []) for t, _i, _n in yt_read.en_tokens(w.get("w", ""))]
+    out = {}
+    for (t, w), ti in zip(toks, map_to_target(target, [t for t, _w in toks])):
+        if ti is not None and ti not in out:
+            out[ti] = (w.get("s"), w.get("e"), w.get("p"))
+    return out
+
+
+YT_ROWS_MAX = 24   # số dòng tối đa mỗi nhóm trong panel kết quả (đoạn dài)
+_YT_RANK = {"ok": 0, "unsure": 1, "doubt": 2, "warn": 3, "bad": 4}
+
+
+def ytread_view(res, gate=None):
+    """Kết quả đọc to một đoạn → nội dung hiển thị (D-39). Hàm thuần, không Tk.
+
+    marks: {chỉ số từ trong đoạn gốc (text.split()): kind} — kind ok|unsure|doubt|warn|bad;
+    fixes / doubts: dòng cho panel phải; ring/headline/summary như bài luyện câu.
+    """
+    if gate:
+        return {"state": "unsure", "gate": gate, "marks": {}, "fixes": [], "doubts": [],
+                "extras": [], "ring": {"frac": 0.0, "text": "?", "tone": "muted"},
+                "headline": "Máy chưa nghe rõ",
+                "summary": "Chưa chấm đoạn này — thử lại theo gợi ý bên dưới.",
+                "tips": list(UNSURE_TIPS[:2]), "correct": 0, "total": res.get("total", 0)}
+    spans = token_spans(res.get("words_t"), res.get("target", ""))
+    marks, fixes, doubts, extras, ti = {}, [], [], [], 0
+    src = res.get("src_idx") or []
+    for tok, kind, heard, note in res.get("items") or []:
+        if tok is None:
+            extras.append(heard)
+            continue
+        si = src[ti] if ti < len(src) else None
+        k = {"tone": "warn", "rhyme": "bad"}.get(kind, kind)
+        if k == "ok":
+            p = (spans.get(ti) or (None, None, None))[2]
+            if p is not None and p < WORD_UNSURE_P:
+                k = "unsure"
+        elif k == "doubt":
+            # dòng nằm dưới tiêu đề "PHỤ ĐỀ CÓ THỂ SAI" → bỏ phần lặp lại tiêu đề
+            doubts.append({"ti": ti, "word": tok, "text": "“%s” — %s" % (
+                tok, (note or "").replace("phụ đề có thể sai — ", ""))})
+        else:
+            # ghi chú của luật lỗi (flag_pair) đã nêu cả hai từ: “thing” nghe thành “ting”…
+            fixes.append({"ti": ti, "word": tok, "heard": heard, "kind": k,
+                          "text": note if (note or "").startswith("“") else "“%s” — %s" % (
+                              tok, note or ("nghe “%s”" % heard if heard
+                                            else "chưa đọc từ này"))})
+        if si is not None and _YT_RANK[k] > _YT_RANK[marks.get(si, "ok")]:
+            marks[si] = k
+        elif si is not None:
+            marks.setdefault(si, k)
+        ti += 1
+    correct, total = res.get("correct", 0), res.get("total", 0)
+    frac = correct / float(total) if total else 0.0
+    perfect = bool(total) and not fixes and correct == total
+    parts = []
+    if fixes:
+        parts.append("%d từ cần sửa" % len(fixes))
+    if doubts:
+        parts.append("%d từ không tính (phụ đề có thể sai)" % len(doubts))
+    return {"state": "result", "gate": None, "marks": marks,
+            "fixes": fixes, "doubts": doubts, "extras": extras,
+            "ring": {"frac": frac, "text": "✓" if perfect else "%d/%d" % (correct, total),
+                     "tone": "ok" if perfect else ("warn" if frac >= 0.5 else "bad")},
+            "headline": ("Hoàn hảo — đúng cả %d từ" % total) if perfect
+            else "Đúng %d/%d từ" % (correct, total),
+            "summary": " · ".join(parts), "tips": [], "correct": correct, "total": total}
 
 
 GOP_LEVEL_STRONG = 25  # điểm GOP dưới mức này → "lệch rõ"; còn lại trong issues → "hơi lệch"
@@ -1639,7 +1728,8 @@ def hist_weakest(hist, lang):
 
 
 STT_STATES = ("idle", "recording", "processing", "result", "error")
-PRAC_STATES = ("idle", "recording", "scoring", "result", "unsure", "error")
+PRAC_STATES = ("idle", "recording", "scoring", "result", "unsure", "error", "loading")
+# loading: đang lấy transcript + audio gốc của video (đọc to YouTube, D-39)
 
 
 def stt_controls(state, idle_label):
@@ -1671,13 +1761,14 @@ def prac_controls(state, has_replay):
     "Thu lại" sau một lần chấm, "Dừng & chấm" khi đang thu.
     """
     return {
-        "rec_enabled": state != "scoring",
+        "rec_enabled": state not in ("scoring", "loading"),
         "rec_icon": "stop" if state == "recording" else "mic",
         "rec_label": {"recording": "Dừng & chấm", "scoring": "Đang chấm…",
+                      "loading": "Đang tải…",
                       "result": "Thu lại", "unsure": "Thu lại",
                       "error": "Thu lại"}.get(state, "Thu âm"),
-        "replay_enabled": has_replay and state not in ("recording", "scoring"),
-        "show_pbar": state == "scoring",
+        "replay_enabled": has_replay and state not in ("recording", "scoring", "loading"),
+        "show_pbar": state in ("scoring", "loading"),
     }
 
 
@@ -3881,7 +3972,7 @@ class App(tk.Tk):
         assert state in PRAC_STATES, state
         prev = getattr(self, "prac_state", "idle")
         self.prac_state = state
-        self.p_working = state == "scoring"
+        self.p_working = state in ("scoring", "loading")
         if state == "recording":
             self.recording, self.rec_owner = True, "prac"
         elif prev == "recording" and self.rec_owner == "prac":
@@ -3904,11 +3995,11 @@ class App(tk.Tk):
         else:
             self.lbl_plevel.configure(text="")
         # đổi bài/chế độ bị khóa khi đang thu hoặc đang chấm (câu chấm = câu đang đọc)
-        locked = state in ("recording", "scoring")
-        for w in (self.cb_prac, self.btn_pprev, self.btn_pnext):
+        locked = state in ("recording", "scoring", "loading")
+        for w in (self.cb_prac, self.btn_pprev, self.btn_pnext, self.btn_yt_get):
             w.state(["disabled"] if locked else ["!disabled"])
         self._seg._draw()
-        if state in ("idle", "recording", "scoring", "error"):
+        if state in ("idle", "recording", "scoring", "error", "loading"):
             self._panel_state(state)
 
     # ----- chạy / hủy -----
@@ -4001,6 +4092,13 @@ class App(tk.Tk):
             self.cancel_flag = True
             self.status.set("Đang hủy…")
             self._log("Người dùng bấm hủy.", "err")
+            return
+        if getattr(self, "prac_state", "") == "loading" and not self._yt_cancel:
+            self._yt_cancel = True
+            self.p_status.set("Đang hủy…")
+        elif self._yt_listening:
+            self._stop_play()
+            self.p_status.set("Đã dừng nghe — bấm Thu âm khi sẵn sàng.")
 
     def _poll(self):
         """Vòng lặp duy nhất: nhận cập nhật từ worker thread (chạy trên luồng UI)."""
@@ -4035,6 +4133,14 @@ class App(tk.Tk):
                     self._prac_stop_and_score(payload)
                 elif kind == "prac_done":
                     self._prac_done(payload)
+                elif kind == "yt_ready":
+                    self._yt_ready(payload)
+                elif kind == "yt_fail":
+                    self._yt_fail(payload)
+                elif kind == "yt_done":
+                    self._yt_done(*payload)
+                elif kind == "yt_listen_done":
+                    self._yt_listen_done(payload)
                 elif kind == "prac_error":
                     self._prac_error(payload)
                 elif kind == "mic_found":
@@ -4559,7 +4665,12 @@ class App(tk.Tk):
 
         # ---- thanh công cụ: chế độ · bài · vị trí · bài trước/sau ----
         bar = self._toolbar(parent)
-        self._seg = self._mk_seg(bar, (("set", "Luyện câu"), ("guide", "Học âm")),
+        self.yt_read_url = tk.StringVar()
+        self.yt_listen = tk.StringVar(value="listen")
+        self._yt_sess, self._yt_idx, self._yt_cancel = None, 0, False
+        self._yt_listening, self._yt_res, self._yt_view = False, None, None
+        self._seg = self._mk_seg(bar, (("set", "Luyện câu"), ("guide", "Học âm"),
+                                       ("yt", "Từ YouTube")),
                                  self.prac_mode, self._prac_mode_changed,
                                  locked=lambda: self.p_working or self.recording)
         self._seg.pack(side="left", padx=(self.px(28), self.px(16)))
@@ -4570,6 +4681,15 @@ class App(tk.Tk):
         self.cb_prac.current(0)
         self.cb_prac.pack(side="left")
         self.cb_prac.bind("<<ComboboxSelected>>", lambda e: self._refresh_practice())
+        # đọc to YouTube (D-39): ô link + nút thay cho combobox bài
+        self.yt_bar = self._frame(bar, bg="card")
+        self.yt_entry = ttk.Entry(self.yt_bar, textvariable=self.yt_read_url, width=34,
+                                  font=(self.F, 11))
+        self.yt_entry.pack(side="left")
+        self.yt_entry.bind("<Return>", lambda e: self._yt_load())
+        self.btn_yt_get = ttk.Button(self.yt_bar, text="Lấy transcript", style="Accent.TButton",
+                                     command=self._yt_load)
+        self.btn_yt_get.pack(side="left", padx=(self.px(8), 0))
         self.p_pos = self._lbl(bar, "", fg="muted", size=10)
         self.p_pos.pack(side="left", padx=(self.px(10), 0))
         self.btn_pnext = ttk.Button(bar, text="Bài sau ▶", style="Ghost.TButton",
@@ -4608,6 +4728,24 @@ class App(tk.Tk):
         self.p_hint = self._lbl(inner, "", fg="muted", font=(FONT_IPA, 9), justify="center")
         self.p_samples = self._frame(inner, bg="card", height=1)
         self.p_samples.bind("<Configure>", lambda e: self._layout_pills())
+        # đọc to YouTube (D-39): tiêu đề video · đoạn · chế độ · cả đoạn văn (cuộn được)
+        self.yt_head = self._frame(inner, bg="card")
+        self.yt_title = self._lbl(self.yt_head, "", fg="muted", size=10, justify="center")
+        self.yt_title.pack()
+        row = self._frame(self.yt_head, bg="card")
+        row.pack(pady=(self.px(8), 0))
+        self.yt_meta = self._lbl(row, "", size=10, weight="bold")
+        self.yt_meta.pack(side="left", padx=(0, self.px(14)))
+        self._yt_seg = self._mk_seg(row, (("listen", "Nghe rồi đọc"), ("read", "Đọc thẳng")),
+                                    self.yt_listen, self._yt_mode_hint,
+                                    locked=lambda: self.p_working or self.recording)
+        self._yt_seg.pack(side="left")
+        self.yt_text = self._mk_text(inner, role="doc", scroll=True, height=6,
+                                     font=(self.F, 15), padx=self.px(14), pady=self.px(10),
+                                     spacing1=self.px(3), spacing3=self.px(3), cursor="arrow")
+        self.yt_text.configure(state="disabled")
+        self._redraws.append(self._yt_tags)
+        self._yt_tags()
         self.p_tip = self._frame(inner, bg="card2")
         ic = self._tw(tk.Canvas(self.p_tip, width=self.px(16), height=self.px(16), bd=0,
                                 highlightthickness=0), bg="card2")
@@ -4676,9 +4814,14 @@ class App(tk.Tk):
     def _stage_repack(self, custom, ipa, hint, tip):
         """Xếp lại phần trên sân khấu theo thứ tự cố định, bỏ phần trống."""
         for w in (self.entry_custom, self.p_lead, self.p_words, self.p_ipa, self.p_hint,
-                  self.p_samples, self.p_tip):
+                  self.p_samples, self.p_tip, self.yt_head, self.yt_text.holder):
             if w.winfo_manager():
                 w.pack_forget()
+        if custom == "yt":
+            self.yt_head.pack(fill="x")
+            self.p_samples.pack(fill="x", pady=(self.px(10), 0))
+            self.yt_text.holder.pack(fill="both", expand=True, pady=(self.px(10), self.px(12)))
+            return
         if custom:
             self.entry_custom.pack(fill="x", pady=(0, self.px(14)))
         self.p_lead.pack()
@@ -4870,8 +5013,22 @@ class App(tk.Tk):
         self.prac_mode.set(code)
         self._prac_mode_changed()
 
+    def _nav_labels(self):
+        """Nút bài/đoạn trước–sau; chế độ YouTube ở cửa sổ hẹp chỉ còn mũi tên (ô link rộng)."""
+        if self.prac_mode.get() != "yt":
+            prev, nxt = "◀ Bài trước", "Bài sau ▶"
+        elif self._compact:
+            prev, nxt = "◀", "▶"
+        else:
+            prev, nxt = "◀ Đoạn trước", "Đoạn sau ▶"
+        self.btn_pprev.configure(text=prev)
+        self.btn_pnext.configure(text=nxt)
+
     def _step_lesson(self, d):
         if self.p_working or self.recording:
+            return
+        if self.prac_mode.get() == "yt":
+            self._yt_step(d)
             return
         n = len(self.cb_prac["values"])
         if n:
@@ -4885,6 +5042,8 @@ class App(tk.Tk):
 
     def _prac_compact(self, compact):
         self.cb_prac.configure(width=22 if compact else 30)
+        self.yt_entry.configure(width=16 if compact else 34)
+        self._nav_labels()
         pad = self.px(20 if compact else 32)
         self._stage_in.pack_configure(padx=pad, pady=(self.px(16 if compact else 28),
                                                       self.px(12 if compact else 18)))
@@ -5001,6 +5160,7 @@ class App(tk.Tk):
         self.pp_notes = self._frame(body, bg="side")
         self.pp_unsure = self._frame(body, bg="side")
         self.pp_detail = self._frame(body, bg="side")
+        self.pp_yt = self._frame(body, bg="side")      # danh sách khác biệt của đoạn đọc to
 
         # NGỮ ĐIỆU (S-5 / S-5b): một câu nhận xét · biểu đồ có nhãn từ · trọng âm · tốc độ
         self.p_int_card = self._frame(body, bg="side")
@@ -5044,7 +5204,7 @@ class App(tk.Tk):
     def _panel_show(self, names):
         order = (("wait", self.pp_wait), ("head", self.pp_head), ("heard", self.pp_heard),
                  ("unsure", self.pp_unsure), ("fix", self.pp_fix), ("notes", self.pp_notes),
-                 ("inton", self.p_int_card), ("detail", self.pp_detail))
+                 ("inton", self.p_int_card), ("detail", self.pp_detail), ("yt", self.pp_yt))
         for _n, w in order:
             if w.winfo_manager():
                 w.pack_forget()
@@ -5079,7 +5239,10 @@ class App(tk.Tk):
                 "recording": ("Đang nghe bạn đọc…", "Kết quả hiện ngay khi bạn đọc xong."),
                 "scoring": ("Đang chấm…", "Máy đang nghe lại bản thu của bạn — vài giây."),
                 "error": ("Chưa chấm được",
-                          "Xem thông báo dưới nút thu âm, sửa rồi bấm Thu lại.")}[state]
+                          "Xem thông báo dưới nút thu âm, sửa rồi bấm Thu lại."),
+                "loading": ("Đang lấy transcript…",
+                            "Tải phụ đề và âm thanh gốc của video — vài giây đến nửa phút. "
+                            "Esc để hủy.")}[state]
         self.pp_wait_t.configure(text=t)
         self.pp_wait_s.configure(text=s)
         if s and not self.pp_wait_s.winfo_manager():
@@ -5090,7 +5253,7 @@ class App(tk.Tk):
             self.pp_steps.pack(fill="x", pady=(self.px(6), 0))
         elif state != "idle" and self.pp_steps.winfo_manager():
             self.pp_steps.pack_forget()
-        if state == "scoring":
+        if state in ("scoring", "loading"):
             if not self.pbar_p.winfo_manager():
                 self.pbar_p.pack(fill="x", pady=(self.px(16), 0))
             self.pbar_p.start(12)
@@ -5109,6 +5272,8 @@ class App(tk.Tk):
         self._inton = None
         self._iv = None
         self._set_stage_words(stage_words(self._p_target, None))
+        if self.prac_mode.get() == "yt":
+            self._yt_fill_text(None)
         self._panel_state(getattr(self, "prac_state", "idle")
                           if getattr(self, "prac_state", "idle") not in ("result", "unsure")
                           else "idle")
@@ -5122,6 +5287,19 @@ class App(tk.Tk):
         self._embeds = []
 
     def _prac_mode_changed(self):
+        yt = self.prac_mode.get() == "yt"
+        if yt != bool(self.yt_bar.winfo_manager()):
+            if yt:
+                self.cb_prac.pack_forget()
+                self.yt_bar.pack(side="left", before=self.p_pos)
+            else:
+                self.yt_bar.pack_forget()
+                self.cb_prac.pack(side="left", before=self.p_pos)
+        self.p_rec_hint.configure(text=YT_REC_HINT if yt else "Đọc xong, app tự dừng và chấm")
+        self._nav_labels()
+        if yt:
+            self._yt_refresh()
+            return
         guide = self.prac_mode.get() == "guide"
         self.cb_prac.configure(values=GUIDE_NAMES if guide else SET_NAMES)
         try:
@@ -5376,7 +5554,7 @@ class App(tk.Tk):
         self._save_hist()
 
     def _current_set_id(self):
-        if self.prac_mode.get() == "guide":
+        if self.prac_mode.get() != "set":
             return None
         idx = self.cb_prac.current()
         return SET_IDS[idx] if 0 <= idx < len(SET_IDS) else None
@@ -5408,6 +5586,9 @@ class App(tk.Tk):
             self._prac_start()
 
     def _prac_start(self):
+        if self.prac_mode.get() == "yt":
+            self._yt_start()
+            return
         target, _lang = self._current_practice()
         if not target:
             messagebox.showwarning("Chưa có câu",
@@ -5538,6 +5719,7 @@ class App(tk.Tk):
         threading.Thread(target=job, daemon=True).start()
 
     def _stop_play(self):
+        self._yt_listening = False
         try:
             import sounddevice as sd
             sd.stop()
@@ -5555,6 +5737,9 @@ class App(tk.Tk):
         self._prac_score(p)
 
     def _prac_score(self, wav_path):
+        if self.prac_mode.get() == "yt":
+            self._yt_score(wav_path)
+            return
         target, lang = self._current_practice()
         if not target:
             messagebox.showwarning("Chưa có câu", "Bài đọc đang trống.")
@@ -5881,6 +6066,324 @@ class App(tk.Tk):
         self.p_status.set(msg if len(msg) < 300
                           else "Lỗi — xem chi tiết trong hộp thoại.")
         messagebox.showerror("Lỗi", msg)
+
+    # ================= đọc to transcript YouTube (D-39, YT-READING-PLAN Y3) =================
+    def _yt_tags(self):
+        P, t = self.P, self.yt_text
+        t.tag_configure("yk_ok", foreground=P["fg"], background="")
+        t.tag_configure("yk_unsure", foreground=P["fg"], background=P["card2"])
+        t.tag_configure("yk_doubt", foreground=P["muted"], background=P["card2"])
+        t.tag_configure("yk_warn", foreground=P["warn_fg"], background=P["warn_bg"])
+        t.tag_configure("yk_bad", foreground=P["bad_fg"], background=P["bad_bg"])
+        t.tag_configure("yk_plain", foreground=P["fg"], background="")
+        t.tag_configure("yk_hint", foreground=P["muted"], font=(self.F, 12))
+
+    def _yt_fill_text(self, marks):
+        """Cả đoạn trong ô chữ; marks {chỉ số từ: kind} tô màu sau khi chấm."""
+        t = self.yt_text
+        t.configure(state="normal")
+        t.delete("1.0", "end")
+        s = self._yt_sess
+        if not s:
+            t.insert("end", "Dán link video YouTube tiếng Anh ở ô trên rồi bấm “Lấy transcript”.\n\n"
+                     "Oriole chia lời nói thành từng đoạn ~20–45 giây. Bạn nghe đoạn gốc, đọc to "
+                     "cả đoạn, rồi xem từ nào khác với phụ đề.", "yk_hint")
+        else:
+            for i, w in enumerate(s.paragraphs[self._yt_idx]["text"].split()):
+                t.insert("end", w, "yk_" + ((marks or {}).get(i) or "plain"))
+                t.insert("end", " ")
+        t.configure(state="disabled")
+        t.yview_moveto(0)
+
+    def _yt_mode_hint(self):
+        if self.prac_mode.get() != "yt" or self.p_working or self.recording:
+            return
+        self.p_status.set("Bấm Thu âm: app phát đoạn gốc trước, nghe xong tự bắt đầu thu."
+                          if self.yt_listen.get() == "listen" else
+                          "Bấm Thu âm rồi đọc to cả đoạn — không nghe mẫu trước.")
+
+    def _yt_refresh(self):
+        """Vẽ lại màn đọc to theo phiên + đoạn hiện tại; kết quả cũ bị xóa (P-01)."""
+        s = self._yt_sess
+        self._p_target = ""
+        self._stage_repack("yt", False, False, False)
+        if s:
+            p = s.paragraphs[self._yt_idx]
+            kind = {"manual": "phụ đề thủ công", "auto": "phụ đề tự động",
+                    "whisper": "transcript do Whisper tạo"}.get(s.sub_kind, "")
+            self.yt_title.configure(text="%s  ·  %s" % (s.title or s.vid, kind))
+            self.yt_meta.configure(text="%s–%s  ·  %d từ  ·  %d từ/phút" % (
+                short_duration(p["start"]), short_duration(p["end"]), p["words"], p["wpm"]))
+            self.p_pos.configure(text="Đoạn %d / %d" % (self._yt_idx + 1, len(s.paragraphs)))
+        else:
+            self.yt_title.configure(text="Luyện đọc to theo video YouTube tiếng Anh")
+            self.yt_meta.configure(text="")
+            self.p_pos.configure(text="")
+        for ch in self.p_samples.winfo_children():
+            ch.destroy()
+        pill = self._mk_pill(self.p_samples, "Nghe đoạn gốc", self._yt_play_para, bool(s))
+        self._pill_show(pill, True)
+        self.btn_preplay = self._mk_pill(self.p_samples, "Bản thu của bạn", self._prac_replay)
+        self._pill_show(self.btn_preplay, self._rec_ctl.get("replay_enabled", False))
+        self._yt_res = self._yt_view = None
+        if not self.p_working:
+            self._clear_prac_result()
+            if getattr(self, "prac_state", "idle") in ("result", "unsure", "error"):
+                self._set_prac_state("idle")
+        self.p_status.set("" if s else "Dán link YouTube, bấm “Lấy transcript”.")
+        if s:
+            self._yt_mode_hint()
+        self._seg._draw()
+        self._update_prog(None)
+
+    def _yt_step(self, d):
+        s = self._yt_sess
+        if not s or self.p_working or self.recording:
+            return
+        self._stop_play()
+        self._yt_idx = (self._yt_idx + d) % len(s.paragraphs)
+        self._set_last_wav(None)     # bản thu cũ thuộc đoạn khác
+        self._yt_refresh()
+
+    def _yt_load(self):
+        if self.p_working or self.recording:
+            return
+        url = self.yt_read_url.get().strip()
+        if not re.match(r"https?://", url) or "youtu" not in url.lower():
+            messagebox.showwarning("Link không hợp lệ",
+                                   "Dán link video YouTube (youtu.be/… hoặc watch?v=…).")
+            return
+        self._stop_play()
+        if self._yt_sess:
+            self._yt_sess.close()           # phiên dùng một lần (D-39)
+            self._yt_sess = None
+        self._set_last_wav(None)
+        self._yt_cancel = False
+        self._yt_refresh()
+        self._set_prac_state("loading")
+        self.p_status.set("Đang đọc thông tin video…")
+        self._log(f"Đọc to YouTube: {url}")
+        threading.Thread(target=self._w_ytload, args=(url, self.model_name.get()),
+                         daemon=True).start()
+
+    def _w_ytload(self, url, model_size):
+        try:
+            s = ytread_prepare(url, model_size, cancel=lambda: self._yt_cancel,
+                               status=lambda m: self._queue.put(("prac_status", m)))
+            self._queue.put(("yt_ready", s))
+        except _YtCancelled:
+            self._queue.put(("yt_fail", "__cancelled__"))
+        except ValueError as e:
+            self._queue.put(("yt_fail", str(e)))
+        except Exception as e:
+            self._queue.put(("yt_fail", "__cancelled__" if self._yt_cancel
+                             else f"Lỗi YouTube: {e}"))
+
+    def _yt_ready(self, s):
+        if self._yt_cancel:              # Hủy đến sau khi worker vừa xong
+            s.close()
+            self._yt_fail("__cancelled__")
+            return
+        self._yt_sess, self._yt_idx = s, 0
+        self._log("Đọc to: %s · %d đoạn (%s)" % (s.title, len(s.paragraphs), s.sub_kind))
+        self._set_prac_state("idle")
+        self._yt_refresh()
+
+    def _yt_fail(self, msg):
+        cancelled = msg == "__cancelled__"
+        self._set_prac_state("idle" if cancelled else "error")
+        self._yt_refresh()
+        self.p_status.set("Đã hủy lấy transcript." if cancelled else msg)
+        if not cancelled:
+            self._log(msg, "err")
+
+    def _yt_play_para(self):
+        s = self._yt_sess
+        if not s or self.playing or self.recording or self.p_working:
+            return
+        p = s.paragraphs[self._yt_idx]
+        self._play_span(s.wav, p["start"], p["end"])
+
+    def _play_span(self, path, start, end, then=None):
+        """Phát start..end của file wav trong thread; then: thông điệp queue khi phát xong."""
+        if self.playing or not path:
+            return
+        self.playing = True
+
+        def job():
+            try:
+                play_wav_segment(path, start, end)
+            except Exception as e:
+                self._queue.put(("prac_status", f"Không phát được: {e}"))
+            finally:
+                self.playing = False
+                if then:
+                    self._queue.put(then)
+
+        threading.Thread(target=job, daemon=True).start()
+
+    def _yt_start(self):
+        s = self._yt_sess
+        if not s:
+            self.p_status.set("Chưa có đoạn để đọc — dán link YouTube, bấm “Lấy transcript”.")
+            return
+        if self._yt_listening:            # bấm Thu khi đang nghe → bỏ phần còn lại, thu ngay
+            self._stop_play()
+            self._yt_rec_start()
+            return
+        if self.yt_listen.get() == "listen" and not self.playing:
+            p = s.paragraphs[self._yt_idx]
+            self._yt_listening = True
+            self._clear_prac_result(note=False)
+            self.p_status.set("▶ Đang phát đoạn gốc — nghe kỹ; xong app tự bắt đầu thu. "
+                              "(Bấm nút đỏ để thu ngay, Esc để dừng)")
+            self._play_span(s.wav, p["start"], p["end"],
+                            then=("yt_listen_done", (id(s), self._yt_idx)))
+            return
+        self._yt_rec_start()
+
+    def _yt_listen_done(self, token):
+        s = self._yt_sess
+        if not self._yt_listening or not s or token != (id(s), self._yt_idx):
+            return
+        self._yt_listening = False
+        self._yt_rec_start()
+
+    def _yt_rec_start(self):
+        if self._mic_probing or self.recording or self.p_working:
+            return
+        dev, name, rate = self._resolve_mic()
+        if dev is None:
+            return
+        self._set_prac_state("recording")
+        self._clear_prac_result(note=False)
+        self.recorder.start(dev, rate, YT_MAX_SEC,
+                            lambda reason: self._queue.put(("prac_autostop", reason)),
+                            lambda m: self._queue.put(("prac_error", m)),
+                            auto_stop={"silence": YT_SILENCE_SEC, "min_speech": 0.4,
+                                       "start_timeout": 10.0})
+        self.p_status.set(f"● ĐANG THU bằng {name}. Đọc to cả đoạn — xong ngừng khoảng "
+                          f"4 giây, hoặc bấm ■ Dừng & chấm.")
+        self.lbl_plevel.configure(text="● Đang thu · 00:00 · mời bạn đọc…")
+        self._prac_tick()
+
+    def _yt_score(self, wav_path):
+        s = self._yt_sess
+        if not s:
+            return
+        self._set_prac_state("scoring")
+        self._clear_prac_result(note=False)
+        self.p_status.set("Đang nghe lại bài đọc của bạn và đoạn gốc…")
+        threading.Thread(target=self._w_ytscore,
+                         args=(wav_path, s, self._yt_idx, self.model_name.get()),
+                         daemon=True).start()
+
+    def _w_ytscore(self, wav_path, s, idx, model_size):
+        try:
+            model = load_model(model_size)
+            asr = transcribe_practice(model, wav_path, "en")
+            if not asr["hyp"]:
+                self._queue.put(("prac_error", "Không nghe được chữ nào — thử đọc to, gần mic hơn."))
+                return
+            orig = ytread_orig_hyp(s, idx, model)
+            res = read_aloud_diff(s.paragraphs[idx]["text"], asr["hyp"], orig)
+            probs = asr["probs"]
+            res["words_t"], res["model"] = asr["words_t"], model_size
+            res["conf"] = (sum(probs) / len(probs)) if probs else 1.0
+            res["low_conf"] = bool(probs) and res["conf"] < 0.35
+            self._queue.put(("yt_done", (idx, res, evidence_gate(res))))
+        except Exception as e:
+            self._queue.put(("prac_error", f"Lỗi chấm đoạn đọc: {e}"))
+
+    def _yt_done(self, idx, res, gate):
+        if idx != self._yt_idx or not self._yt_sess:
+            self._set_prac_state("idle")
+            return
+        v = ytread_view(res, gate)
+        self._yt_res, self._yt_view = res, v
+        self._set_prac_state(v["state"])
+        self.p_status.set("")
+        self._yt_render(v)
+
+    def _yt_render(self, v):
+        """Đoạn văn tô màu theo từ; panel phải: vòng điểm, CẦN SỬA, PHỤ ĐỀ CÓ THỂ SAI."""
+        self._destroy_embeds()
+        self._last_view = None
+        self._yt_fill_text(v["marks"])
+        self._draw_ring(v["ring"])
+        self.p_headline.configure(text=v["headline"])
+        self.p_summary.configure(text=v["summary"], font=(self.F, 10))
+        s, res = self._yt_sess, self._yt_res
+        tgt = res.get("target", "")
+        mine = token_spans(res.get("words_t"), tgt)
+        orig = token_spans(s.orig_words.get(self._yt_idx), tgt) if s else {}
+
+        def caps(text):
+            lb = self._caps(self.pp_yt, text)
+            lb.pack(fill="x", pady=(self.px(14) if self.pp_yt.winfo_children()[:-1] else 0,
+                                    self.px(2)))
+            self._embeds.append(lb)
+
+        def row(color, text, ti, muted=False):
+            r = self._frame(self.pp_yt, bg="side")
+            r.pack(fill="x", pady=(self.px(5), 0))
+            self._embeds.append(r)
+            d = self.px(8)
+            dot = self._tw(tk.Canvas(r, width=d, height=d, bd=0, highlightthickness=0),
+                           bg="side")
+            dot.create_oval(0, 0, d, d, outline="", fill=color)
+            dot.pack(side="left", anchor="n", padx=(0, self.px(10)), pady=(self.px(5), 0))
+            links = self._frame(r, bg="side")
+            links.pack(side="right", anchor="n")
+            sp = mine.get(ti)
+            if sp and self.last_wav:
+                self._link_lbl(links, "▶ Bạn đọc",
+                               lambda a=sp: self._play_span(self.last_wav, a[0], a[1]),
+                               bg="side", size=9).pack(side="right", padx=(self.px(10), 0))
+            sp = orig.get(ti)
+            if sp and s and s.wav:
+                self._link_lbl(links, "▶ Mẫu", lambda a=sp: self._play_span(s.wav, a[0], a[1]),
+                               bg="side", size=9).pack(side="right", padx=(self.px(10), 0))
+            self._wrap(self._lbl(r, text, bg="side", fg="muted" if muted else "fg", size=10,
+                                 justify="left", anchor="w"), self.px(150)).pack(
+                side="left", fill="x", expand=True)
+
+        P = self.P
+        sections = ["head"]
+        if v["state"] == "unsure":
+            for tip in v["tips"]:
+                lb = self._wrap(self._lbl(self.pp_yt, "•  " + tip, bg="side", size=10,
+                                          justify="left", anchor="w"))
+                lb.pack(fill="x", pady=(0, self.px(4)))
+                self._embeds.append(lb)
+            sections.append("yt")
+            self._show_actions("Đọc lại đoạn này", self._prac_record)
+            self._panel_show(sections)
+            return
+        if v["fixes"]:
+            caps("CẦN SỬA (%d)" % len(v["fixes"]))
+            for f in v["fixes"][:YT_ROWS_MAX]:
+                row(P["bad_line"] if f["kind"] == "bad" else P["warn_line"], f["text"], f["ti"])
+            if len(v["fixes"]) > YT_ROWS_MAX:
+                caps("… và %d từ khác (tô màu trong đoạn)" % (len(v["fixes"]) - YT_ROWS_MAX))
+        if v["doubts"]:
+            caps("PHỤ ĐỀ CÓ THỂ SAI — KHÔNG TÍNH (%d)" % len(v["doubts"]))
+            for d in v["doubts"][:YT_ROWS_MAX]:
+                row(P["border"], d["text"], d["ti"], muted=True)
+        if v["extras"]:
+            more = len(v["extras"]) - 6
+            caps("ĐỌC THÊM")
+            lb = self._wrap(self._lbl(self.pp_yt, ", ".join("“%s”" % w for w in v["extras"][:6])
+                                      + (" … +%d từ" % more if more > 0 else ""),
+                                      bg="side", fg="muted", size=9, justify="left", anchor="w"))
+            lb.pack(fill="x")
+            self._embeds.append(lb)
+        if self.pp_yt.winfo_children():
+            sections.append("yt")
+        self._show_actions("Đọc lại đoạn này", self._prac_record,
+                           "Đoạn sau →", lambda: self._step_lesson(1))
+        self._panel_show(sections)
+        self._side_wrap(self._side_body.winfo_width())
 
     # ================= micro =================
     def _refresh_mics(self, rescan=False):
@@ -6281,6 +6784,9 @@ class App(tk.Tk):
             self.recorder.stop()
         self._stop_play()
         self._set_last_wav(None)      # xóa bản ghi luyện tạm (I10)
+        self._yt_cancel = True
+        if self._yt_sess:
+            self._yt_sess.close()     # audio gốc của phiên đọc to (I10, D-39)
         self.destroy()
 
 
