@@ -1770,6 +1770,77 @@ def intonation_view(sentences, pitch_usr, pitch_ref):
     return {"sentences": rows, "range_usr": ru, "range_ref": rr, "flat": flat, "lines": lines}
 
 
+RHYTHM_MIN_TOKENS = 5    # cần ≥ 5 từ chức năng và ≥ 5 từ chính đọc đúng mới nhận xét nhịp
+RHYTHM_SLOW = 1.5        # từ chức năng của bạn dài ≥ 1,5 × người nói → "đọc từ ngắn quá dài" (D-45)
+RHYTHM_EX_MIN = 0.25     # ví dụ: từ chức năng ≥ 0,25 s VÀ ≥ 2 × người nói
+RHYTHM_EX_MAX = 0.8
+RHYTHM_EX_SHOW = 5
+
+
+def rhythm_samples(res, mine, orig):
+    """Thời lượng (giây) từ chức năng / một âm tiết từ chính, bạn vs người nói, chỉ các token
+    đọc ĐÚNG có mốc ở cả hai bên và không dùng chung mốc (I'm → i + am). Hàm thuần.
+    → {"fu", "fr", "cu", "cr": [giây], "ex": [(từ, bạn, người nói, token)]}."""
+    toks = (res.get("target") or "").split()
+    ok, ti = set(), 0
+    for tok, kind, _h, _n in res.get("items") or []:
+        if tok is None:
+            continue
+        if kind == "ok":
+            ok.add(ti)
+        ti += 1
+
+    def dur(sp, k):
+        a = sp.get(k)
+        if not a or a[0] is None or a[1] is None or a[1] <= a[0]:
+            return None
+        if sum(1 for v in sp.values() if v[:2] == a[:2]) > 1:
+            return None
+        return a[1] - a[0]
+    out = {"fu": [], "fr": [], "cu": [], "cr": [], "ex": []}
+    for k, w in enumerate(toks):
+        if k not in ok:
+            continue
+        du, dr = dur(mine, k), dur(orig or {}, k)
+        if du is None or dr is None:
+            continue
+        if w in pron_en.FUNCTION_WORDS:
+            out["fu"].append(du)
+            out["fr"].append(dr)
+            # > 0,8 s thường là mốc Whisper kéo dài sang chỗ ngừng sau từ — không lấy làm ví dụ
+            if RHYTHM_EX_MIN <= du <= RHYTHM_EX_MAX and du >= 2 * dr:
+                out["ex"].append((w, du, dr, k))
+        else:
+            n = pron_en.syllables(w)
+            out["cu"].append(du / n)
+            out["cr"].append(dr / n)
+    return out
+
+
+def rhythm_view(samples):
+    """Nhịp (D-45) từ rhythm_samples (một đoạn hoặc gộp nhiều đoạn). Hàm thuần, chỉ MÔ TẢ.
+
+    Đo trên 4 đoạn thật: từ chức năng của người học ~330–510 ms, người nói ~150–310 ms, còn một
+    âm tiết từ chính gần bằng nhau → đây là tín hiệu nhịp đáng tin. KHÔNG so từ được nhấn (R-16)."""
+    import numpy as np
+    s = samples or {}
+    if min(len(s.get("fu", [])), len(s.get("cu", []))) < RHYTHM_MIN_TOKENS:
+        return {"even": False, "lines": [], "ex": [], "func_usr": None, "func_ref": None}
+    fu, fr = float(np.median(s["fu"])), float(np.median(s["fr"]))
+    cu, cr = float(np.median(s["cu"])), float(np.median(s["cr"]))
+    even = fu >= RHYTHM_SLOW * fr
+    ex = sorted(s.get("ex", []), key=lambda e: -e[1] / max(e[2], 0.01))[:RHYTHM_EX_SHOW]
+    lines = ["Từ ngắn (to, of, the, and…): bạn ~%d ms · người nói ~%d ms%s; một âm tiết từ chính:"
+             " bạn ~%d · người nói ~%d ms" % (round(fu * 1000, -1), round(fr * 1000, -1),
+                                             " — dài gấp %s lần" % _vn_num(fu / fr) if even else "",
+                                             round(cu * 1000, -1), round(cr * 1000, -1))]
+    if even:
+        lines.append("Tiếng Anh có nhịp nhấn: từ chính đọc rõ, từ ngắn đọc lướt, nhẹ, nhanh (to → "
+                     "/tə/, of → /əv/, the → /ðə/, and → /ən/). Tiếng Việt đọc đều mỗi tiếng nên "
+                     "ta hay kéo dài từ ngắn — nghe người nói và rút gọn chúng.")
+    return {"even": even, "lines": lines, "ex": ex, "func_usr": fu, "func_ref": fr}
+
+
 UNREAD_MIN = 3       # ≥ ngần này từ cuối đoạn không nghe thấy → "chưa đọc tới" (người học dừng)
 PATTERN_SHOW = 4     # số mẫu lỗi tối đa trong mục ÂM HAY SAI
 PATTERN_EXAMPLES = 4
@@ -1897,6 +1968,7 @@ def session_report(info, done):
     paras, pats, words = [], {}, {}
     corr = tot = doubts = unread = 0
     extra, missed, hesit, rng = [], [], 0, []
+    pool = {"fu": [], "fr": [], "cu": [], "cr": [], "ex": []}
     w_usr = w_ref = n_usr = n_ref = 0.0
     for d in done:
         res, idx = d["res"], d["idx"]
@@ -1912,6 +1984,9 @@ def session_report(info, done):
         orig = token_spans(d.get("orig_words"), tgt)
         flu = fluency_view(d["text"], res, mine, orig)
         iv = intonation_view(flu["sentences"], res.get("pitch"), d.get("pitch_ref"))
+        smp = rhythm_samples(res, mine, orig)
+        for key in ("fu", "fr", "cu", "cr", "ex"):
+            pool[key] += smp[key]
         for it in iv["sentences"]:
             if it["range_usr"] is not None and it["range_ref"] is not None:
                 rng.append((it["range_usr"], it["range_ref"]))
@@ -1957,7 +2032,17 @@ def session_report(info, done):
     if groups and groups[0]["n"] >= 2:
         g = groups[0]
         focus.append({"title": "%s (%d từ)" % (g["title"], g["n"]), "detail": g["tip"]})
-    if wpm_u and wpm_r and wpm_u < REPORT_SLOW * wpm_r:
+    rhythm = rhythm_view(pool)
+    ratio = (rhythm["func_usr"] / rhythm["func_ref"]) if rhythm["even"] else None
+    slow = bool(wpm_u and wpm_r and wpm_u < REPORT_SLOW * wpm_r)
+    if slow and ratio:
+        # chậm CHỦ YẾU vì kéo dài từ ngắn (âm tiết từ chính gần bằng người nói) → một mục gộp
+        focus.append({"title": "Tốc độ & nhịp: %d từ/phút (người nói %d) — từ ngắn dài gấp %s lần"
+                      % (wpm_u, wpm_r, _vn_num(ratio)),
+                      "detail": "Từ chính bạn đọc nhanh gần bằng người nói; chậm là vì to, of, "
+                                "the, and… bị kéo dài. Đọc lướt chúng (dạng yếu /tə/ /əv/ /ðə/), "
+                                "dồn sức vào từ chính."})
+    elif slow:
         focus.append({"title": "Tốc độ: %d từ/phút, người nói %d" % (wpm_u, wpm_r),
                       "detail": "Chọn “Nghe rồi đọc”, đọc theo từng câu cho tới khi theo kịp "
                                 "nhịp người nói; đừng cố đọc nhanh khi chưa rõ âm."})
@@ -1970,6 +2055,10 @@ def session_report(info, done):
             _vn_num(ru).replace(",0", ""), _vn_num(rr).replace(",0", "")),
             "detail": "Lên giọng ở từ khóa, hạ rõ ở cuối câu kể. Nghe đường cao độ của "
                       "người nói từng câu rồi bắt chước, lúc đầu cứ phóng đại."})
+    if ratio and not slow:
+        focus.append({"title": "Nhịp: từ ngắn đọc dài gấp %s lần người nói" % _vn_num(ratio),
+            "detail": "Đọc lướt to, of, the, and… (dạng yếu /tə/ /əv/ /ðə/), dồn sức vào từ "
+                      "chính — tiếng Anh không đọc đều từng tiếng như tiếng Việt."})
     if len(extra) >= 3:
         focus.append({"title": "Ngừng giữa cụm từ: %d chỗ" % len(extra),
                       "detail": "Đọc liền cả cụm (vd “%s”), chỉ ngừng ở dấu phẩy, dấu chấm."
@@ -2004,6 +2093,9 @@ def session_report(info, done):
             "doubts": doubts, "unread": unread, "wpm_usr": wpm_u, "wpm_ref": wpm_r,
             "focus": focus[:3], "patterns": groups, "fluency": fluency, "paras": paras,
             "intonation": intonation, "range_usr": ru, "range_ref": rr, "flat": flat,
+            "rhythm": rhythm["lines"][:1] + (["Ví dụ đọc quá dài: " + ", ".join(
+                "%s %d ms (người nói %d)" % (w, round(a * 1000, -1), round(b * 1000, -1))
+                for w, a, b, _k in rhythm["ex"])] if rhythm["ex"] else []),
             "words": practise}
 
 
@@ -2053,6 +2145,10 @@ def report_html(rep, audio=None):
                        "</span><br>%s</div>" % (
                            e(g["title"]), g["n"],
                            e(pattern_example_text(g["examples"], REPORT_EXAMPLES)), e(g["tip"])))
+    if rep.get("rhythm"):
+        out.append("<h2>Nhịp</h2><ul>")
+        out += ["<li>%s</li>" % e(x) for x in rep["rhythm"]]
+        out.append("</ul>")
     if rep.get("intonation"):
         out.append("<h2>Ngữ điệu</h2><ul>")
         out += ["<li>%s</li>" % e(x) for x in rep["intonation"]]
@@ -7171,6 +7267,10 @@ class App(tk.Tk):
             caps("NGỮ ĐIỆU")
             for x in rep["intonation"]:
                 lbl(box, "•  " + x).pack(fill="x", pady=(self.px(2), 0))
+        if rep.get("rhythm"):
+            caps("NHỊP")
+            for x in rep["rhythm"]:
+                lbl(box, "•  " + x).pack(fill="x", pady=(self.px(2), 0))
         if rep["fluency"]:
             caps("TRÔI CHẢY")
             for x in rep["fluency"]:
@@ -7403,6 +7503,16 @@ class App(tk.Tk):
             caps("NGỮ ĐIỆU")
             for ln in inton["lines"]:
                 note(ln)
+        rhy = rhythm_view(rhythm_samples(res, mine, orig)) if flu else None
+        if rhy and rhy["lines"]:
+            caps("NHỊP — từ ngắn đọc lướt, từ chính đọc rõ")
+            for ln in rhy["lines"]:
+                note(ln)
+            if rhy["ex"]:
+                w, du, dr, k = rhy["ex"][0]
+                row(P["warn_line"], "Đọc quá dài: " + ", ".join(
+                    "“%s” %d ms (người nói %d)" % (w_, round(a * 1000, -1), round(b * 1000, -1))
+                    for w_, a, b, _k in rhy["ex"]), mine.get(k), orig.get(k))
         if flu and flu["sentences"]:
             caps("TỪNG CÂU — cao độ: chấm = người nói, liền = bạn")
             for i, st in enumerate(flu["sentences"], 1):

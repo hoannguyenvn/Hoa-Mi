@@ -1206,3 +1206,17 @@ Test `intonation_range_not_direction` (86/86); `ui_shots` thêm ảnh panel cu�
 **Chưa kiểm chứng:** người dùng xem đường cao độ trên máy; số từng câu có lúc lệch (đoạn 4: 16,6 vs 10,8 —
 nghi khung lỗi), kết luận dùng trung vị.
 **Việc tiếp theo:** R3 nhấn & nhịp (từ được nhấn theo cụm; từ chức năng đọc quá dài/mạnh).
+
+## 2026-10-24 (tiếp 13) — Claude Opus 5.5 — D-45: R3 nhịp
+
+**Đo trước khi làm (4 đoạn thật, medium):** từ chức năng người học ~330–510 ms vs người nói ~150–310 ms, âm
+tiết từ chính gần bằng → tín hiệu nhịp nhất quán. "Từ được nhấn theo cụm" (`word_stress`) trùng 0–3/7–8 cụm
+và chấm cả người nói nhấn of/to/the → bỏ (R-16).
+**Đã làm:** `pron_en.FUNCTION_WORDS`, `syllables`; `app.rhythm_samples`, `rhythm_view`, `RHYTHM_*`; panel mục
+NHỊP + dòng ví dụ có ▶; báo cáo gộp nhịp cả bài (mục Nhịp, HTML), "Tốc độ & nhịp" khi vừa chậm vừa kéo dài từ
+ngắn. Test `rhythm_function_words_not_stress` (87/87).
+**Kết quả 4 đoạn thật:** từ ngắn ~380 vs ~200 ms (1,9×); báo cáo — âm cuối & -s (15 từ), tốc độ & nhịp (112 vs
+156, từ ngắn 1,9×), giọng đều (~5,3 vs ~12,4).
+**Đã kiểm chứng:** smoke 87/87, context_check; ảnh; e2e thật 0 lỗi callback. **Chưa kiểm chứng:** người dùng
+xem trên máy.
+**Việc tiếp theo:** R4 nối âm (điểm nối phụ âm cuối + nguyên âm đầu; báo khi bạn ngắt mà người nói đọc liền).

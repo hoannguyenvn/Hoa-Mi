@@ -81,7 +81,7 @@
 |---|---|---|
 | R1 | Giữ bản thu + kết quả từng đoạn; "Lưu bản thu…"; ▶ Mẫu / ▶ Bạn đọc từng câu (`sentence_ranges`); TRÔI CHẢY (`fluency_view`): tốc độ, từ/hơi, ngừng giữa cụm (dấu "/"), người nói ngừng mà bạn đọc liền, ngập ngừng | ✅ |
 | R2 | NGỮ ĐIỆU (D-44): dải cao độ từng câu bạn vs người nói + đường cao độ thu nhỏ; "giọng đều" vào báo cáo. Không phán lên/xuống cuối câu (đo thấy không ổn định) | ✅ |
-| R3 | NHẤN & NHỊP: từ được nhấn theo **cụm** (giữa hai chỗ ngừng) bạn vs người nói; từ chức năng (to, of, the…) đọc quá dài/mạnh | ⛔ |
+| R3 | NHỊP (D-45): từ chức năng bạn vs người nói + ví dụ; báo cáo "Tốc độ & nhịp". Không so từ được nhấn (đo thấy sai trên chính người nói) | ✅ |
 | R4 | NỐI ÂM: điểm nối (phụ âm cuối + nguyên âm đầu) đánh dấu trong đoạn; báo khi bạn ngắt ở đó mà người nói đọc liền; nuốt âm chỉ là gợi ý | ⛔ |
 | R5 | Báo cáo cuối phiên (D-43): 3 điều nên tập trung, âm hay sai cả bài, trôi chảy, từng đoạn, từ cần luyện, lưu HTML; kết thúc sớm được | ✅ |
 | R6 | So lần trước, Từ cần luyện, lịch sử theo hồ sơ người học cục bộ (Y4 cũ) | ⛔ |

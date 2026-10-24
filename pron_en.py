@@ -423,6 +423,10 @@ SHORT_WORDS = {"a", "an", "the", "of", "to", "in", "on", "at", "is", "are", "am"
                "was", "were", "up", "and", "or", "for", "as", "it", "its", "by", "with",
                "from", "that", "this", "but", "so", "if", "we", "you", "he", "she", "they",
                "i", "me", "my", "our", "your", "can", "do", "has", "have", "had", "not"}
+# Từ chức năng: tiếng Anh đọc lướt, nhẹ (dạng yếu /tə/ /əv/ /ðə/) — dùng cho nhịp (D-45)
+FUNCTION_WORDS = SHORT_WORDS | {"than", "their", "them", "there", "which", "who", "about",
+                                "into", "will", "would", "could", "should", "been", "does",
+                                "did", "his", "her", "its", "us", "some", "such", "then"}
 _DIPH = {"EY", "OW", "AY", "AW", "OY"}
 PATTERN_MIN_SIM = 0.3   # giống nhau (âm vị) dưới mức này → coi là máy nghe nhầm, không xếp mẫu
 # (much→"two" 0, trash→"just" 0,25 bị loại; nose→"lobe" 0,33 vẫn là n→l)
@@ -488,3 +492,11 @@ def error_patterns(exp_word, got_word):
         if len(ew) > 1 and ew[0] == "s" and ew[1] not in "aeiouy" and gw[:2] != ew[:2]:
             out.append("cluster")
     return out
+
+
+def syllables(word):
+    """Số âm tiết (số nguyên âm CMUdict); từ ngoài từ điển: ước theo cụm nguyên âm chữ."""
+    ph = phonemes(word)
+    if ph:
+        return max(1, sum(p in VOWELS for p in ph))
+    return max(1, len(re.findall(r"[aeiouy]+", _letters(word or ""))))

@@ -310,6 +310,34 @@ def intonation_range_not_direction():
 
 
 @case
+def rhythm_function_words_not_stress():
+    # D-45: nhịp = từ chức năng dài so với người nói; không so từ được nhấn (R-16)
+    text = ("The cat sat on the mat and the dog ran to the park with a ball of string "
+            "for the kids in the yard.")
+    plain = text.lower().replace(".", "")
+    res = app.read_aloud_diff(text, plain, plain)
+    toks = res["target"].split()
+
+    def times(func_d, cont_d):
+        t, out = 0.0, []
+        for w in toks:
+            d = func_d if w in app.pron_en.FUNCTION_WORDS else cont_d * app.pron_en.syllables(w)
+            out.append({"w": w, "s": round(t, 3), "e": round(t + d, 3), "p": 0.9})
+            t += d + 0.03
+        return out
+    mine = app.token_spans(times(0.40, 0.26), res["target"])     # từ ngắn 400 ms
+    ref = app.token_spans(times(0.18, 0.25), res["target"])      # người nói 180 ms
+    smp = app.rhythm_samples(res, mine, ref)
+    v = app.rhythm_view(smp)
+    assert v["even"] and v["lines"] and "dài gấp" in v["lines"][0], v
+    assert v["ex"] and all(w in app.pron_en.FUNCTION_WORDS for w, *_ in v["ex"])
+    same = app.rhythm_view(app.rhythm_samples(res, ref, ref))
+    assert not same["even"] and len(same["lines"]) == 1
+    assert app.rhythm_view({"fu": [0.3], "fr": [0.2], "cu": [0.2], "cr": [0.2]})["lines"] == []
+    assert app.pron_en.syllables("olfactory") == 4 and app.pron_en.syllables("the") == 1
+
+
+@case
 def tone_strip_keeps_letters():
     # strip_tone_vi trả chuỗi NFD (giữ dấu chữ như ă/â), nên chuẩn hóa NFC để so.
     import unicodedata

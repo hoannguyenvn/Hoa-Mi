@@ -131,6 +131,8 @@
       "fluency_view",
       "error_pattern_view",
       "intonation_view",
+      "rhythm_samples",
+      "rhythm_view",
       "ytread_orig_pitch",
       "session_report",
       "report_html",
@@ -224,7 +226,8 @@
       "analyze_pairs",
       "TIPS",
       "LETTER_TIPS",
-      "error_patterns"
+      "error_patterns",
+      "syllables"
     ],
     "gop.py": [
       "available",

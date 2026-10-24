@@ -155,6 +155,8 @@ Ba chế độ:
   - **Ngữ điệu**: so độ dao động cao độ mỗi câu của bạn với người nói (vd bạn ~5 bán cung, người
     nói ~12 → "giọng bạn đều hơn nhiều"), kèm đường cao độ thu nhỏ từng câu (chấm = người nói,
     liền = bạn) để bắt chước chỗ lên/xuống giọng. Chỉ mô tả, không tính điểm.
+  - **Nhịp**: so độ dài từ ngắn (to, of, the, and…) của bạn với người nói — người Việt hay đọc
+    đều từng tiếng nên kéo dài từ ngắn (vd bạn ~380 ms, người nói ~200 ms), kèm ví dụ và ▶.
   - **Trôi chảy** (so với người nói, không tính điểm): tốc độ đọc, số từ mỗi hơi, chỗ bạn
     ngừng giữa cụm từ (dấu **/** đỏ trong đoạn), chỗ người nói ngừng mà bạn đọc liền.
   - **Từng câu**: ▶ Mẫu (người nói) và ▶ Bạn đọc cho mỗi câu, kèm thời lượng hai bên.

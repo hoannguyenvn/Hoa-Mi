@@ -471,6 +471,17 @@ cao độ ổn định trên hàng trăm khung: người học ~5 bán cung mọ
 đọc trong worker chấm (`res["pitch"]`) — thời gian chấm gần như không đổi (~11 s). Số từng câu chỉ gần đúng
 (đoạn ngắn / khung lỗi); kết luận dùng trung vị nhiều câu. Test: `intonation_range_not_direction`.
 
+### D-45 — Từ YouTube: R3 = nhịp (từ chức năng), không so từ được nhấn (2026-10-24)
+**Quyết định:** "Nhấn & nhịp" chỉ đo **nhịp**: thời lượng từ chức năng (`pron_en.FUNCTION_WORDS`) so với một
+âm tiết từ chính, người học vs người nói (`app.rhythm_samples`, `rhythm_view`; chỉ token đọc đúng, có mốc hai
+bên, không chung mốc). Từ ngắn dài ≥ 1,5 × người nói → mục NHỊP nói rõ + ví dụ (0,25–0,8 s và ≥ 2 × người
+nói; > 0,8 s thường là mốc kéo sang chỗ ngừng). Báo cáo gộp cả bài; nếu vừa chậm vừa kéo dài từ ngắn → một
+mục "Tốc độ & nhịp" (chậm là vì từ ngắn, từ chính gần bằng người nói). **Không** so "từ được nhấn trong cụm".
+**Vì sao:** đo trên 4 đoạn thật: từ chức năng người học ~330–510 ms vs người nói ~150–310 ms (1,6–2,4×), âm tiết
+từ chính gần bằng (220–330 vs 180–260 ms) — nhất quán. Nhấn theo cụm (`prosody.word_stress`): trùng 0–3/7–8
+cụm, và "từ nhấn" của chính người nói hay rơi vào of/to/the/about/in → thước đo sai ngay trên giọng chuẩn.
+**Hệ quả:** R-16. Test: `rhythm_function_words_not_stress`.
+
 ## B. Những cách làm đã bị loại (đừng lặp lại)
 
 Nguồn: `PHASE2-DANH-GIA-DU-AN-CU.md` §2.2 và §6.
@@ -492,6 +503,7 @@ Nguồn: `PHASE2-DANH-GIA-DU-AN-CU.md` §2.2 và §6.
 | R-13 | Chấm bằng TTS làm chuẩn | TTS chỉ để nghe mẫu |
 | R-14 | Cookie tài khoản trong repo | bảo mật |
 | R-15 | Phán "cuối câu bạn lên/xuống giọng sai" trên đoạn văn YouTube | hướng F0 cuối câu không ổn định (D-44) |
+| R-16 | So "từ được nhấn" từng cụm với người nói (`word_stress` trên đoạn văn) | chính người nói bị chấm nhấn vào of/to/the (D-45) |
 
 ## C. Quyết định đang chờ người dùng
 

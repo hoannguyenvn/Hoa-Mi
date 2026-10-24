@@ -160,3 +160,9 @@ Bất kỳ lỗi/thiếu dữ liệu → `None`; UI ẩn thẻ.
 → {range (p90 − p10), curve CURVE_POINTS điểm, frames}. `app.intonation_view` so dải từng câu (bỏ câu có
 `cov_usr` < 0,6), `FLAT_RATIO` 0,6 → "giọng đều". **Không** phán lên/xuống cuối câu ở chế độ này (R-15):
 đo thấy hướng F0 cuối câu đổi chiều theo cửa sổ. Muốn thêm phải đo lại trên bản lưu thật trước.
+
+## Nhịp đoạn văn YouTube (D-45)
+
+`app.rhythm_samples(res, mine, orig)` → thời lượng từ chức năng / một âm tiết từ chính (token đúng, mốc hai
+bên, không chung mốc); `rhythm_view` → "từ ngắn dài gấp x lần" khi ≥ `RHYTHM_SLOW` (1,5). Không so từ được
+nhấn (R-16): `word_stress` trên đoạn văn chấm cả người nói nhấn vào of/to/the.
