@@ -1,6 +1,6 @@
 # PROJECT STATE — Oriole
 
-- **Cập nhật lần cuối:** 2026-10-24 (đo bản thu thật đầu tiên — mic laptop + AirPods; `asr_bench` đọc m4a)
+- **Cập nhật lần cuối:** 2026-10-24 (D-38 giọng Bắc; D-39 đọc to transcript YouTube — Y1)
 - **Phiên bản code:** 2.3 (`VERSION` trong `app.py`)
 - **Trạng thái:** chạy được trên máy hiện tại; git repo `main` (D-33); chưa có test tự động đầy đủ.
 - **Nguồn sự thật:** code + `docs/context-map.json`. Tài liệu này chỉ tóm tắt.
@@ -14,8 +14,9 @@
   — người dùng thử tay: file thật, YouTube thật, ghi âm 15 phút, luyện VI + EN, Esc giữa
   chừng, đổi bài, tối, cửa sổ nhỏ; scaling 100/150 % nếu có máy khác. Rồi Phase 5 (đóng
   gói tài liệu).
-- [ ] **P3 — Thanh điệu tiếng Việt bằng F0:** phân loại 6 thanh từ contour, so với mẫu
-  cùng âm tiết; hiện "bạn đọc thanh sắc, mẫu là thanh huyền".
+- [ ] **P5 — Đọc to transcript YouTube tiếng Anh (D-39, `docs/YT-READING-PLAN.md`):** Y1 (hàm
+  thuần `yt_read.py` + `read_aloud_diff`) xong. Kế tiếp Y2 (worker phụ đề + audio gốc). Trước Y4
+  cần người dùng xác nhận "tài khoản" = hồ sơ người học cục bộ (app offline, I9).
 - [ ] **P4 — Chất lượng thu âm/nhận dạng + hiệu chuẩn điểm:** đợt 1 (D-36) + đợt 2 (D-37) xong.
   Bản thu thật đầu tiên (2026-10-24, `sound calibrate/`, 1 người đọc đoạn văn Việt 66 từ ~20 s,
   mic laptop + AirPods): đã đo, xem HANDOFF; giọng Bắc r/d/gi, s/x, tr/ch nay tính đúng (D-38).
@@ -104,7 +105,7 @@ Khi người dùng trả lời, ghi thành `D-xx` trong `docs/DECISIONS.md` và 
 $env:PYTHONIOENCODING='utf-8'
 & "C:\Users\ADMIN\miniforge3\python.exe" tools\context_check.py
 & "C:\Users\ADMIN\miniforge3\python.exe" tools\smoke_test.py
-& "C:\Users\ADMIN\miniforge3\python.exe" -m py_compile app.py pron_en.py gop.py prosody.py gen_mau.py tools\build_lessons.py tools\context_check.py tools\smoke_test.py
+& "C:\Users\ADMIN\miniforge3\python.exe" -m py_compile app.py pron_en.py gop.py prosody.py yt_read.py gen_mau.py tools\build_lessons.py tools\context_check.py tools\smoke_test.py
 ```
 
 Kết quả lần chạy gần nhất: xem `docs/CONTEXT-SNAPSHOT.md` (file sinh tự động).

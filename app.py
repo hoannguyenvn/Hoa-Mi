@@ -1277,7 +1277,54 @@ def score_pronunciation(target, hyp, lang):
             "hyp": " ".join(hw)}
 
 
-GOP_LEVEL_STRONG = 25   # điểm GOP dưới mức này → "lệch rõ"; còn lại trong issues → "hơi lệch"
+def read_aloud_diff(sub_text, learner_hyp, orig_hyp=None):
+    """Đọc to đoạn transcript YouTube (D-39): phụ đề vs lời người học, tiếng Anh.
+
+    So sau `yt_read.en_tokens` (rút gọn, số, từ đệm). orig_hyp = Whisper trên audio GỐC
+    của đoạn: từ phụ đề mà ở đó cũng không khớp → `doubt` "phụ đề có thể sai"; chữ số đọc
+    khác → `doubt` "số". `doubt` không tính vào đúng lẫn tổng. Hàm thuần.
+    Trả như `score_pronunciation` + doubts, src_idx (từ mẫu thứ k → chỉ số từ trong
+    sub_text.split(), để tô màu chữ gốc).
+    """
+    import yt_read
+    tt = yt_read.en_tokens(sub_text)
+    target = " ".join(t for t, _i, _n in tt)
+
+    def hyp(s):
+        return " ".join(t for t, _i, _n in yt_read.en_tokens(s))
+
+    res = score_pronunciation(target, hyp(learner_hyp), "en")
+    orig = None
+    if orig_hyp is not None:
+        orig = [it for it in score_pronunciation(target, hyp(orig_hyp), "en")["items"]
+                if it[0] is not None]
+    items, src, ti = [], [], 0
+    for tok, kind, heard, note in res["items"]:
+        if tok is None:
+            items.append((tok, kind, heard, note))
+            continue
+        _t, si, is_num = tt[ti] if ti < len(tt) else (tok, None, False)
+        if kind != "ok":
+            if orig and ti < len(orig) and orig[ti][1] != "ok":
+                said = orig[ti][2]
+                kind, note = "doubt", ("phụ đề có thể sai — trong video nghe như “%s”" % said
+                                       if said else
+                                       "phụ đề có thể sai — trong video không nghe rõ từ này")
+            elif is_num:
+                kind, note = "doubt", "số — có thể đọc khác cách viết"
+        items.append((tok, kind, heard, note))
+        src.append(si)
+        ti += 1
+    doubts = sum(1 for it in items if it[1] == "doubt")
+    correct = sum(1 for it in items if it[1] == "ok")
+    total = len(tt) - doubts
+    return {"items": items, "correct": correct, "total": total, "doubts": doubts,
+            "score": round(100.0 * correct / total, 1) if total else 0.0,
+            "warns": sum(1 for it in items if it[1] == "warn"), "tones": 0, "rhymes": 0,
+            "hyp": res["hyp"], "src_idx": src}
+
+
+GOP_LEVEL_STRONG = 25  # điểm GOP dưới mức này → "lệch rõ"; còn lại trong issues → "hơi lệch"
 VI_SOUND_CODES = {"nl": "N/L", "tone": "dấu thanh", "rhyme": "vần/dấu"}  # "âm hay sai" bài Việt
 
 # ---------- cổng bằng chứng (D-29): không hiện điểm khi máy không chắc ----------

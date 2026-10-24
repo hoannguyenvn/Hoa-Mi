@@ -985,3 +985,24 @@ không đổi.
 **Chưa kiểm chứng:** giao diện app với từ giọng Bắc (chip ✓ — logic `stage_words` không đổi).
 **Việc tiếp theo:** thu câu bài ngắn bằng chính app để kiểm `SNR_LOW_DB`/1,8 s (P4a); Phase 4.
 **Cảnh báo:** nếu thêm bài luyện riêng r/d/gi, s/x, tr/ch thì bài đó phải tắt khóa giọng Bắc.
+
+## 2026-10-24 (tiếp 2) — Claude Opus 5.5 — D-39 + Y1: đọc to transcript YouTube
+
+**Người dùng yêu cầu:** người học xem video YouTube tiếng Anh → dán link → transcript → đọc to →
+app tô khác biệt và mời sửa. Đã phân tích; người dùng quyết: đọc **cả đoạn**, dùng **audio gốc**
+làm mẫu, phiên một lần nhưng **lịch sử theo người học**, có cả nghe-rồi-đọc và đọc thẳng, ghi
+**"phụ đề có thể sai"**. → D-39, kế hoạch `docs/YT-READING-PLAN.md` (Y1–Y5).
+
+**Đã làm (Y1, hàm thuần):** `yt_read.py` mới — `clean_caption`, `build_paragraphs` (20–45 s,
+cắt ở khoảng lặng ≥1,5 s/cuối câu), `number_words`, `en_tokens` (rút gọn, gonna, từ đệm, số,
+nhớ chỉ số từ gốc). `app.read_aloud_diff` (dùng `score_pronunciation` "en"; kind `doubt` khi
+Whisper trên audio gốc cũng không khớp phụ đề hoặc chữ số đọc khác; `doubt` ngoài tổng).
+3 test mới (78/78). AGENTS §3/§5, context-map, ROADMAP P5, PROJECT-STATE.
+
+**Chưa kiểm chứng:** với video thật (chưa có worker); ngưỡng chia đoạn trên phụ đề tự động thật.
+**Việc tiếp theo:** Y2 — worker lấy phụ đề + audio gốc (tái dùng `_yt_fetch_sub_cues`,
+`_w_whisper_cues`), Whisper từng đoạn gốc → `orig_hyp`; đo tỉ lệ "phụ đề có thể sai" trên 2–3
+video thật trước khi làm UI.
+**Câu hỏi mở:** "tài khoản người học" — đề xuất hồ sơ cục bộ (offline, I9); cần xác nhận trước Y4.
+**Cảnh báo:** `read_aloud_diff` giả định token sau `en_tokens` khớp 1-1 với `norm_words` — token
+chỉ gồm [a-z0-9'], đừng thêm ký tự khác vào bảng `_WHOLE`.

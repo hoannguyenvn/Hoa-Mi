@@ -13,7 +13,8 @@
     "docs/DECISIONS.md",
     "docs/HANDOFF.md",
     "docs/ROADMAP.md",
-    "docs/UI-PLAN.md"
+    "docs/UI-PLAN.md",
+    "docs/YT-READING-PLAN.md"
   ],
   "python": {
     "app.py": [
@@ -123,6 +124,7 @@
       "App._src_label",
       "strip_marks_vi",
       "vi_north_key",
+      "read_aloud_diff",
       "evidence_gate",
       "vi_spell",
       "has_ipa",
@@ -195,6 +197,12 @@
       "available",
       "score",
       "forget"
+    ],
+    "yt_read.py": [
+      "clean_caption",
+      "build_paragraphs",
+      "number_words",
+      "en_tokens"
     ],
     "prosody.py": [
       "read_wav",

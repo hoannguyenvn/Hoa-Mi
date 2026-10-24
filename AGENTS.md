@@ -57,6 +57,7 @@ Mục tiêu: một model khác mở repo, đọc 3 file (`PROJECT-STATE`, `HANDO
 | `pron_en.py` | CMUdict, IPA, căn chỉnh âm vị, gợi ý sửa | `analyze_pairs`, `compare_words`, `TIPS` |
 | `gop.py` | GOP acoustic (wav2vec2 CTC), tùy chọn | `available`, `score` |
 | `prosody.py` | F0 autocorrelation, contour bán cung, DTW | `compare`, `contour` |
+| `yt_read.py` | Đọc to transcript YouTube: làm sạch phụ đề, chia đoạn, chuẩn hóa tiếng Anh (D-39) | `build_paragraphs`, `en_tokens` |
 | `lessons_en.json` | 14 bài tiếng Anh | `lessons[].id/target/words/tips/pairs` |
 | `mau/` | 12 clip Việt/Anh + 74 clip bài Anh | `mau/en/<id>.wav`, `<id>_slow.wav`, `w_<word>.wav` |
 | `tools/build_lessons.py` | Sinh lại bài + audio mẫu | `main()` |
@@ -107,7 +108,7 @@ $env:PYTHONIOENCODING='utf-8'
 & $PY tools\asr_bench.py --compare $env:TEMP\b_before.json
 
 # Cú pháp toàn bộ module Python
-& $PY -m py_compile app.py pron_en.py gop.py prosody.py gen_mau.py tools\build_lessons.py tools\context_check.py tools\smoke_test.py tools\asr_bench.py
+& $PY -m py_compile app.py pron_en.py gop.py prosody.py yt_read.py gen_mau.py tools\build_lessons.py tools\context_check.py tools\smoke_test.py tools\asr_bench.py
 ```
 
 - Không có `pytest`; test là script stdlib. Nếu thêm pytest, phải ghi vào

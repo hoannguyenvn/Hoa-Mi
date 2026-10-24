@@ -383,6 +383,20 @@ thật (đoạn văn 66 từ): AirPods 47→49, mic laptop 43→44 từ đúng.
 này có bài luyện riêng r/d/gi, s/x, tr/ch (ROADMAP) thì bài đó cần cách chấm khác (cờ theo bài).
 Mã `đ` không đổi. Test: `northern_accent_is_correct`.
 
+### D-39 — Luyện đọc to transcript YouTube tiếng Anh (2026-10-24)
+**Quyết định (người dùng):** (1) người học đọc **cả đoạn** (~20–45 s), không từng câu; (2) âm
+thanh gốc của video làm mẫu nghe (tải trong phiên, xóa khi xong); (3) phiên **một lần**, nhưng
+**lịch sử học lưu theo người học** để xem tiến bộ; (4) có cả "Nghe rồi đọc" và "Đọc thẳng";
+(5) từ nghi do phụ đề sai ghi **"phụ đề có thể sai"**. Kế hoạch: `docs/YT-READING-PLAN.md`.
+**Quy tắc chấm:** từ phụ đề mà Whisper trên **audio gốc** không nghe ra → kind `doubt` ("phụ đề có
+thể sai"); từ là chữ số đọc khác → `doubt` ("số"). Cả hai **không tính** vào đúng lẫn tổng; UI phải
+ghi số từ không tính (giữ I4: con số giải thích được). So sánh sau chuẩn hóa tiếng Anh
+(`yt_read.en_tokens`: rút gọn, gonna/wanna, từ đệm, số → chữ). Vẫn ASR trên bản thu người học (I2).
+**Vì sao:** khác biệt có 4 nguồn (người học, phụ đề sai, cách viết, Whisper nghe nhầm) — chỉ nguồn
+đầu được tính lỗi. Audio gốc là giọng người thật nên dùng làm mẫu được (I13 chỉ cấm TTS).
+**Hệ quả:** module mới `yt_read.py` (hàm thuần); `read_aloud_diff` trả `doubts`, `src_idx`.
+Test: `yt_caption_clean_and_paragraphs`, `en_tokens_normalise`, `read_aloud_diff_doubts`.
+
 ## B. Những cách làm đã bị loại (đừng lặp lại)
 
 Nguồn: `PHASE2-DANH-GIA-DU-AN-CU.md` §2.2 và §6.

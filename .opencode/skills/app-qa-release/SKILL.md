@@ -20,7 +20,7 @@ $env:PYTHONIOENCODING='utf-8'          # console hay là cp1252
 & $PY tools\smoke_test.py               # 74 test khói
 & $PY tools\asr_bench.py --compare F.json  # chuỗi thu → nhận dạng (cần model Whisper, ~1 phút)
 & $PY tools\ui_shots.py before          # chụp 21 trạng thái UI vào %TEMP%\oriole_shots\before
-& $PY -m py_compile app.py pron_en.py gop.py prosody.py gen_mau.py tools\build_lessons.py tools\context_check.py tools\smoke_test.py tools\asr_bench.py
+& $PY -m py_compile app.py pron_en.py gop.py prosody.py yt_read.py gen_mau.py tools\build_lessons.py tools\context_check.py tools\smoke_test.py tools\asr_bench.py
 ```
 
 - `context_check` FAIL ⇒ **dừng**, sửa drift trước khi thêm tính năng.

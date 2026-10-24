@@ -45,6 +45,12 @@ nói thứ tự, phạm vi, tiêu chí xong.
 **Xong khi:** người học làm trọn một bài mà không cần hướng dẫn ngoài; mọi lỗi
 hiển thị đều truy được về từ + âm + mẹo.
 
+## P5 — Đọc to transcript YouTube tiếng Anh (D-39)
+
+- [x] Y1: làm sạch phụ đề, chia đoạn, chuẩn hóa tiếng Anh, `read_aloud_diff` (kind `doubt`).
+- [ ] Y2–Y5: worker audio gốc, màn "Từ YouTube", đọc lại + lịch sử theo người học, GOP/ngữ điệu
+  so audio gốc. Chi tiết: `docs/YT-READING-PLAN.md`.
+
 ## P3 — Thanh điệu tiếng Việt bằng F0 (3–5 ngày)
 
 - [ ] Phân loại contour 6 thanh (ngang/huyền/sắc/hỏi/ngã/nặng) từ `prosody.f0_track`.

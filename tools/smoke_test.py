@@ -110,6 +110,50 @@ def northern_accent_is_correct():
 
 
 @case
+def yt_caption_clean_and_paragraphs():
+    import yt_read
+    assert yt_read.clean_caption(">> JOHN: [Music] hello (laughs) world ♪") == "hello world"
+    cues = [(0, 3, "[Music]"), (3, 6, "so today we are"), (6, 9, "going to talk."),
+            (9, 25, "about cats"), (27, 30, "and dogs"), (30, 50, "and birds"),
+            (50, 52, "end.")]
+    ps = yt_read.build_paragraphs(cues)
+    assert [(p["start"], p["end"]) for p in ps] == [(3.0, 25.0), (27.0, 52.0)], ps
+    assert ps[0]["text"].startswith("so today"), ps    # cue chỉ có [Music] bị bỏ
+    # không cue nào làm đoạn vượt PARA_MAX_SEC
+    long = [(i * 5.0, i * 5.0 + 5, "word word") for i in range(30)]
+    assert all(p["end"] - p["start"] <= yt_read.PARA_MAX_SEC
+               for p in yt_read.build_paragraphs(long))
+
+
+@case
+def en_tokens_normalise():
+    import yt_read
+    toks = [t for t, _i, _n in yt_read.en_tokens("I'm gonna, um, say it's 1990! Don't")]
+    assert toks == "i am going to say it is nineteen ninety do not".split(), toks
+    assert yt_read.number_words(2024) == "two thousand twenty four"
+    assert yt_read.number_words(1905) == "nineteen oh five"
+    assert yt_read.en_tokens("1,000 50%")[-1][0] == "percent"
+
+
+@case
+def read_aloud_diff_doubts():
+    sub = "So today I'm gonna show you 3 tricks to cook rice."
+    # người học sai "rice"; video thật nói "trick" mà người học đọc "tricks" như phụ đề → vẫn đúng
+    r = app.read_aloud_diff(sub, "so today I am going to show you three tricks to cook lice",
+                            "so today i am going to show you three trick to cook rice")
+    assert (r["correct"], r["total"], r["doubts"]) == (12, 13, 0), r
+    assert r["src_idx"][-1] == 10, r["src_idx"]    # "rice." là từ thứ 10 của phụ đề
+    # người học và video đều không có "really" → phụ đề có thể sai, không tính
+    r = app.read_aloud_diff("It is really good", "it is good", "it is good")
+    kinds = [it[1] for it in r["items"] if it[0]]
+    assert kinds == ["ok", "ok", "doubt", "ok"], r["items"]
+    assert (r["correct"], r["total"]) == (3, 3), r
+    # chữ số đọc khác cách viết → doubt "số"
+    r = app.read_aloud_diff("Room 12", "room one two")
+    assert r["doubts"] >= 1 and r["total"] == 1, r
+
+
+@case
 def tone_strip_keeps_letters():
     # strip_tone_vi trả chuỗi NFD (giữ dấu chữ như ă/â), nên chuẩn hóa NFC để so.
     import unicodedata
