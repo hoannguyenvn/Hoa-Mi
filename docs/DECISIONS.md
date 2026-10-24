@@ -395,7 +395,11 @@ ghi số từ không tính (giữ I4: con số giải thích được). So sánh
 **Vì sao:** khác biệt có 4 nguồn (người học, phụ đề sai, cách viết, Whisper nghe nhầm) — chỉ nguồn
 đầu được tính lỗi. Audio gốc là giọng người thật nên dùng làm mẫu được (I13 chỉ cấm TTS).
 **Hệ quả:** module mới `yt_read.py` (hàm thuần); `read_aloud_diff` trả `doubts`, `src_idx`.
-Test: `yt_caption_clean_and_paragraphs`, `en_tokens_normalise`, `read_aloud_diff_doubts`.
+Test: `yt_caption_clean_and_paragraphs`, `en_tokens_normalise`, `read_aloud_diff_doubts`,
+`ytread_subtitle_pick_and_session_cleanup`.
+**Bổ sung 2026-10-24:** "tài khoản" = **hồ sơ người học cục bộ** (chọn tên, không đăng nhập, I9).
+Chỉ dùng phụ đề tiếng Anh gốc (`pick_en_subtitle`), không bản dịch máy. Whisper trên đoạn gốc
+chạy khi cần (cache trong phiên).
 
 ## B. Những cách làm đã bị loại (đừng lặp lại)
 

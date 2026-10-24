@@ -120,7 +120,11 @@ Phụ đề (trong helper): `writesubtitles`, `writeautomaticsub`, `subtitleslan
 - `.json3` → `_parse_json3` (YouTube timedtext).
 - còn lại → `_parse_sub_text` cho SRT và VTT (bỏ header `WEBVTT`, số thứ tự,
   tag HTML đơn giản).
-- `_dedupe_cues` gộp cue trùng/lặp của phụ đề tự động.
+- `_dedupe_cues` gộp cue trùng/lặp của phụ đề tự động, kể cả dạng **cuộn** (cue mới mở đầu
+  bằng ≥ 3 từ cuối cue cũ → cắt phần lặp, `_overlap_words`). Trước 2026-10-24 transcript tự
+  động bị gấp đôi (~300 wpm).
+- Đọc to transcript (D-39): `pick_en_subtitle` (chỉ phụ đề tiếng Anh gốc, không bản dịch),
+  `ytread_prepare` → `YtReadSession` (thư mục tạm, `close()`), `ytread_orig_hyp`.
 - `_fix_cues` + `split_long_cues` trước khi xuất.
 
 Nếu thêm định dạng mới: viết parser trả **cùng kiểu cue**, thêm fixture, và cập

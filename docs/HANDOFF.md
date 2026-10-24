@@ -1006,3 +1006,28 @@ video thật trước khi làm UI.
 **Câu hỏi mở:** "tài khoản người học" — đề xuất hồ sơ cục bộ (offline, I9); cần xác nhận trước Y4.
 **Cảnh báo:** `read_aloud_diff` giả định token sau `en_tokens` khớp 1-1 với `norm_words` — token
 chỉ gồm [a-z0-9'], đừng thêm ký tự khác vào bảng `_WHOLE`.
+
+## 2026-10-24 (tiếp 3) — Claude Opus 5.5 — Y2: phiên đọc to (phụ đề + audio gốc)
+
+**Người dùng xác nhận:** "tài khoản" = hồ sơ người học cục bộ (chọn tên, không đăng nhập) → D-39.
+
+**Đã làm (`app.py`):** `pick_en_subtitle` (chỉ phụ đề tiếng Anh gốc; video không phải tiếng Anh →
+None), `YtReadSession` (thư mục tạm `oriole_ytread_*`, `close()` xóa hết), `ytread_prepare` (info →
+audio `ba/b` → WAV 16 kHz qua ffmpeg → phụ đề có sẵn, thử lại 429, không có thì Whisper → đoạn;
+`cancel()` → `_YtCancelled`; lỗi bất kỳ → xóa thư mục), `ytread_orig_hyp` (Whisper đoạn gốc ± 0,4 s,
+VAD, cache; None khi transcript do Whisper tạo). `tools/ytread_bench.py` mới.
+**Sửa lỗi có sẵn:** `_dedupe_cues` + `_overlap_words` — phụ đề tự động YouTube dạng "cuộn" bị gấp
+đôi chữ (~300 wpm → 163 wpm). Lỗi này có cả ở màn **Văn bản** (transcript YouTube tự động).
+2 test mới (80/80). Tài liệu: YT-READING-PLAN §3/§5, D-39 bổ sung, AGENTS §5, context-map, skill
+`app-youtube`, ARCHITECTURE, PROJECT-STATE.
+
+**Số đo:** xem YT-READING-PLAN §5 — "nghi phụ đề sai" 3,7–4,2 % (thủ công), 6,4–8,9 % (tự động).
+**Đã kiểm chứng:** smoke 80/80, py_compile, context_check; `ytread_bench` trên 2 video TED thật
+(mạng thật), thủ công + tự động.
+**Chưa kiểm chứng:** màn Văn bản với phụ đề tự động sau sửa `_dedupe_cues` (chỉ thử qua hàm);
+video không có phụ đề (nhánh Whisper); video có nhạc nền; Hủy giữa lúc tải (chỉ test lỗi giả).
+**Việc tiếp theo:** Y3 — màn "Từ YouTube": worker thread (`_w_ytread` gửi qua `_queue`, I1),
+danh sách đoạn, ▶ đoạn gốc (`play_wav_segment`), thu tối đa ~60 s, kết quả cả đoạn; `close()` phiên
+khi đổi video/đóng app.
+**Cảnh báo:** lệnh thử trong phiên này lỡ tạo `D:\c\Users\ADMIN\AppData\Local\Temp\claude\…\vtt\a.en.vtt`
+(đường dẫn kiểu Git Bash đưa vào Python) — không thuộc repo, người dùng tự xóa `D:\c` được.

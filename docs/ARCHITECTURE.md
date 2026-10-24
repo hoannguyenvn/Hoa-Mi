@@ -53,7 +53,7 @@ cues = [(0.0, 2.4, "Xin chào"), (2.4, 5.1, "hôm nay trời đẹp")]
 
 Các hàm thuần (dễ test, không phụ thuộc UI):
 - `_parse_ts`, `_clean_cue`, `_parse_sub_text`, `_parse_json3`
-- `_dedupe_cues`, `_fix_cues` (sort + chống chồng lấn + đảm bảo duration tối thiểu)
+- `_dedupe_cues` (cả phụ đề tự động dạng cuộn), `_fix_cues` (sort + chống chồng lấn + đảm bảo duration tối thiểu)
 - `split_long_cues(cues, max_chars=92)`
 - `cues_to_srt`, `cues_to_txt`
 

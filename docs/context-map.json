@@ -125,6 +125,11 @@
       "strip_marks_vi",
       "vi_north_key",
       "read_aloud_diff",
+      "pick_en_subtitle",
+      "YtReadSession",
+      "ytread_prepare",
+      "ytread_orig_hyp",
+      "_overlap_words",
       "evidence_gate",
       "vi_spell",
       "has_ipa",
@@ -228,6 +233,10 @@
       "main"
     ],
     "tools/smoke_test.py": [
+      "main"
+    ],
+    "tools/ytread_bench.py": [
+      "bench",
       "main"
     ],
     "tools/asr_bench.py": [

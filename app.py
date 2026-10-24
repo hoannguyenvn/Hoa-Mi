@@ -313,8 +313,25 @@ def _dedupe_cues(cues):
             if tx.startswith(ptx):      # dòng mới dài hơn: giữ bản đầy đủ
                 out[-1] = (pst, max(pen, en), tx)
                 continue
+            # phụ đề tự động dạng "cuộn": dòng mới mở đầu bằng đuôi dòng cũ
+            # ("…government major which" → "college I was a government major which means…")
+            pw, cw = ptx.split(), tx.split()
+            k = _overlap_words(pw, cw)
+            if k:
+                if k >= len(cw):
+                    out[-1] = (pst, max(pen, en), ptx)
+                    continue
+                tx = " ".join(cw[k:])
         out.append((st, en, tx))
     return out
+
+
+def _overlap_words(prev, cur, min_k=3):
+    """Số từ dài nhất k ≥ min_k mà prev kết thúc bằng cur[:k] (0 nếu không có)."""
+    for k in range(min(len(prev), len(cur)), min_k - 1, -1):
+        if prev[-k:] == cur[:k]:
+            return k
+    return 0
 
 
 def _fix_cues(cues, min_dur=0.4):
@@ -756,6 +773,168 @@ def yt_progress_fraction(d):
         return None
     done = d.get("downloaded_bytes") or 0
     return max(0.0, min(1.0, float(done) / float(total)))
+
+
+# ---------- đọc to transcript YouTube (D-39, docs/YT-READING-PLAN.md) ----------
+YTREAD_PAD_SEC = 0.4   # nới hai đầu đoạn khi nghe audio gốc: mốc phụ đề lệch, đừng cắt mất từ
+
+
+def pick_en_subtitle(info, prefer="manual"):
+    """Phụ đề TIẾNG ANH gốc: (mã, 'manual'|'auto') hoặc (None, None).
+
+    Không nhận bản dịch máy (video gốc không phải tiếng Anh) — dịch máy không phải lời
+    người nói nên không dùng làm bài đọc. prefer="auto" để đo phụ đề tự động (bench).
+    """
+    info = _yt_first_info(info)
+    orig = (info.get("language") or "").lower()
+    if orig and not orig.startswith("en"):
+        return None, None
+    kinds = (("manual", info.get("subtitles")), ("auto", info.get("automatic_captions")))
+    if prefer == "auto":
+        kinds = kinds[::-1]
+    for kind, subs in kinds:
+        codes = [c for c in (subs or {}) if c.lower() == "en" or c.lower().startswith("en-")]
+        # "en-orig" của YouTube là bản tự động gốc; các mã en-xx khác có thể là dịch
+        for c in sorted(codes, key=lambda c: (c.lower() not in ("en", "en-orig"), c)):
+            return c, kind
+    return None, None
+
+
+class YtReadSession:
+    """Một phiên đọc to: đoạn phụ đề + audio gốc 16 kHz trong thư mục tạm của phiên.
+
+    Phiên dùng một lần (D-39): `close()` xóa toàn bộ thư mục (I10) — gọi khi đổi video,
+    rời màn hình hoặc đóng app.
+    """
+
+    def __init__(self, work_dir):
+        self.work_dir = work_dir
+        self.url = self.title = self.vid = ""
+        self.sub_kind = None       # "manual" | "auto" | "whisper"
+        self.paragraphs = []       # yt_read.build_paragraphs
+        self.wav = None            # audio gốc, mono 16 kHz
+        self._orig = {}            # chỉ số đoạn → lời Whisper nghe trên audio gốc
+
+    def close(self):
+        if self.work_dir:
+            shutil.rmtree(self.work_dir, ignore_errors=True)
+        self.work_dir, self.wav = None, None
+
+
+def ytread_prepare(url, model_size, cancel=lambda: False, status=lambda msg: None,
+                   prefer="manual"):
+    """Link → YtReadSession (chạy trong worker). Ném _YtCancelled khi cancel() (I11),
+    ValueError khi video không dùng được (lời nhắn tiếng Việt cho người học)."""
+    import yt_dlp
+    import yt_read
+    ff = yt_ffmpeg_location()
+    if not ff:
+        raise ValueError("Chưa có ffmpeg (imageio-ffmpeg). Chạy: pip install -r requirements.txt")
+    s = YtReadSession(tempfile.mkdtemp(prefix="oriole_ytread_"))
+    try:
+        def check():
+            if cancel():
+                raise _YtCancelled()
+
+        def hook(d):
+            check()
+            frac = yt_progress_fraction(d) if d.get("status") == "downloading" else None
+            if frac is not None:
+                status("Đang tải âm thanh gốc… %d%%" % round(frac * 100))
+
+        status("Đang đọc thông tin video…")
+        base = {"quiet": True, "no_warnings": True, "noplaylist": True, "noprogress": True}
+        with yt_dlp.YoutubeDL(base) as ydl:
+            info = _yt_first_info(ydl.extract_info(url, download=False) or {})
+        check()
+        s.url, s.title, s.vid = url, info.get("title") or "", info.get("id") or ""
+        lang = (info.get("language") or "").lower()
+        if lang and not lang.startswith("en"):
+            raise ValueError("Video này không phải tiếng Anh (%s) — hãy chọn video nói tiếng Anh."
+                             % lang)
+        code, kind = pick_en_subtitle(info, prefer)
+
+        status("Đang tải âm thanh gốc…")
+        opts = dict(base, format="ba/b", progress_hooks=[hook],
+                    outtmpl=os.path.join(s.work_dir, "orig.%(ext)s"))
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            ydl.download([url])
+        check()
+        media = [os.path.join(s.work_dir, n) for n in os.listdir(s.work_dir)
+                 if n.startswith("orig.")]
+        if not media:
+            raise ValueError("Không tải được âm thanh của video.")
+        s.wav = os.path.join(s.work_dir, "orig16k.wav")
+        r = subprocess.run([ff, "-y", "-nostdin", "-v", "error", "-i", max(media, key=os.path.getsize),
+                            "-ac", "1", "-ar", str(REC_RATE), "-c:a", "pcm_s16le", s.wav],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace")
+        if r.returncode != 0 or not os.path.exists(s.wav):
+            raise ValueError("Không đọc được âm thanh của video: %s"
+                             % ((r.stderr or "").strip().splitlines() or ["ffmpeg"])[-1])
+        for m in media:
+            remove_temp(m)
+        check()
+
+        cues = []
+        if code:
+            status("Đang tải phụ đề tiếng Anh…")
+            sub_opts = dict(base, skip_download=True, writesubtitles=kind == "manual",
+                            writeautomaticsub=kind == "auto", subtitleslangs=[code],
+                            subtitlesformat="vtt/srt/best",
+                            outtmpl=os.path.join(s.work_dir, "sub.%(ext)s"))
+            for attempt in (1, 2):   # YouTube hay trả HTTP 429 cho phụ đề → thử lại một lần
+                try:
+                    with yt_dlp.YoutubeDL(sub_opts) as ydl:
+                        ydl.download([url])
+                    break
+                except Exception as e:
+                    check()
+                    if attempt == 2 or "429" not in str(e):
+                        break
+                    for _ in range(40):
+                        check()
+                        time.sleep(0.1)
+            for n in os.listdir(s.work_dir):
+                if n.startswith("sub.") and n.lower().endswith((".vtt", ".srt", ".json3")):
+                    cues = read_subtitle_file(os.path.join(s.work_dir, n))
+                    remove_temp(os.path.join(s.work_dir, n))
+        s.sub_kind = kind if cues else "whisper"
+        if not cues:
+            status("Video không có phụ đề tiếng Anh → Whisper tạo transcript…")
+            segs, _info = load_model(model_size).transcribe(s.wav, language="en", beam_size=5,
+                                                            vad_filter=True)
+            for seg in segs:
+                check()
+                tx = " ".join(seg.text.split())
+                if tx:
+                    cues.append((float(seg.start), float(seg.end), tx))
+                status("Whisper: %s" % clock_time(seg.end))
+        s.paragraphs = yt_read.build_paragraphs(cues)
+        if not s.paragraphs:
+            raise ValueError("Video không có lời nói tiếng Anh để đọc.")
+        return s
+    except BaseException:
+        s.close()
+        raise
+
+
+def ytread_orig_hyp(session, i, model):
+    """Whisper nghe ĐOẠN GỐC thứ i → chữ (cache). None khi transcript do chính Whisper
+    tạo (so với chính nó thì vô nghĩa) — khi đó không có "phụ đề có thể sai"."""
+    if session.sub_kind == "whisper" or not session.wav:
+        return None
+    if i not in session._orig:
+        import numpy as np
+        p = session.paragraphs[i]
+        with wave.open(session.wav, "rb") as w:
+            a, b = wav_segment_bounds(w.getnframes(), w.getframerate(),
+                                      p["start"], p["end"], pad=YTREAD_PAD_SEC)
+            w.setpos(a)
+            x = np.frombuffer(w.readframes(b - a), dtype=np.int16).astype(np.float32) / 32768.0
+        segs, _info = model.transcribe(x, language="en",
+                                       **dict(PRAC_ASR_OPTS, vad_filter=True))
+        session._orig[i] = " ".join(" ".join(seg.text.split()) for seg in segs).strip()
+    return session._orig[i]
 
 
 # ---------- chấm phát âm (hàm thuần, dễ test) ----------

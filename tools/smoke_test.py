@@ -551,6 +551,74 @@ def yt_worker_always_reports_back():
 
 
 @case
+def auto_captions_rolling_overlap_removed():
+    # Phụ đề tự động YouTube: mỗi cue lặp đuôi cue trước → transcript gấp đôi (Y2 đo 300+ wpm)
+    cues = [(0, 4, "so in college I was a government major which"),
+            (4, 6, "college I was a government major which means I had to write"),
+            (6, 8, "means I had to write a lot of papers"),
+            (8, 9, "a lot of papers")]
+    out = app._dedupe_cues(cues)
+    text = " ".join(t for _s, _e, t in out)
+    assert text == ("so in college I was a government major which means I had to write "
+                    "a lot of papers"), out
+    # lặp 1–2 từ giữa hai câu thật thì giữ nguyên
+    keep = app._dedupe_cues([(0, 1, "I said no"), (1, 2, "no way")])
+    assert [t for _s, _e, t in keep] == ["I said no", "no way"], keep
+
+
+@case
+def ytread_subtitle_pick_and_session_cleanup():
+    import types
+    pick = app.pick_en_subtitle
+    info = {"language": "en", "subtitles": {"en-GB": [{}], "vi": [{}]},
+            "automatic_captions": {"en-orig": [{}], "en": [{}], "fr": [{}]}}
+    assert pick(info) == ("en-GB", "manual")
+    assert pick(info, "auto") == ("en", "auto")
+    assert pick({"language": "fr", "automatic_captions": {"en": [{}]}}) == (None, None)
+    # lỗi giữa chừng (ở đây: extract_info) → thư mục tạm của phiên bị xóa (I10)
+    made = []
+    real_mkdtemp = app.tempfile.mkdtemp
+
+    def mkdtemp(**kw):
+        made.append(real_mkdtemp(**kw))
+        return made[-1]
+
+    class FakeYDL:
+        def __init__(self, opts):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def extract_info(self, url, download=False):
+            raise RuntimeError("offline")
+
+    old = sys.modules.get("yt_dlp"), app.tempfile.mkdtemp
+    sys.modules["yt_dlp"] = types.SimpleNamespace(YoutubeDL=FakeYDL)
+    app.tempfile.mkdtemp = mkdtemp
+    try:
+        app.ytread_prepare("u", "base")
+        raise AssertionError("phải ném lỗi")
+    except RuntimeError:
+        pass
+    finally:
+        app.tempfile.mkdtemp = old[1]
+        if old[0] is not None:
+            sys.modules["yt_dlp"] = old[0]
+        else:
+            sys.modules.pop("yt_dlp", None)
+    assert made and not app.os.path.exists(made[0]), made
+    s = app.YtReadSession(real_mkdtemp())
+    s.sub_kind = "whisper"
+    assert app.ytread_orig_hyp(s, 0, None) is None   # transcript tự sinh: không đo phụ đề sai
+    s.close()
+    assert s.work_dir is None
+
+
+@case
 def yt_subtitle_429_falls_back_not_fatal():
     # yt-dlp coi lỗi tải phụ đề là lỗi chết; YouTube hay trả 429 cho phụ đề dịch máy.
     # Lỗi phụ đề phải trả [] (→ Whisper), không được làm hỏng tải video (D-25).

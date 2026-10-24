@@ -107,8 +107,11 @@ $env:PYTHONIOENCODING='utf-8'
 & $PY tools\asr_bench.py --out $env:TEMP\b_before.json
 & $PY tools\asr_bench.py --compare $env:TEMP\b_before.json
 
+# Đọc to YouTube (D-39): tỉ lệ "phụ đề có thể sai" trên video thật (cần mạng + Whisper)
+& $PY tools\ytread_bench.py https://youtu.be/<id> --paras 5 -v
+
 # Cú pháp toàn bộ module Python
-& $PY -m py_compile app.py pron_en.py gop.py prosody.py yt_read.py gen_mau.py tools\build_lessons.py tools\context_check.py tools\smoke_test.py tools\asr_bench.py
+& $PY -m py_compile app.py pron_en.py gop.py prosody.py yt_read.py gen_mau.py tools\build_lessons.py tools\context_check.py tools\smoke_test.py tools\asr_bench.py tools\ytread_bench.py
 ```
 
 - Không có `pytest`; test là script stdlib. Nếu thêm pytest, phải ghi vào
