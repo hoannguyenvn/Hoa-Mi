@@ -818,6 +818,7 @@ class YtReadSession:
         self.wav = None            # audio gốc, mono 16 kHz
         self._orig = {}            # chỉ số đoạn → lời Whisper nghe trên audio gốc
         self.orig_words = {}       # chỉ số đoạn → [{w, s, e, p}] của audio gốc
+        self.all_words = []        # transcript do Whisper tạo: mốc từ của cả video
 
     def close(self):
         if self.work_dir:
@@ -906,12 +907,20 @@ def ytread_prepare(url, model_size, cancel=lambda: False, status=lambda msg: Non
         if not cues:
             status("Video không có phụ đề tiếng Anh → Whisper tạo transcript…")
             segs, _info = load_model(model_size).transcribe(s.wav, language="en", beam_size=5,
-                                                            vad_filter=True)
+                                                            vad_filter=True, word_timestamps=True)
             for seg in segs:
                 check()
                 tx = " ".join(seg.text.split())
                 if tx:
                     cues.append((float(seg.start), float(seg.end), tx))
+                # giữ mốc từ của người nói: không đo được "phụ đề sai" (chính Whisper tạo chữ)
+                # nhưng vẫn có ▶ Mẫu từng từ/câu và so tốc độ, chỗ ngừng (R1)
+                for w in (getattr(seg, "words", None) or []):
+                    t = (w.word or "").strip()
+                    if t and w.start is not None and w.end is not None:
+                        s.all_words.append({"w": t, "s": round(float(w.start), 3),
+                                            "e": round(float(w.end), 3),
+                                            "p": round(float(w.probability), 3)})
                 status("Whisper: %s" % clock_time(seg.end))
         s.paragraphs = yt_read.build_paragraphs(cues)
         if not s.paragraphs:
@@ -926,6 +935,11 @@ def ytread_orig_hyp(session, i, model):
     """Whisper nghe ĐOẠN GỐC thứ i → chữ (cache). None khi transcript do chính Whisper
     tạo (so với chính nó thì vô nghĩa) — khi đó không có "phụ đề có thể sai"."""
     if session.sub_kind == "whisper" or not session.wav:
+        if session.all_words and i not in session.orig_words:
+            p = session.paragraphs[i]
+            session.orig_words[i] = [w for w in session.all_words
+                                     if p["start"] - YTREAD_PAD_SEC <= (w["s"] + w["e"]) / 2
+                                     <= p["end"] + YTREAD_PAD_SEC]
         return None
     if i not in session._orig:
         import numpy as np
@@ -943,8 +957,9 @@ def ytread_orig_hyp(session, i, model):
             for w in (getattr(seg, "words", None) or []):
                 t = (w.word or "").strip()
                 if t and w.start is not None and w.end is not None:
-                    words.append({"w": t, "s": round(off + w.start, 3),
-                                  "e": round(off + w.end, 3), "p": round(w.probability, 3)})
+                    words.append({"w": t, "s": round(off + float(w.start), 3),
+                                  "e": round(off + float(w.end), 3),
+                                  "p": round(float(w.probability), 3)})
         session._orig[i] = " ".join(texts).strip()
         session.orig_words[i] = words      # mốc tuyệt đối trong session.wav (▶ Mẫu từng từ)
     return session._orig[i]
@@ -1529,6 +1544,132 @@ def token_spans(words_t, target):
         if ti is not None and ti not in out:
             out[ti] = (w.get("s"), w.get("e"), w.get("p"))
     return out
+
+
+PAUSE_MIN = 0.30      # khoảng lặng giữa hai từ ≥ mức này = một chỗ ngừng (mốc Whisper ±0,05 s)
+PAUSE_LINKED = 0.12   # người nói ngừng < mức này = đọc liền hai từ
+PAUSE_REF_MIN = 0.40  # người nói ngừng ≥ mức này mà bạn đọc liền → "người nói ngừng, bạn đọc liền"
+PAUSE_HESIT = 1.0     # ngừng ≥ 1 giây giữa vế câu = ngập ngừng
+FLU_LIST_MAX = 4      # số ví dụ tối đa mỗi loại trong panel
+
+
+def _wpm(spans, n_words):
+    """Từ/phút từ mốc token đầu → cuối (bỏ im lặng hai đầu). None nếu quá ít dữ liệu."""
+    ts = [v for v in spans.values() if v[0] is not None and v[1] is not None]
+    if len(ts) < 3 or n_words < 3:
+        return None
+    span = max(e for _s, e, _p in ts) - min(s for s, _e, _p in ts)
+    return round(60.0 * n_words / span) if span > 0.5 else None
+
+
+def fluency_view(text, res, mine, orig=None):
+    """Trôi chảy + từng câu của một đoạn đọc to (R1, D-39). Hàm thuần, chỉ MÔ TẢ (D-34).
+
+    mine / orig: token_spans của bản thu người học / audio gốc ({token: (s, e, p)}).
+    Chỗ ngừng tính ở ranh giới TỪ GỐC (một từ gốc như "I'm" có thể là 2 token).
+    Trả {wpm_usr, wpm_ref, runs_usr, runs_ref, extra, missed, hesit, lines, sentences,
+    pause_after} — pause_after: {chỉ số từ gốc: "extra"} để vẽ "/" trong đoạn văn.
+    """
+    import yt_read
+    words = (text or "").split()
+    src = res.get("src_idx") or []
+    orig = orig or {}
+    first, last = {}, {}                 # từ gốc → token đầu/cuối của nó
+    for k, wi in enumerate(src):
+        if wi is not None:
+            first.setdefault(wi, k)
+            last[wi] = k
+
+    def gap(sp, wi):
+        """Khoảng lặng sau từ gốc wi (tới từ gốc kế tiếp có mốc)."""
+        a = sp.get(last.get(wi))
+        b = sp.get(first.get(wi + 1))
+        if not a or not b or a[1] is None or b[0] is None:
+            return None
+        return b[0] - a[1]
+
+    def pair(wi):
+        return "%s / %s" % (words[wi].strip(".,;:?!\"'"), words[wi + 1].strip(".,;:?!\"'"))
+
+    extra, missed, hesit, pause_after = [], [], 0, {}
+    pauses_usr = pauses_ref = 0
+    breaks = set()
+    for wi in range(len(words) - 1):
+        gu, gr = gap(mine, wi), gap(orig, wi)
+        if gr is not None and gr >= PAUSE_MIN:
+            pauses_ref += 1
+            breaks.add(wi)
+        if gu is None:
+            continue
+        if gu >= PAUSE_MIN:
+            pauses_usr += 1
+        natural = yt_read.is_clause_end(words[wi]) or (gr is not None and gr >= PAUSE_MIN)
+        if gu >= PAUSE_MIN and not natural and (gr is None or gr < PAUSE_LINKED):
+            extra.append({"wi": wi, "text": pair(wi), "gap": round(gu, 2)})
+            pause_after[wi] = "extra"
+            if gu >= PAUSE_HESIT:
+                hesit += 1
+        elif gr is not None and gr >= PAUSE_REF_MIN and gu < PAUSE_LINKED:
+            missed.append({"wi": wi, "text": words[wi].strip(".,;:?!\"'"), "gap": round(gr, 2)})
+    n = len(words)
+    wpm_u, wpm_r = _wpm(mine, n), _wpm(orig, n)
+    runs_u = round(n / float(pauses_usr + 1), 1) if mine else None
+    runs_r = round(n / float(pauses_ref + 1), 1) if orig else None
+
+    lines = []
+    if wpm_u:
+        ln = "Tốc độ: bạn %d từ/phút" % wpm_u
+        if wpm_r:
+            ln += " · người nói %d từ/phút" % wpm_r
+            if wpm_u < 0.7 * wpm_r:
+                ln += " — chậm hơn nhiều; nghe rồi đọc theo từng câu để bắt nhịp"
+            elif wpm_u > 1.15 * wpm_r:
+                ln += " — nhanh hơn người nói; chậm lại cho rõ từ"
+        lines.append(ln)
+    if runs_u:
+        lines.append("Mỗi hơi bạn đọc ~%s từ" % _vn_num(runs_u).replace(",0", "") + (
+            " (người nói ~%s từ)" % _vn_num(runs_r).replace(",0", "") if runs_r else ""))
+    if extra:
+        lines.append("Ngừng giữa cụm từ (dấu / đỏ trong đoạn): %s — đọc liền cả cụm, chỉ "
+                     "ngừng ở dấu câu" % ", ".join("“%s”" % e["text"]
+                                                    for e in extra[:FLU_LIST_MAX])
+                     + (" … +%d" % (len(extra) - FLU_LIST_MAX)
+                        if len(extra) > FLU_LIST_MAX else ""))
+    if missed:
+        lines.append("Người nói ngừng mà bạn đọc liền: sau %s" % ", ".join(
+            "“%s”" % m["text"] for m in missed[:FLU_LIST_MAX]))
+    if hesit:
+        lines.append("Ngập ngừng (ngừng ≥ 1 giây giữa câu): %d lần" % hesit)
+
+    fix_words = {}
+    ti = 0
+    for tok, kind, _h, _n in res.get("items") or []:
+        if tok is None:
+            continue
+        wi = src[ti] if ti < len(src) else None
+        if wi is not None and kind not in ("ok", "doubt"):
+            fix_words[wi] = True
+        ti += 1
+    sentences = []
+    for w0, w1 in yt_read.sentence_ranges(text, breaks):
+        toks = [k for k, wi in enumerate(src) if wi is not None and w0 <= wi <= w1]
+
+        def span(sp):
+            ts = [sp[k] for k in toks if sp.get(k) and sp[k][0] is not None]
+            return (min(t[0] for t in ts), max(t[1] for t in ts)) if len(ts) >= 2 else None
+        su, sr = span(mine), span(orig)
+        ws = words[w0:w1 + 1]
+        sentences.append({
+            "w0": w0, "w1": w1, "n": len(ws),
+            "short": " ".join(ws) if len(ws) <= 8 else " ".join(ws[:7]) + " …",
+            "fixes": sum(1 for wi in range(w0, w1 + 1) if wi in fix_words),
+            "extra": [e["text"] for e in extra if w0 <= e["wi"] < w1],
+            "usr": su, "ref": sr,
+            "dur_usr": round(su[1] - su[0], 1) if su else None,
+            "dur_ref": round(sr[1] - sr[0], 1) if sr else None})
+    return {"wpm_usr": wpm_u, "wpm_ref": wpm_r, "runs_usr": runs_u, "runs_ref": runs_r,
+            "extra": extra, "missed": missed, "hesit": hesit, "lines": lines,
+            "sentences": sentences, "pause_after": pause_after}
 
 
 YT_ROWS_MAX = 24   # số dòng tối đa mỗi nhóm trong panel kết quả (đoạn dài)
@@ -4673,6 +4814,7 @@ class App(tk.Tk):
         self.yt_listen = tk.StringVar(value="listen")
         self._yt_sess, self._yt_idx, self._yt_cancel = None, 0, False
         self._yt_listening, self._yt_res, self._yt_view = False, None, None
+        self._yt_keep = {}   # đoạn → {"wav", "res", "gate"}: bản thu + kết quả gần nhất (R1)
         self._seg = self._mk_seg(bar, (("set", "Luyện câu"), ("guide", "Học âm"),
                                        ("yt", "Từ YouTube")),
                                  self.prac_mode, self._prac_mode_changed,
@@ -4793,6 +4935,8 @@ class App(tk.Tk):
         self._p_links = links
         # dòng trạng thái chỉ chiếm chỗ khi có nội dung
         self.p_status.trace_add("write", lambda *_: self._sync_status_line())
+        self._link_lbl(links, "Lưu bản thu…", self._save_recording, size=9).pack(side="left")
+        self._lbl(links, "  ·  ", fg="muted", size=9).pack(side="left")
         self._link_lbl(links, "Chấm file có sẵn…", self._prac_from_file, size=9).pack(side="left")
         self._lbl(links, "  ·  ", fg="muted", size=9).pack(side="left")
         self._link_lbl(links, "Dừng phát", self._stop_play, size=9).pack(side="left")
@@ -5334,8 +5478,12 @@ class App(tk.Tk):
         self.p_rec_hint.configure(text=YT_REC_HINT if yt else "Đọc xong, app tự dừng và chấm")
         self._nav_labels()
         if yt:
+            if self.last_wav and not self._yt_kept_wav(self.last_wav):
+                self._set_last_wav(None)        # bản thu bài câu không thuộc đoạn nào
             self._yt_refresh()
             return
+        if self._yt_kept_wav(self.last_wav):
+            self.last_wav = None                # giữ file cho đoạn YouTube, chỉ bỏ liên kết
         guide = self.prac_mode.get() == "guide"
         self.cb_prac.configure(values=GUIDE_NAMES if guide else SET_NAMES)
         try:
@@ -6103,6 +6251,64 @@ class App(tk.Tk):
                           else "Lỗi — xem chi tiết trong hộp thoại.")
         messagebox.showerror("Lỗi", msg)
 
+    def _save_recording(self):
+        """Lưu bản thu gần nhất ra thư mục người dùng chọn: x.wav + x.txt (dòng 1 = câu/đoạn
+        mẫu — đúng định dạng `asr_bench --dir`) + x.json (lời máy nghe, mốc từng từ). Chế độ
+        Từ YouTube lưu thêm x_goc.wav (đoạn gốc của video) để so sánh. Dữ liệu chỉ nằm trên
+        máy người dùng (R1)."""
+        if self.recording or self.p_working:
+            return
+        if not self.last_wav or not os.path.exists(self.last_wav):
+            self.p_status.set("Chưa có bản thu để lưu — thu âm trước đã.")
+            return
+        yt = self.prac_mode.get() == "yt" and self._yt_sess
+        stamp = time.strftime("%Y%m%d-%H%M")
+        if yt:
+            s, idx = self._yt_sess, self._yt_idx
+            name = "oriole_%s_doan%d_%s" % (safe_stem(s.vid or "video"), idx + 1, stamp)
+            target, res = s.paragraphs[idx]["text"], self._yt_res
+        else:
+            sid = self._current_set_id() or self.prac_mode.get()
+            name = "oriole_%s_%s" % (sid, stamp)
+            target, res = self._current_practice()[0], self._last_res
+        path = filedialog.asksaveasfilename(title="Lưu bản thu", initialfile=name + ".wav",
+                                            defaultextension=".wav",
+                                            filetypes=[("WAV", "*.wav")])
+        if not path:
+            return
+        stem = os.path.splitext(path)[0]
+        try:
+            shutil.copyfile(self.last_wav, stem + ".wav")
+            with open(stem + ".txt", "w", encoding="utf-8") as f:
+                f.write(target.strip() + "\n")
+            info = {"app": "Oriole %s" % VERSION, "saved": stamp, "target": target,
+                    "hyp": (res or {}).get("hyp"), "items": (res or {}).get("items"),
+                    "words_t": (res or {}).get("words_t"), "model": (res or {}).get("model")}
+            if yt:
+                p = s.paragraphs[idx]
+                a = max(0.0, p["start"] - YTREAD_PAD_SEC)
+                with wave.open(s.wav, "rb") as r, wave.open(stem + "_goc.wav", "wb") as w:
+                    i0, i1 = wav_segment_bounds(r.getnframes(), r.getframerate(),
+                                                p["start"], p["end"], pad=YTREAD_PAD_SEC)
+                    r.setpos(i0)
+                    w.setnchannels(1)
+                    w.setsampwidth(2)
+                    w.setframerate(r.getframerate())
+                    w.writeframes(r.readframes(i1 - i0))
+                info.update(url=s.url, title=s.title, sub_kind=s.sub_kind,
+                            paragraph=idx + 1, start=p["start"], end=p["end"],
+                            orig_hyp=s._orig.get(idx),
+                            # mốc từ của audio gốc tính theo file x_goc.wav
+                            orig_words=[dict(w, s=round(w["s"] - a, 3), e=round(w["e"] - a, 3))
+                                        for w in s.orig_words.get(idx) or []])
+            with open(stem + ".json", "w", encoding="utf-8") as f:
+                json.dump(info, f, ensure_ascii=False, indent=1, default=str)
+        except Exception as e:
+            messagebox.showerror("Không lưu được", str(e))
+            return
+        self.p_status.set("Đã lưu bản thu: %s" % os.path.basename(stem + ".wav"))
+        self._log("Đã lưu bản thu: %s" % (stem + ".wav"))
+
     # ================= đọc to transcript YouTube (D-39, YT-READING-PLAN Y3) =================
     def _yt_tags(self):
         P, t = self.P, self.yt_text
@@ -6113,9 +6319,11 @@ class App(tk.Tk):
         t.tag_configure("yk_bad", foreground=P["bad_fg"], background=P["bad_bg"])
         t.tag_configure("yk_plain", foreground=P["fg"], background="")
         t.tag_configure("yk_hint", foreground=P["muted"], font=(self.F, 12))
+        t.tag_configure("yk_pause", foreground=P["bad_fg"], font=(self.F, 15, "bold"))
 
-    def _yt_fill_text(self, marks):
-        """Cả đoạn trong ô chữ; marks {chỉ số từ: kind} tô màu sau khi chấm."""
+    def _yt_fill_text(self, marks, pauses=None):
+        """Cả đoạn trong ô chữ; marks {chỉ số từ: kind} tô màu sau khi chấm; pauses {chỉ số
+        từ: "extra"} → dấu "/" đỏ sau từ đó (bạn ngừng giữa cụm từ, R1)."""
         t = self.yt_text
         t.configure(state="normal")
         t.delete("1.0", "end")
@@ -6128,6 +6336,8 @@ class App(tk.Tk):
             for i, w in enumerate(s.paragraphs[self._yt_idx]["text"].split()):
                 t.insert("end", w, "yk_" + ((marks or {}).get(i) or "plain"))
                 t.insert("end", " ")
+                if (pauses or {}).get(i):
+                    t.insert("end", "/ ", "yk_pause")
         t.configure(state="disabled")
         t.yview_moveto(0)
 
@@ -6171,6 +6381,15 @@ class App(tk.Tk):
             self._yt_mode_hint()
         self._seg._draw()
         self._update_prog(None)
+        k = self._yt_keep.get(self._yt_idx) if s else None
+        if not self.p_working and not self.recording:
+            ok = bool(k and k.get("wav") and os.path.exists(k["wav"]))
+            if self.last_wav and not self._yt_kept_wav(self.last_wav):
+                remove_temp(self.last_wav)      # bản thu chưa chấm được (lỗi) — không giữ
+            self.last_wav = k["wav"] if ok else None
+            self._pill_show(self.btn_preplay, ok)
+            if ok:
+                self._yt_show(k["res"], k["gate"])
 
     def _yt_step(self, d):
         s = self._yt_sess
@@ -6178,8 +6397,7 @@ class App(tk.Tk):
             return
         self._stop_play()
         self._yt_idx = (self._yt_idx + d) % len(s.paragraphs)
-        self._set_last_wav(None)     # bản thu cũ thuộc đoạn khác
-        self._yt_refresh()
+        self._yt_refresh()           # bản thu + kết quả của đoạn mới (nếu đã đọc) hiện lại
 
     def _yt_load(self):
         if self.p_working or self.recording:
@@ -6193,7 +6411,7 @@ class App(tk.Tk):
         if self._yt_sess:
             self._yt_sess.close()           # phiên dùng một lần (D-39)
             self._yt_sess = None
-        self._set_last_wav(None)
+        self._yt_drop_keep()
         self._yt_cancel = False
         self._yt_refresh()
         self._set_prac_state("loading")
@@ -6335,24 +6553,43 @@ class App(tk.Tk):
         if idx != self._yt_idx or not self._yt_sess:
             self._set_prac_state("idle")
             return
+        self._yt_keep[idx] = {"wav": self.last_wav, "res": res, "gate": gate}
+        self._yt_show(res, gate)
+        self.p_status.set("")
+
+    def _yt_show(self, res, gate):
         v = ytread_view(res, gate)
         self._yt_res, self._yt_view = res, v
         self._set_prac_state(v["state"])
-        self.p_status.set("")
         self._yt_render(v)
 
+    def _yt_drop_keep(self):
+        """Xóa mọi bản thu đã giữ của phiên (lấy video khác / đóng app — I10)."""
+        for k in self._yt_keep.values():
+            if k.get("wav") and k["wav"] != self.last_wav:
+                remove_temp(k["wav"])
+        self._yt_keep = {}
+        self._set_last_wav(None)
+
+    def _yt_kept_wav(self, path):
+        return bool(path) and any(k.get("wav") == path for k in self._yt_keep.values())
+
     def _yt_render(self, v):
-        """Đoạn văn tô màu theo từ; panel phải: vòng điểm, CẦN SỬA, PHỤ ĐỀ CÓ THỂ SAI."""
+        """Đoạn văn tô màu theo từ + dấu "/" chỗ ngừng sai; panel phải: vòng điểm, TRÔI CHẢY,
+        TỪNG CÂU (▶ Mẫu / ▶ Bạn đọc cả câu), CẦN SỬA, PHỤ ĐỀ CÓ THỂ SAI."""
         self._destroy_embeds()
         self._last_view = None
-        self._yt_fill_text(v["marks"])
-        self._draw_ring(v["ring"])
-        self.p_headline.configure(text=v["headline"])
-        self.p_summary.configure(text=v["summary"], font=(self.F, 10))
         s, res = self._yt_sess, self._yt_res
         tgt = res.get("target", "")
         mine = token_spans(res.get("words_t"), tgt)
         orig = token_spans(s.orig_words.get(self._yt_idx), tgt) if s else {}
+        text = s.paragraphs[self._yt_idx]["text"] if s else ""
+        flu = fluency_view(text, res, mine, orig) if v["state"] == "result" else None
+        self._yt_flu = flu
+        self._yt_fill_text(v["marks"], flu and flu["pause_after"])
+        self._draw_ring(v["ring"])
+        self.p_headline.configure(text=v["headline"])
+        self.p_summary.configure(text=v["summary"], font=(self.F, 10))
 
         def caps(text):
             lb = self._caps(self.pp_yt, text)
@@ -6360,7 +6597,7 @@ class App(tk.Tk):
                                     self.px(2)))
             self._embeds.append(lb)
 
-        def row(color, text, ti, muted=False):
+        def row(color, text, mine_sp=None, orig_sp=None, muted=False, sub=None):
             r = self._frame(self.pp_yt, bg="side")
             r.pack(fill="x", pady=(self.px(5), 0))
             self._embeds.append(r)
@@ -6371,21 +6608,48 @@ class App(tk.Tk):
             dot.pack(side="left", anchor="n", padx=(0, self.px(10)), pady=(self.px(5), 0))
             links = self._frame(r, bg="side")
             links.pack(side="right", anchor="n")
-            sp = mine.get(ti)
-            if sp and self.last_wav:
+            if mine_sp and self.last_wav:
                 self._link_lbl(links, "▶ Bạn đọc",
-                               lambda a=sp: self._play_span(self.last_wav, a[0], a[1]),
+                               lambda a=mine_sp: self._play_span(self.last_wav, a[0], a[1]),
                                bg="side", size=9).pack(side="right", padx=(self.px(10), 0))
-            sp = orig.get(ti)
-            if sp and s and s.wav:
-                self._link_lbl(links, "▶ Mẫu", lambda a=sp: self._play_span(s.wav, a[0], a[1]),
+            if orig_sp and s and s.wav:
+                self._link_lbl(links, "▶ Mẫu",
+                               lambda a=orig_sp: self._play_span(s.wav, a[0], a[1]),
                                bg="side", size=9).pack(side="right", padx=(self.px(10), 0))
-            self._wrap(self._lbl(r, text, bg="side", fg="muted" if muted else "fg", size=10,
-                                 justify="left", anchor="w"), self.px(150)).pack(
-                side="left", fill="x", expand=True)
+            col = self._frame(r, bg="side")
+            col.pack(side="left", fill="x", expand=True)
+            self._wrap(self._lbl(col, text, bg="side", fg="muted" if muted else "fg", size=10,
+                                 justify="left", anchor="w"), self.px(150)).pack(fill="x")
+            if sub:
+                self._wrap(self._lbl(col, sub, bg="side", fg="muted", size=9, justify="left",
+                                     anchor="w"), self.px(150)).pack(fill="x")
+
+        def note(text):
+            lb = self._wrap(self._lbl(self.pp_yt, "•  " + text, bg="side", size=10,
+                                      justify="left", anchor="w"), self.px(10))
+            lb.pack(fill="x", pady=(self.px(3), 0))
+            self._embeds.append(lb)
 
         P = self.P
         sections = ["head"]
+        if flu and flu["lines"]:
+            caps("TRÔI CHẢY")
+            for ln in flu["lines"]:
+                note(ln)
+        if flu and flu["sentences"]:
+            caps("TỪNG CÂU — nghe người nói rồi nghe lại mình")
+            for i, st in enumerate(flu["sentences"], 1):
+                bits = []
+                if st["dur_usr"] and st["dur_ref"]:
+                    bits.append("bạn %s s · người nói %s s" % (_vn_num(st["dur_usr"]),
+                                                             _vn_num(st["dur_ref"])))
+                if st["fixes"]:
+                    bits.append("%d từ cần sửa" % st["fixes"])
+                if st["extra"]:
+                    bits.append("ngừng: " + ", ".join(st["extra"][:2]))
+                row(P["warn_line"] if (st["fixes"] or st["extra"]) else P["ring_ok"],
+                    "Câu %d · “%s”" % (i, st["short"]), st["usr"], st["ref"],
+                    sub=" · ".join(bits) or None)
         if v["state"] == "unsure":
             for tip in v["tips"]:
                 lb = self._wrap(self._lbl(self.pp_yt, "•  " + tip, bg="side", size=10,
@@ -6399,13 +6663,14 @@ class App(tk.Tk):
         if v["fixes"]:
             caps("CẦN SỬA (%d)" % len(v["fixes"]))
             for f in v["fixes"][:YT_ROWS_MAX]:
-                row(P["bad_line"] if f["kind"] == "bad" else P["warn_line"], f["text"], f["ti"])
+                row(P["bad_line"] if f["kind"] == "bad" else P["warn_line"], f["text"],
+                    mine.get(f["ti"]), orig.get(f["ti"]))
             if len(v["fixes"]) > YT_ROWS_MAX:
                 caps("… và %d từ khác (tô màu trong đoạn)" % (len(v["fixes"]) - YT_ROWS_MAX))
         if v["doubts"]:
             caps("PHỤ ĐỀ CÓ THỂ SAI — KHÔNG TÍNH (%d)" % len(v["doubts"]))
             for d in v["doubts"][:YT_ROWS_MAX]:
-                row(P["border"], d["text"], d["ti"], muted=True)
+                row(P["border"], d["text"], mine.get(d["ti"]), orig.get(d["ti"]), muted=True)
         if v["extras"]:
             more = len(v["extras"]) - 6
             caps("ĐỌC THÊM")
@@ -6821,6 +7086,7 @@ class App(tk.Tk):
         self._stop_play()
         self._set_last_wav(None)      # xóa bản ghi luyện tạm (I10)
         self._yt_cancel = True
+        self._yt_drop_keep()          # bản thu từng đoạn (I10)
         if self._yt_sess:
             self._yt_sess.close()     # audio gốc của phiên đọc to (I10, D-39)
         self.destroy()

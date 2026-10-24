@@ -1072,3 +1072,27 @@ xếp 3 dòng; cửa sổ hẹp: cột 72 %, chữ đoạn 13 pt; nút ◀ ▶ c
 **Chưa kiểm chứng:** người dùng thử lại bằng mic thật với bố cục mới; màn hình của người dùng
 (độ phân giải/scaling khác máy chụp).
 **Việc tiếp theo:** người dùng thử lại; rồi Y4.
+
+## 2026-10-24 (tiếp 6) — Claude Opus 5.5 — D-40 + R1: phản hồi cả câu (trôi chảy, từng câu, lưu bản thu)
+
+**Người dùng thử tay:** đọc trọn một đoạn; kết quả "chỉ theo từ, không nói cả câu nghe thế nào";
+muốn ngữ điệu, nhịp, trọng âm câu, nối âm/nuốt âm, ngắt nghỉ. Bản thu của người dùng đã bị xóa
+(app xóa khi Thu lại/đổi đoạn) nên không phân tích được → đo thử đặc trưng trên audio gốc 208 s
+(xem D-40). Người dùng duyệt thứ tự R1→R6.
+
+**Đã làm (R1):** `yt_read.sentence_ranges`, `is_clause_end`; `app.fluency_view` (+ `_wpm`,
+`PAUSE_*`); `_yt_keep` + `_yt_show`, `_yt_drop_keep`, `_yt_kept_wav` (giữ bản thu/kết quả từng đoạn,
+khôi phục khi quay lại); `_save_recording` + link "Lưu bản thu…" (cả bài câu); `_yt_render` thêm
+TRÔI CHẢY, TỪNG CÂU (▶ Mẫu/▶ Bạn đọc cả câu), dấu "/" đỏ trong đoạn; `ytread_prepare` nhánh Whisper
+giữ `all_words` → `ytread_orig_hyp` cắt `orig_words` cho đoạn. `asr_bench --dir` bỏ qua `*_goc.wav`.
+`ytread_e2e.py` kiểm tra lưu/giữ/khôi phục/dọn. Test `fluency_pauses_and_sentences` (82/82).
+Tài liệu: D-40, YT-READING-PLAN §7, README §4, FEATURES F3.14/F3.15, skill `app-ui`, context-map,
+PROJECT-STATE.
+
+**Đã kiểm chứng:** smoke 82/82, py_compile, context_check; ảnh sáng/tối; `ytread_e2e` trên video
+thật (lần này phụ đề YouTube timeout → nhánh Whisper 230 s, vẫn chạy đúng); nhánh Whisper ép trên
+"Me at the zoo": 37 từ có mốc, 3/3 câu có ▶ Mẫu.
+**Chưa kiểm chứng:** ngưỡng chỗ ngừng với giọng người học thật (cần bản "Lưu bản thu…" của người
+dùng); nghe ▶ từng câu bằng tai.
+**Việc tiếp theo:** người dùng đọc một đoạn và bấm "Lưu bản thu…" gửi lại thư mục → phân tích thật,
+chỉnh `PAUSE_*`; rồi R2 (ngữ điệu theo câu).

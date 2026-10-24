@@ -160,6 +160,9 @@ subs, embed, sub_lang, mic, geometry
   người học phải thấy cả đoạn khi thu); panel phải hẹp hơn (`YT_SIDE_FRAC`); khối thu âm, `p_samples`, panel phải (`pp_yt`) dùng chung. Rẽ nhánh
   ở `_prac_start`, `_prac_score`, `_step_lesson`, `_prac_mode_changed`. Hủy tải bằng cờ
   riêng `_yt_cancel` (không dùng `cancel_flag` của Tab 1).
+- Bản thu từng đoạn YouTube nằm trong `_yt_keep` (đoạn → wav/res/gate). `last_wav` trỏ tới bản
+  của đoạn đang xem; đổi đoạn/chế độ **không** xóa file (chỉ gán lại), chỉ `_yt_drop_keep`
+  (lấy video khác, đóng app) mới xóa. Đừng gọi `_set_last_wav(None)` khi đổi đoạn.
 
 ## 9. Font, chỉ báo, thanh cuộn (B1 — D-28/D-32)
 

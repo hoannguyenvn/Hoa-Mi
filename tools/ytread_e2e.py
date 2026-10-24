@@ -82,11 +82,29 @@ def main():
             print("  phụ đề?:", d["text"])
         rows = [w for w in A.pp_yt.winfo_children()]
         print("  dòng panel: %d" % len(rows))
-    A._yt_step(1)                       # đổi đoạn → kết quả cũ bị xóa
-    print("sau Đoạn sau: kết quả %s · last_wav %s" % (A._yt_view, A.last_wav))
+        flu = getattr(A, "_yt_flu", None) or {}
+        for ln in flu.get("lines", []):
+            print("  trôi chảy:", ln)
+        print("  %d câu" % len(flu.get("sentences", [])))
+    # "Lưu bản thu…" ra thư mục tạm (không hỏi hộp thoại)
+    out = tempfile.mkdtemp(prefix="oriole_e2e_save_")
+    app.filedialog.asksaveasfilename = lambda **kw: os.path.join(out, kw["initialfile"])
+    A._save_recording()
+    saved = sorted(os.listdir(out))
+    print("đã lưu:", saved)
+    kept = A.last_wav
+    A._yt_step(1)                       # đổi đoạn → màn của đoạn mới, bản thu đoạn cũ được giữ
+    print("sau Đoạn sau: kết quả %s · last_wav %s · file cũ còn %s" % (
+        A._yt_view, A.last_wav, os.path.exists(kept)))
+    A._yt_step(-1)                      # quay lại → kết quả + bản thu hiện lại
+    print("quay lại: %s · last_wav khớp %s" % (
+        A._yt_view and A._yt_view["headline"], A.last_wav == kept))
     work = s.work_dir
     A._on_close()
-    print("thư mục phiên còn không:", bool(work and os.path.exists(work)))
+    print("thư mục phiên còn không:", bool(work and os.path.exists(work)),
+          "· bản thu giữ còn không:", os.path.exists(kept))
+    import shutil
+    shutil.rmtree(out, ignore_errors=True)
     print("lỗi callback:", errors or "không")
     return 1 if errors else 0
 

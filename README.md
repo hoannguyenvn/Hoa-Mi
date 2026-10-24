@@ -143,8 +143,14 @@ Ba chế độ:
     ▶ Bạn đọc. "Đọc lại đoạn này" để thử lại.
   - Cách viết khác nhau vẫn tính là đúng: I'm = I am, gonna = going to, 1990 = nineteen
     ninety; từ đệm (um, uh) bỏ qua.
-  - Phiên dùng một lần: âm thanh gốc nằm trong thư mục tạm, xóa khi lấy video khác hoặc
-    đóng app. Lịch sử theo người học sẽ có ở bản sau.
+  - **Trôi chảy** (so với người nói, không tính điểm): tốc độ đọc, số từ mỗi hơi, chỗ bạn
+    ngừng giữa cụm từ (dấu **/** đỏ trong đoạn), chỗ người nói ngừng mà bạn đọc liền.
+  - **Từng câu**: ▶ Mẫu (người nói) và ▶ Bạn đọc cho mỗi câu, kèm thời lượng hai bên.
+  - Bản thu + kết quả của từng đoạn được giữ khi chuyển đoạn qua lại. **Lưu bản thu…** (dưới
+    nút thu) lưu ra thư mục bạn chọn: bản đọc `.wav`, đoạn văn `.txt`, chi tiết `.json`, đoạn
+    gốc `_goc.wav` — dùng để xem lại hoặc gửi cho người hướng dẫn.
+  - Phiên dùng một lần: âm thanh gốc và bản thu nằm trong thư mục tạm, xóa khi lấy video khác
+    hoặc đóng app. Ngữ điệu, nhấn & nhịp, nối âm, lịch sử theo người học: bản sau (D-40).
 
 Mỗi bài tiếng Anh có: câu mẫu, **IPA**, âm trọng tâm, cặp dễ lẫn (`think–tink`),
 nút nghe **Nghe mẫu / Chậm / 2 từ khoá**, và hộp gợi ý khẩu hình. Sau khi thu, có thêm

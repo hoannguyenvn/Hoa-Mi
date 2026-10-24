@@ -178,6 +178,40 @@ def ytread_view_marks_and_rows():
 
 
 @case
+def fluency_pauses_and_sentences():
+    import yt_read
+    assert yt_read.sentence_ranges("One two. Three four five? Six") == [(0, 1), (2, 4), (5, 5)]
+    long = " ".join("w%d" % i for i in range(30))
+    assert yt_read.sentence_ranges(long, breaks={14}) == [(0, 14), (15, 29)]
+    text = ("When I was in college I had to write a ninety page thesis. "
+            "I planned to start early, but I watched videos instead.")
+    plain = text.lower().replace(".", "").replace(",", "")
+    res = app.read_aloud_diff(text, plain, plain)
+    toks = res["target"].split()
+
+    def times(gaps):
+        t, out = 0.0, []
+        for i, w in enumerate(toks):
+            out.append({"w": w, "s": round(t, 2), "e": round(t + 0.3, 2), "p": 0.9})
+            t += 0.3 + gaps.get(i, 0.02)
+        return out
+    # token 8 = "write", 10 = "ninety": người học ngừng giữa cụm (1,2 s = ngập ngừng);
+    # token 13 = "thesis." (cuối câu) — ngừng ở đó là tự nhiên, không bị báo
+    mine = app.token_spans(times({8: 0.6, 10: 1.2, 13: 0.5}), res["target"])
+    ref = app.token_spans(times({4: 0.5, 13: 0.6}), res["target"])   # người nói ngừng sau "college"
+    v = app.fluency_view(text, res, mine, ref)
+    assert [e["text"] for e in v["extra"]] == ["write / a", "ninety / page"], v["extra"]
+    assert [m["text"] for m in v["missed"]] == ["college"], v["missed"]
+    assert v["hesit"] == 1 and set(v["pause_after"]) == {8, 10}, v
+    assert len(v["sentences"]) == 2 and v["sentences"][0]["extra"] == ["write / a", "ninety / page"]
+    assert v["sentences"][0]["usr"] and v["sentences"][0]["ref"]
+    assert v["wpm_usr"] < v["wpm_ref"] and any("Tốc độ" in ln for ln in v["lines"])
+    # không có audio gốc (transcript do Whisper tạo) → vẫn có tốc độ của bạn, không so
+    v2 = app.fluency_view(text, res, mine, None)
+    assert v2["wpm_ref"] is None and v2["missed"] == []
+
+
+@case
 def tone_strip_keeps_letters():
     # strip_tone_vi trả chuỗi NFD (giữ dấu chữ như ă/â), nên chuẩn hóa NFC để so.
     import unicodedata

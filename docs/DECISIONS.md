@@ -401,6 +401,24 @@ Test: `yt_caption_clean_and_paragraphs`, `en_tokens_normalise`, `read_aloud_diff
 Chỉ dùng phụ đề tiếng Anh gốc (`pick_en_subtitle`), không bản dịch máy. Whisper trên đoạn gốc
 chạy khi cần (cache trong phiên).
 
+### D-40 — Đọc to YouTube: phản hồi cả câu (trôi chảy, ngữ điệu, nhấn, nhịp, nối âm) (2026-10-24)
+**Người dùng:** sau khi đọc trọn một đoạn, kết quả "chỉ theo từ, không nói câu nghe thế nào"
+(chọn nghĩa (a)); muốn có ngữ điệu, nhịp, trọng âm câu, nối âm/nuốt âm, ngắt nghỉ.
+**Quyết định:** làm theo thứ tự R1→R6 (`docs/YT-READING-PLAN.md` §7). Mọi phần mới **chỉ mô tả, so
+với người nói trong video**, không thành điểm (điểm vẫn là số từ đúng — I4, D-34). R1 (xong): giữ
+bản thu + kết quả **từng đoạn** trong phiên (xóa khi lấy video khác/đóng app — I10), "Lưu bản
+thu…" (x.wav + x.txt + x.json, YouTube thêm x_goc.wav — chỉ lưu khi người dùng chọn thư mục),
+▶ Mẫu / ▶ Bạn đọc **từng câu**, mục TRÔI CHẢY (tốc độ, số từ mỗi hơi, ngừng giữa cụm, người nói
+ngừng mà bạn đọc liền, ngập ngừng ≥ 1 s) + dấu "/" đỏ trong đoạn.
+**Vì sao:** đo trên 208 s giọng thật (2026-10-24): chỗ ngừng/tốc độ từ mốc Whisper đáng tin; hướng
+giọng cuối câu có lúc sai hẳn (một câu "lên 43,5 st/s") và từ được nhấn tính trên cả câu dài
+chọn sai ("that,", "to") → ngữ điệu (R2) phải so cùng câu với người nói + lọc lỗi bám F0, nhấn (R3)
+tính theo cụm giữa hai chỗ ngừng. Nuốt âm (elision) không phát hiện tin cậy → chỉ là gợi ý (R4).
+**Hệ quả:** `PAUSE_MIN` 0,30 / `PAUSE_LINKED` 0,12 / `PAUSE_REF_MIN` 0,40 / `PAUSE_HESIT` 1,0 s chưa
+hiệu chuẩn với người học thật — chỉnh khi có bản lưu. Transcript do Whisper tạo vẫn giữ mốc từ
+(`all_words`) để có ▶ Mẫu và so tốc độ (không có "phụ đề có thể sai"). Test:
+`fluency_pauses_and_sentences`.
+
 ## B. Những cách làm đã bị loại (đừng lặp lại)
 
 Nguồn: `PHASE2-DANH-GIA-DU-AN-CU.md` §2.2 và §6.

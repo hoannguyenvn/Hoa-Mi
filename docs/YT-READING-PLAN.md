@@ -35,7 +35,7 @@
 | Y1 | Hàm thuần + test: `yt_read.py` (làm sạch phụ đề, chia đoạn, chuẩn hóa tiếng Anh) + `read_aloud_diff` trong `app.py` | ✅ |
 | Y2 | `ytread_prepare` (link → phụ đề tiếng Anh + audio gốc 16 kHz vào thư mục tạm, Hủy qua `cancel()`, dọn khi lỗi) + `ytread_orig_hyp` (Whisper đoạn gốc, khi cần, có cache) + `tools/ytread_bench.py`. Thread worker gắn UI làm ở Y3 | ✅ |
 | Y3 | Chế độ "Từ YouTube" trong Luyện: ô link + Lấy transcript (state `loading`, Esc hủy), ◀ ▶ đoạn, Nghe rồi đọc / Đọc thẳng, ô chữ cả đoạn tô màu (`ytread_view`), panel CẦN SỬA + PHỤ ĐỀ CÓ THỂ SAI với ▶ Mẫu / ▶ Bạn đọc từng từ (`token_spans`); tự dừng sau 3,5 s im lặng, tối đa 150 s | ✅ |
-| Y4 | Đọc lại + so lần trước, "Từ cần luyện", lịch sử theo người học (hồ sơ cục bộ) | ⛔ |
+| Y4 | → chuyển thành R6 (§7) | ⛔ |
 | Y5 | GOP/ngữ điệu so audio gốc khi đoạn đủ sạch (không nhạc nền) | ⛔ |
 
 ## 4. Rủi ro
@@ -74,3 +74,17 @@
   (`YT_SIDE_FRAC` 0,34); cửa sổ hẹp: cột 72 %, chữ 13 pt, nút ◀ ▶ chỉ còn mũi tên.
 - Chưa làm (Y4): so lần trước, "Từ cần luyện", lịch sử theo hồ sơ người học; ô panel tiến bộ
   trống ở chế độ này.
+
+## 7. Phản hồi cả câu R1–R6 (D-40)
+
+| Bước | Nội dung | Trạng thái |
+|---|---|---|
+| R1 | Giữ bản thu + kết quả từng đoạn; "Lưu bản thu…"; ▶ Mẫu / ▶ Bạn đọc từng câu (`sentence_ranges`); TRÔI CHẢY (`fluency_view`): tốc độ, từ/hơi, ngừng giữa cụm (dấu "/"), người nói ngừng mà bạn đọc liền, ngập ngừng | ✅ |
+| R2 | NGỮ ĐIỆU: hướng giọng cuối từng câu + độ rộng cao độ, so **cùng câu** của người nói; lọc lỗi bám F0 (nhảy quãng tám, nhạc nền) | ⛔ |
+| R3 | NHẤN & NHỊP: từ được nhấn theo **cụm** (giữa hai chỗ ngừng) bạn vs người nói; từ chức năng (to, of, the…) đọc quá dài/mạnh | ⛔ |
+| R4 | NỐI ÂM: điểm nối (phụ âm cuối + nguyên âm đầu) đánh dấu trong đoạn; báo khi bạn ngắt ở đó mà người nói đọc liền; nuốt âm chỉ là gợi ý | ⛔ |
+| R5 | Bố cục kết quả: tóm tắt "3 điều nên sửa trước" + các mục Từ · Trôi chảy · Ngữ điệu · Nhấn & nhịp · Nối âm | ⛔ |
+| R6 | So lần trước, Từ cần luyện, lịch sử theo hồ sơ người học cục bộ (Y4 cũ) | ⛔ |
+
+R1 kiểm chứng: `ytread_e2e` (giữ/khôi phục khi đổi đoạn, lưu đủ 4 file, đóng app xóa hết), nhánh
+transcript Whisper ("Me at the zoo", ép không phụ đề): 37 từ có mốc, 3/3 câu có ▶ Mẫu.

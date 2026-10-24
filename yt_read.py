@@ -59,6 +59,34 @@ def build_paragraphs(cues, min_sec=PARA_MIN_SEC, max_sec=PARA_MAX_SEC, gap_sec=P
     return paras
 
 
+SENT_MAX_WORDS = 22   # câu không có dấu chấm (phụ đề tự động) dài hơn → cắt ở dấu phẩy / chỗ ngừng
+_SENT_END_RE = re.compile(r"[.?!][\"')\]]*$")
+_CLAUSE_RE = re.compile(r"[,;:][\"')\]]*$")
+
+
+def sentence_ranges(text, breaks=(), max_words=SENT_MAX_WORDS):
+    """Đoạn → [(từ đầu, từ cuối)] theo text.split(): cắt ở . ? !; câu dài cắt ở , ; :
+    hoặc ở `breaks` (chỉ số từ mà người nói ngừng sau đó — phụ đề tự động không có dấu)."""
+    words = (text or "").split()
+    out, start = [], 0
+    for i, w in enumerate(words):
+        n = i - start + 1
+        end = bool(_SENT_END_RE.search(w))
+        clause = bool(_CLAUSE_RE.search(w)) and n >= max_words
+        pause = i in breaks and n >= max_words // 2    # người nói ngừng giữa câu dài
+        if end or clause or pause or n >= 2 * max_words:
+            out.append((start, i))
+            start = i + 1
+    if start < len(words):
+        out.append((start, len(words) - 1))
+    return out
+
+
+def is_clause_end(word):
+    """Từ kết thúc câu/vế (có dấu . , ? ! ; :) — ngừng sau từ này là tự nhiên."""
+    return bool(_SENT_END_RE.search(word or "") or _CLAUSE_RE.search(word or ""))
+
+
 # ------------------------------------------------------------ chuẩn hóa tiếng Anh
 _FILLERS = {"um", "uh", "erm", "er", "ah", "hmm", "mm", "mhm", "uhm"}
 _WHOLE = {  # thay cả từ (sau khi viết thường)

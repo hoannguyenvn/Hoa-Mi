@@ -255,10 +255,17 @@ def main() -> int:
             "three days away")
     res = app.read_aloud_diff(para, learner, orig)
     toks = res["target"].split()
-    res["words_t"] = [{"w": w, "s": 0.4 * i, "e": 0.4 * i + 0.3, "p": 0.9}
-                      for i, w in enumerate(learner.split())]
-    sess.orig_words[0] = [{"w": w, "s": 0.1 * i, "e": 0.1 * i + 0.08, "p": 0.9}
-                          for i, w in enumerate(orig.split())]
+    # người học ngừng sau "to" (từ 16) và "planned" (từ 25); người nói ngừng sau "college"
+    lw = learner.split()
+    lgap = {16: 0.7, 25: 0.5}
+    t, res["words_t"] = 0.0, []
+    for i, w in enumerate(lw):
+        res["words_t"].append({"w": w, "s": round(t, 2), "e": round(t + 0.3, 2), "p": 0.9})
+        t += 0.32 + lgap.get(i, 0.0)
+    ow, t, sess.orig_words[0] = orig.split(), 13.0, []
+    for i, w in enumerate(ow):
+        sess.orig_words[0].append({"w": w, "s": round(t, 2), "e": round(t + 0.22, 2), "p": 0.9})
+        t += 0.23 + (0.5 if w == "college" else 0.0)
     A.last_wav = None
     A._yt_done(0, res, None)
     shot("18_yt_result_light")

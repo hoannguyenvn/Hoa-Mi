@@ -98,8 +98,8 @@ def builtin_items():
 def dir_items(folder):
     items = []
     for p in sorted(Path(folder).iterdir()):
-        if p.suffix.lower() not in AUDIO_EXTS:
-            continue
+        if p.suffix.lower() not in AUDIO_EXTS or p.stem.endswith("_goc"):
+            continue   # x_goc.wav = đoạn gốc YouTube do "Lưu bản thu…" lưu kèm, không phải bản đọc
         t = p.with_suffix(".txt")
         if not t.exists():
             print("bỏ qua %s (thiếu %s)" % (p.name, t.name))

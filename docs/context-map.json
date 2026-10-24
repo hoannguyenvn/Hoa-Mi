@@ -128,6 +128,10 @@
       "App._yt_render",
       "token_spans",
       "ytread_view",
+      "fluency_view",
+      "App._save_recording",
+      "App._yt_show",
+      "App._yt_drop_keep",
       "App._src_label",
       "strip_marks_vi",
       "vi_north_key",
@@ -214,7 +218,9 @@
       "clean_caption",
       "build_paragraphs",
       "number_words",
-      "en_tokens"
+      "en_tokens",
+      "sentence_ranges",
+      "is_clause_end"
     ],
     "prosody.py": [
       "read_wav",
