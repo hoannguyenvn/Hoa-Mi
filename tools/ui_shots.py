@@ -276,8 +276,22 @@ def main() -> int:
         tmp_wavs.append(p)
     A._yt_keep[1] = {"wav": tmp_wavs[1], "res": res, "gate": None}
     A.last_wav = tmp_wavs[0]
+    # cao độ giả để thấy đường cao độ thu nhỏ: người nói dao động rộng, người học đều (D-44)
+    import math
+    res["pitch"] = {"t": [i * 0.01 for i in range(2200)],
+                    "st": [None if i % 7 == 0 else round(2.2 * math.sin(i / 40.0), 2)
+                           for i in range(2200)]}
+    sess.pitch[0] = {"t": [13.0 + i * 0.01 for i in range(1300)],
+                     "st": [None if i % 7 == 0 else round(6.5 * math.sin(i / 25.0), 2)
+                            for i in range(1300)]}
     A._yt_done(0, res, None)
     shot("18_yt_result_light")
+    side_cv = [cv for cv in A._scrollers if str(cv).startswith(str(A.p_side))]
+    for cv in side_cv:
+        cv.yview_moveto(0.5)          # xuống NGỮ ĐIỆU + TỪNG CÂU (đường cao độ, D-44)
+    shot("18b_yt_result_scrolled_light")
+    for cv in side_cv:
+        cv.yview_moveto(0)
     A._yt_done(0, res, "garbage")
     shot("19_yt_unsure_light")
     theme("dark")

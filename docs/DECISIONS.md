@@ -458,6 +458,19 @@ tự chứa, có thẻ <audio> nghe lại) + bộ file từng đoạn. Đoạn "
 **Hệ quả:** điểm tổng = Σ từ đúng / Σ từ (I4); tốc độ đoạn chỉ chia cho từ đã đọc (`_wpm` theo từ có mốc —
 trước đây dừng giữa đoạn làm tốc độ phồng lên). Test: `session_report_and_html`.
 
+### D-44 — Từ YouTube: ngữ điệu theo câu = DẢI cao độ + đường cao độ, không phán lên/xuống (2026-10-24)
+**Quyết định:** R2 so **dải cao độ** (phân vị 90 − 10, bán cung so trung vị chính người nói — I5) từng câu
+giữa người học và người nói (`prosody.pitch_track`, `segment_pitch`, `app.intonation_view`), vẽ **đường cao
+độ thu nhỏ** hai người cùng thang ở mỗi câu, và nói "giọng bạn đều hơn nhiều" khi trung vị dải < 60 % người
+nói (`FLAT_RATIO`) — thành một trong "3 điều nên tập trung" của báo cáo. **Không** kết luận "cuối câu lên/
+xuống" (R2 ban đầu dự định). Câu máy nghe < 60 % số từ (dừng giữa chừng) không so.
+**Vì sao:** đo trên 4 đoạn thật: hướng cuối câu của người nói đổi chiều khi cửa sổ đổi 0,3 → 0,6 s
+(molecules +0,9 → −12,8 bán cung) — giọng khàn cuối câu/nhạc nền làm bám F0 sai → phán sẽ báo oan. Dải
+cao độ ổn định trên hàng trăm khung: người học ~5 bán cung mọi đoạn, người nói ~11–14.
+**Hệ quả:** cao độ đoạn gốc tính sẵn ở nền (`ytread_orig_pitch`, cache `YtReadSession.pitch`), cao độ bản
+đọc trong worker chấm (`res["pitch"]`) — thời gian chấm gần như không đổi (~11 s). Số từng câu chỉ gần đúng
+(đoạn ngắn / khung lỗi); kết luận dùng trung vị nhiều câu. Test: `intonation_range_not_direction`.
+
 ## B. Những cách làm đã bị loại (đừng lặp lại)
 
 Nguồn: `PHASE2-DANH-GIA-DU-AN-CU.md` §2.2 và §6.
@@ -478,6 +491,7 @@ Nguồn: `PHASE2-DANH-GIA-DU-AN-CU.md` §2.2 và §6.
 | R-12 | Ghi file tạm không dọn | dùng `tempfile` + `finally` |
 | R-13 | Chấm bằng TTS làm chuẩn | TTS chỉ để nghe mẫu |
 | R-14 | Cookie tài khoản trong repo | bảo mật |
+| R-15 | Phán "cuối câu bạn lên/xuống giọng sai" trên đoạn văn YouTube | hướng F0 cuối câu không ổn định (D-44) |
 
 ## C. Quyết định đang chờ người dùng
 

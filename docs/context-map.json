@@ -130,6 +130,8 @@
       "ytread_view",
       "fluency_view",
       "error_pattern_view",
+      "intonation_view",
+      "ytread_orig_pitch",
       "session_report",
       "report_html",
       "App._yt_finish",
@@ -244,7 +246,9 @@
       "contour_cached",
       "compare",
       "stress_from_features",
-      "word_stress"
+      "word_stress",
+      "pitch_track",
+      "segment_pitch"
     ],
     "tools/build_lessons.py": [
       "sentence_ipa",

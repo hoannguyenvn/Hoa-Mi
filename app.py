@@ -839,6 +839,7 @@ class YtReadSession:
         self.orig_words = {}       # chỉ số đoạn → [{w, s, e, p}] của audio gốc
         self.all_words = []        # transcript do Whisper tạo: mốc từ của cả video
         self.lock = threading.Lock()   # ytread_orig_hyp: nghe trước ở nền + lúc chấm
+        self.pitch = {}            # chỉ số đoạn → prosody.pitch_track của audio gốc (D-44)
 
     def close(self):
         if self.work_dir:
@@ -980,6 +981,20 @@ def ytread_orig_hyp(session, i, model):
         return None
     with session.lock:
         return _ytread_orig_locked(session, i, model)
+
+
+def ytread_orig_pitch(session, i):
+    """Cao độ đoạn gốc thứ i (mốc tuyệt đối trong session.wav), cache. None nếu không đo được."""
+    if not session.wav:
+        return None
+    if i not in session.pitch:
+        p = session.paragraphs[i]
+        try:
+            session.pitch[i] = prosody.pitch_track(session.wav, p["start"] - YTREAD_PAD_SEC,
+                                                   p["end"] + YTREAD_PAD_SEC)
+        except Exception:
+            session.pitch[i] = None
+    return session.pitch[i]
 
 
 def _ytread_orig_locked(session, i, model):
@@ -1703,17 +1718,56 @@ def fluency_view(text, res, mine, orig=None):
             return (min(t[0] for t in ts), max(t[1] for t in ts)) if len(ts) >= 2 else None
         su, sr = span(mine), span(orig)
         ws = words[w0:w1 + 1]
+        heard = sum(1 for k in toks if mine.get(k) and mine[k][0] is not None)
         sentences.append({
             "w0": w0, "w1": w1, "n": len(ws),
             "short": " ".join(ws) if len(ws) <= 8 else " ".join(ws[:7]) + " …",
             "fixes": sum(1 for wi in range(w0, w1 + 1) if wi in fix_words),
             "extra": [e["text"] for e in extra if w0 <= e["wi"] < w1],
             "usr": su, "ref": sr,
+            "cov_usr": round(heard / float(len(toks)), 2) if toks else 0.0,
             "dur_usr": round(su[1] - su[0], 1) if su else None,
             "dur_ref": round(sr[1] - sr[0], 1) if sr else None})
     return {"wpm_usr": wpm_u, "wpm_ref": wpm_r, "runs_usr": runs_u, "runs_ref": runs_r,
             "extra": extra, "missed": missed, "hesit": hesit, "lines": lines,
             "sentences": sentences, "pause_after": pause_after}
+
+
+FLAT_RATIO = 0.6     # dải cao độ của bạn < 60 % người nói → "giọng đều hơn nhiều" (D-44)
+INTON_MIN_COVER = 0.6  # câu có < 60 % từ máy nghe được (dừng giữa chừng) → không so cao độ
+
+
+def intonation_view(sentences, pitch_usr, pitch_ref):
+    """Ngữ điệu từng câu của đoạn đọc to (D-44). Hàm thuần, chỉ MÔ TẢ (D-34, I5).
+
+    sentences: fluency_view(...)["sentences"] (có mốc "usr"/"ref"); pitch_*: prosody.pitch_track.
+    Chỉ so DẢI cao độ (bền) và trả đường cao độ thu nhỏ để vẽ — không kết luận lên/xuống cuối câu
+    (đo thấy không ổn định). → {"sentences": [{range_usr, range_ref, curve_usr, curve_ref}],
+    "range_usr", "range_ref", "flat", "lines"}."""
+    import numpy as np
+    rows, pairs = [], []
+    for st in sentences or []:
+        # câu bạn đọc chưa tới / máy nghe được < 60 % số từ → mốc câu không tin được, bỏ qua
+        u = prosody.segment_pitch(pitch_usr, *(st.get("usr") or (None, None))) \
+            if st.get("cov_usr", 1.0) >= INTON_MIN_COVER else None
+        r = prosody.segment_pitch(pitch_ref, *(st.get("ref") or (None, None)))
+        rows.append({"range_usr": u and u["range"], "range_ref": r and r["range"],
+                     "curve_usr": u and u["curve"], "curve_ref": r and r["curve"]})
+        if u and r:
+            pairs.append((u["range"], r["range"]))
+    ru = round(float(np.median([a for a, _b in pairs])), 1) if pairs else None
+    rr = round(float(np.median([b for _a, b in pairs])), 1) if pairs else None
+    flat = bool(ru is not None and rr and ru < FLAT_RATIO * rr)
+    lines = []
+    if ru is not None:
+        lines.append("Dao động cao độ mỗi câu: bạn ~%s bán cung · người nói ~%s%s" % (
+            _vn_num(ru).replace(",0", ""), _vn_num(rr).replace(",0", ""),
+            " — giọng bạn đều hơn nhiều" if flat else ""))
+        if flat:
+            lines.append("Tiếng Anh dùng cao độ để nhấn từ khóa: lên giọng ở từ quan trọng, "
+                         "hạ rõ ở cuối câu kể. Nghe đường cao độ của người nói ở từng câu bên "
+                         "dưới, bắt chước — lúc đầu cứ phóng đại.")
+    return {"sentences": rows, "range_usr": ru, "range_ref": rr, "flat": flat, "lines": lines}
 
 
 UNREAD_MIN = 3       # ≥ ngần này từ cuối đoạn không nghe thấy → "chưa đọc tới" (người học dừng)
@@ -1837,12 +1891,12 @@ def session_report(info, done):
     """Gom MỌI đoạn đã đọc thành báo cáo cuối (D-43). Hàm thuần, không Tk.
 
     info: {"title", "url", "sub_kind", "n_paras", "date"}; done: [{"idx", "text", "res",
-    "gate", "orig_words"}] theo thứ tự đoạn. Đoạn "máy chưa nghe rõ" (gate) liệt kê riêng,
+    "gate", "orig_words", "pitch_ref"}] theo thứ tự đoạn (res["pitch"] = cao độ bản đọc). Đoạn "máy chưa nghe rõ" (gate) liệt kê riêng,
     không tính vào tổng. Mọi nhận xét chỉ mô tả (I4, D-34); điểm = tổng từ đúng / tổng từ.
     """
     paras, pats, words = [], {}, {}
     corr = tot = doubts = unread = 0
-    extra, missed, hesit = [], [], 0
+    extra, missed, hesit, rng = [], [], 0, []
     w_usr = w_ref = n_usr = n_ref = 0.0
     for d in done:
         res, idx = d["res"], d["idx"]
@@ -1857,6 +1911,10 @@ def session_report(info, done):
         mine = token_spans(res.get("words_t"), tgt)
         orig = token_spans(d.get("orig_words"), tgt)
         flu = fluency_view(d["text"], res, mine, orig)
+        iv = intonation_view(flu["sentences"], res.get("pitch"), d.get("pitch_ref"))
+        for it in iv["sentences"]:
+            if it["range_usr"] is not None and it["range_ref"] is not None:
+                rng.append((it["range_usr"], it["range_ref"]))
         pv = error_pattern_view(v["fixes"])
         fixes = [f for f in v["fixes"] if not f.get("unread")]
         corr, tot = corr + v["correct"], tot + v["total"]
@@ -1903,6 +1961,15 @@ def session_report(info, done):
         focus.append({"title": "Tốc độ: %d từ/phút, người nói %d" % (wpm_u, wpm_r),
                       "detail": "Chọn “Nghe rồi đọc”, đọc theo từng câu cho tới khi theo kịp "
                                 "nhịp người nói; đừng cố đọc nhanh khi chưa rõ âm."})
+    import numpy as np
+    ru = round(float(np.median([a for a, _b in rng])), 1) if rng else None
+    rr = round(float(np.median([b for _a, b in rng])), 1) if rng else None
+    flat = bool(ru is not None and rr and ru < FLAT_RATIO * rr)
+    if flat:
+        focus.append({"title": "Giọng đều: cao độ dao động ~%s bán cung, người nói ~%s" % (
+            _vn_num(ru).replace(",0", ""), _vn_num(rr).replace(",0", "")),
+            "detail": "Lên giọng ở từ khóa, hạ rõ ở cuối câu kể. Nghe đường cao độ của "
+                      "người nói từng câu rồi bắt chước, lúc đầu cứ phóng đại."})
     if len(extra) >= 3:
         focus.append({"title": "Ngừng giữa cụm từ: %d chỗ" % len(extra),
                       "detail": "Đọc liền cả cụm (vd “%s”), chỉ ngừng ở dấu phẩy, dấu chấm."
@@ -1924,6 +1991,11 @@ def session_report(info, done):
             "“%s”" % m["text"] for m in missed[:FLU_LIST_MAX])))
     if hesit:
         fluency.append("Ngập ngừng (≥ 1 giây giữa câu): %d lần" % hesit)
+    intonation = []
+    if ru is not None:
+        intonation.append("Dao động cao độ mỗi câu: bạn ~%s bán cung · người nói ~%s%s" % (
+            _vn_num(ru).replace(",0", ""), _vn_num(rr).replace(",0", ""),
+            " — giọng bạn đều hơn nhiều" if flat else ""))
     practise = sorted(words.values(), key=lambda e: (-e["n"], e["word"]))[:REPORT_WORDS]
     return {"title": info.get("title", ""), "url": info.get("url", ""),
             "sub_kind": info.get("sub_kind"), "date": info.get("date", ""),
@@ -1931,6 +2003,7 @@ def session_report(info, done):
             "correct": corr, "total": tot, "pct": round(100.0 * corr / tot) if tot else 0,
             "doubts": doubts, "unread": unread, "wpm_usr": wpm_u, "wpm_ref": wpm_r,
             "focus": focus[:3], "patterns": groups, "fluency": fluency, "paras": paras,
+            "intonation": intonation, "range_usr": ru, "range_ref": rr, "flat": flat,
             "words": practise}
 
 
@@ -1980,6 +2053,10 @@ def report_html(rep, audio=None):
                        "</span><br>%s</div>" % (
                            e(g["title"]), g["n"],
                            e(pattern_example_text(g["examples"], REPORT_EXAMPLES)), e(g["tip"])))
+    if rep.get("intonation"):
+        out.append("<h2>Ngữ điệu</h2><ul>")
+        out += ["<li>%s</li>" % e(x) for x in rep["intonation"]]
+        out.append("</ul>")
     if rep["fluency"]:
         out.append("<h2>Trôi chảy</h2><ul>")
         out += ["<li>%s</li>" % e(x) for x in rep["fluency"]]
@@ -6931,6 +7008,11 @@ class App(tk.Tk):
             res = read_aloud_diff(s.paragraphs[idx]["text"], asr["hyp"], orig)
             probs = asr["probs"]
             res["words_t"], res["model"] = asr["words_t"], learner
+            try:
+                res["pitch"] = prosody.pitch_track(wav_path)        # ngữ điệu (D-44)
+            except Exception:
+                res["pitch"] = None
+            ytread_orig_pitch(s, idx)
             res["conf"] = (sum(probs) / len(probs)) if probs else 1.0
             res["low_conf"] = bool(probs) and res["conf"] < 0.35
             self._queue.put(("yt_done", (idx, res, evidence_gate(res))))
@@ -6958,7 +7040,8 @@ class App(tk.Tk):
         info = {"title": s.title or s.vid, "url": s.url, "sub_kind": s.sub_kind,
                 "n_paras": len(s.paragraphs), "date": time.strftime("%d/%m/%Y %H:%M")}
         done = [{"idx": i, "text": s.paragraphs[i]["text"], "res": k["res"],
-                 "gate": k.get("gate"), "orig_words": s.orig_words.get(i)}
+                 "gate": k.get("gate"), "orig_words": s.orig_words.get(i),
+                 "pitch_ref": s.pitch.get(i)}
                 for i, k in sorted(self._yt_keep.items()) if k.get("res")]
         return info, done
 
@@ -7084,6 +7167,10 @@ class App(tk.Tk):
                 lbl(box, "Ví dụ: " + pattern_example_text(g["examples"], REPORT_EXAMPLES),
                     fg="muted", margin=self.px(22)).pack(fill="x", padx=(self.px(22), 0))
                 lbl(box, g["tip"], margin=self.px(22)).pack(fill="x", padx=(self.px(22), 0))
+        if rep.get("intonation"):
+            caps("NGỮ ĐIỆU")
+            for x in rep["intonation"]:
+                lbl(box, "•  " + x).pack(fill="x", pady=(self.px(2), 0))
         if rep["fluency"]:
             caps("TRÔI CHẢY")
             for x in rep["fluency"]:
@@ -7171,6 +7258,7 @@ class App(tk.Tk):
         Lỗi bỏ qua: lúc chấm sẽ thử lại (cùng khóa của phiên)."""
         try:
             ytread_orig_hyp(s, idx, load_model(model_size))
+            ytread_orig_pitch(s, idx)
         except Exception:
             pass
 
@@ -7223,7 +7311,34 @@ class App(tk.Tk):
                                     self.px(2)))
             self._embeds.append(lb)
 
-        def row(color, text, mine_sp=None, orig_sp=None, muted=False, sub=None):
+        def mini_curve(parent, ref, usr):
+            """Đường cao độ thu nhỏ: người nói (nét chấm) và bạn (nét liền), cùng thang."""
+            W, H = self.px(150), self.px(30)
+            cv = self._tw(tk.Canvas(parent, width=W, height=H, bd=0, highlightthickness=0),
+                          bg="side")
+            lim = 9.0
+
+            def draw(vals, color, dash):
+                pts = []
+                for i, v in enumerate(vals or []):
+                    if v is None:
+                        if len(pts) >= 4:
+                            cv.create_line(*pts, fill=color, width=max(1, self.px(1.6)),
+                                           dash=dash, smooth=True)
+                        pts = []
+                        continue
+                    x = 2 + i * (W - 4) / float(max(1, len(vals) - 1))
+                    y = H / 2.0 - max(-lim, min(lim, v)) / lim * (H / 2.0 - 2)
+                    pts += [x, y]
+                if len(pts) >= 4:
+                    cv.create_line(*pts, fill=color, width=max(1, self.px(1.6)), dash=dash,
+                                   smooth=True)
+            cv.create_line(0, H / 2.0, W, H / 2.0, fill=P["border"])
+            draw(ref, P["muted"], (2, 2))
+            draw(usr, P["accent"], None)
+            return cv
+
+        def row(color, text, mine_sp=None, orig_sp=None, muted=False, sub=None, curve=None):
             r = self._frame(self.pp_yt, bg="side")
             r.pack(fill="x", pady=(self.px(5), 0))
             self._embeds.append(r)
@@ -7249,6 +7364,8 @@ class App(tk.Tk):
             if sub:
                 self._wrap(self._lbl(col, sub, bg="side", fg="muted", size=9, justify="left",
                                      anchor="w"), self.px(150)).pack(fill="x")
+            if curve and (curve[0] or curve[1]):
+                mini_curve(col, *curve).pack(anchor="w", pady=(self.px(3), 0))
 
         def note(text):
             lb = self._wrap(self._lbl(self.pp_yt, "•  " + text, bg="side", size=10,
@@ -7279,9 +7396,17 @@ class App(tk.Tk):
             caps("TRÔI CHẢY")
             for ln in flu["lines"]:
                 note(ln)
+        inton = intonation_view(flu["sentences"], res.get("pitch"),
+                                ytread_orig_pitch(s, self._yt_idx) if s else None) \
+            if flu else None
+        if inton and inton["lines"]:
+            caps("NGỮ ĐIỆU")
+            for ln in inton["lines"]:
+                note(ln)
         if flu and flu["sentences"]:
-            caps("TỪNG CÂU — nghe người nói rồi nghe lại mình")
+            caps("TỪNG CÂU — cao độ: chấm = người nói, liền = bạn")
             for i, st in enumerate(flu["sentences"], 1):
+                it = inton["sentences"][i - 1] if inton else {}
                 bits = []
                 if st["dur_usr"] and st["dur_ref"]:
                     bits.append("bạn %s s · người nói %s s" % (_vn_num(st["dur_usr"]),
@@ -7290,9 +7415,14 @@ class App(tk.Tk):
                     bits.append("%d từ cần sửa" % st["fixes"])
                 if st["extra"]:
                     bits.append("ngừng: " + ", ".join(st["extra"][:2]))
+                if it.get("range_usr") is not None and it.get("range_ref") is not None:
+                    bits.append("cao độ: bạn %s · người nói %s bán cung" % (
+                        _vn_num(it["range_usr"]).replace(",0", ""),
+                        _vn_num(it["range_ref"]).replace(",0", "")))
                 row(P["warn_line"] if (st["fixes"] or st["extra"]) else P["ring_ok"],
                     "Câu %d · “%s”" % (i, st["short"]), st["usr"], st["ref"],
-                    sub=" · ".join(bits) or None)
+                    sub=" · ".join(bits) or None,
+                    curve=(it.get("curve_ref"), it.get("curve_usr")))
         if v["state"] == "unsure":
             for tip in v["tips"]:
                 lb = self._wrap(self._lbl(self.pp_yt, "•  " + tip, bg="side", size=10,

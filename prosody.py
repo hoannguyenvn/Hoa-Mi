@@ -302,3 +302,50 @@ def word_stress(path, words):
     if not top:
         return None
     return {"prom": prom, "top": top}
+
+
+# ------------------------------------------------------------------ ngữ điệu theo câu (D-44)
+# Đo 2026-10-24 trên 4 đoạn đọc thật + audio TED: HƯỚNG giọng cuối câu đổi chiều khi đổi cửa sổ
+# 0,3 → 0,6 s (giọng khàn cuối câu, nhạc nền) → KHÔNG kết luận lên/xuống cuối câu. DẢI cao độ
+# (phân vị 90 − 10, bán cung) ổn định trên hàng trăm khung → dùng để nói "giọng đều".
+PITCH_MIN_FRAMES = 30   # < 30 khung có giọng (~0,3 s) trong câu → không nhận xét câu đó
+CURVE_POINTS = 48       # số điểm đường cao độ thu nhỏ mỗi câu
+
+
+def pitch_track(path, start=None, end=None):
+    """F0 của file (hoặc đoạn start..end giây) → {"t": [giây tuyệt đối], "st": [bán cung | None]}.
+
+    Bán cung so với trung vị CHÍNH người nói trong đoạn đó (I5). None nếu quá ít khung có giọng."""
+    x, sr = read_wav(path)
+    a = int(max(0.0, start or 0.0) * sr)
+    b = len(x) if end is None else min(len(x), int(end * sr))
+    times, f0 = f0_track(x[a:b], sr)
+    ok = ~np.isnan(f0) if len(f0) else np.array([], dtype=bool)
+    if ok.sum() < PITCH_MIN_FRAMES:
+        return None
+    st = 12.0 * np.log2(f0 / float(np.median(f0[ok])))
+    off = a / float(sr)
+    return {"t": [round(float(v) + off, 3) for v in times],
+            "st": [None if np.isnan(v) else round(float(v), 2) for v in st]}
+
+
+def segment_pitch(track, start, end, n=CURVE_POINTS):
+    """Một câu (start..end giây) của pitch_track → {"range": bán cung, "curve": [n điểm | None],
+    "frames": số khung có giọng} hoặc None. Hàm thuần.
+
+    range = phân vị 90 − 10 (bền với khung lỗi); curve = trung vị theo n ô thời gian đều nhau
+    (None = ô không có giọng) để vẽ đường cao độ thu nhỏ, cùng thang cho người nói và người học."""
+    if not track or start is None or end is None or end <= start:
+        return None
+    pts = [(t, s) for t, s in zip(track["t"], track["st"])
+           if s is not None and start <= t <= end]
+    if len(pts) < PITCH_MIN_FRAMES:
+        return None
+    v = np.array([s for _t, s in pts])
+    curve = []
+    edges = np.linspace(start, end, n + 1)
+    for i in range(n):
+        cell = [s for t, s in pts if edges[i] <= t < edges[i + 1]]
+        curve.append(round(float(np.median(cell)), 2) if cell else None)
+    return {"range": round(float(np.percentile(v, 90) - np.percentile(v, 10)), 1),
+            "curve": curve, "frames": len(pts)}

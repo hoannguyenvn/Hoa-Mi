@@ -1189,3 +1189,20 @@ tốc độ, từ ngắn bị nuốt; trước khi sửa `_wpm`, đoạn 4 (dừ
 file, 4 thẻ audio, 0 lỗi callback.
 **Chưa kiểm chứng:** mở bao-cao.html bằng trình duyệt thật (nội dung kiểm bằng test); người dùng dùng tay.
 **Việc tiếp theo:** R2 ngữ điệu hoặc R6 lịch sử theo hồ sơ người học.
+
+## 2026-10-24 (tiếp 12) — Claude Opus 5.5 — D-44: R2 ngữ điệu theo câu
+
+**Người dùng:** báo cáo cuối chạy tốt; "quay lại kế hoạch" → R2 (D-40).
+**Đo trước khi làm (4 đoạn thật):** hướng giọng cuối câu không ổn định (đổi cửa sổ 0,3/0,6 s là đổi chiều,
+vd molecules +0,9 → −12,8 bán cung) → bỏ phán lên/xuống (R-15). Dải cao độ ổn định: người học ~5 bán cung,
+người nói ~11–14.
+**Đã làm:** `prosody.pitch_track`, `segment_pitch`, `PITCH_MIN_FRAMES`, `CURVE_POINTS`; `app.intonation_view`,
+`FLAT_RATIO`, `INTON_MIN_COVER`, `fluency_view` thêm `cov_usr`; `YtReadSession.pitch` + `ytread_orig_pitch`
+(nền khi mở đoạn + lúc chấm); `res["pitch"]` trong worker; panel: NGỮ ĐIỆU + "cao độ: bạn x · người nói y" và
+đường cao độ thu nhỏ ở mỗi câu; báo cáo: mục Ngữ điệu, "Giọng đều" vào 3 điều tập trung, HTML có Ngữ điệu.
+Test `intonation_range_not_direction` (86/86); `ui_shots` thêm ảnh panel cuộn xuống.
+**Kết quả trên 4 đoạn thật:** báo cáo — 3 điều: âm cuối & -s (15 từ), tốc độ 112 vs 156, giọng đều ~5,3 vs ~12,4.
+**Đã kiểm chứng:** smoke 86/86, context_check; ảnh; e2e thật 0 lỗi callback, chấm vẫn ~11 s.
+**Chưa kiểm chứng:** người dùng xem đường cao độ trên máy; số từng câu có lúc lệch (đoạn 4: 16,6 vs 10,8 —
+nghi khung lỗi), kết luận dùng trung vị.
+**Việc tiếp theo:** R3 nhấn & nhịp (từ được nhấn theo cụm; từ chức năng đọc quá dài/mạnh).

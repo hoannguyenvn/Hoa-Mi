@@ -152,6 +152,9 @@ Ba chế độ:
     **Xem báo cáo →** ở đoạn cuối. Báo cáo gồm tổng điểm, 3 điều nên tập trung, âm hay sai cả bài,
     trôi chảy, từng đoạn (nghe lại, mở lại đoạn) và từ cần luyện. **Lưu báo cáo** ghi `bao-cao.html`
     (mở bằng trình duyệt, có nút nghe lại) cùng các bản thu vào Documents\Oriole.
+  - **Ngữ điệu**: so độ dao động cao độ mỗi câu của bạn với người nói (vd bạn ~5 bán cung, người
+    nói ~12 → "giọng bạn đều hơn nhiều"), kèm đường cao độ thu nhỏ từng câu (chấm = người nói,
+    liền = bạn) để bắt chước chỗ lên/xuống giọng. Chỉ mô tả, không tính điểm.
   - **Trôi chảy** (so với người nói, không tính điểm): tốc độ đọc, số từ mỗi hơi, chỗ bạn
     ngừng giữa cụm từ (dấu **/** đỏ trong đoạn), chỗ người nói ngừng mà bạn đọc liền.
   - **Từng câu**: ▶ Mẫu (người nói) và ▶ Bạn đọc cho mỗi câu, kèm thời lượng hai bên.

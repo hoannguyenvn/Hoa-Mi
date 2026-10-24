@@ -153,3 +153,10 @@ Bất kỳ lỗi/thiếu dữ liệu → `None`; UI ẩn thẻ.
 | Đường cong nhảy quãng tám | `_clean` bị bỏ hoặc ngưỡng 1.8/0.55 bị đổi |
 | Test sine fail sau khi đổi hop | `times`/`frame` lệch, hoặc ngưỡng peak 0.32 quá cao |
 | Thẻ ngữ điệu còn hiện sau khi đổi bài | `_refresh_practice` không gọi `pack_forget` |
+
+## Ngữ điệu đoạn văn YouTube (D-44)
+
+`pitch_track(path, start, end)` → {t tuyệt đối, st bán cung so trung vị đoạn}; `segment_pitch(track, s, e)`
+→ {range (p90 − p10), curve CURVE_POINTS điểm, frames}. `app.intonation_view` so dải từng câu (bỏ câu có
+`cov_usr` < 0,6), `FLAT_RATIO` 0,6 → "giọng đều". **Không** phán lên/xuống cuối câu ở chế độ này (R-15):
+đo thấy hướng F0 cuối câu đổi chiều theo cửa sổ. Muốn thêm phải đo lại trên bản lưu thật trước.

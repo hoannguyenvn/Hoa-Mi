@@ -80,7 +80,7 @@
 | Bước | Nội dung | Trạng thái |
 |---|---|---|
 | R1 | Giữ bản thu + kết quả từng đoạn; "Lưu bản thu…"; ▶ Mẫu / ▶ Bạn đọc từng câu (`sentence_ranges`); TRÔI CHẢY (`fluency_view`): tốc độ, từ/hơi, ngừng giữa cụm (dấu "/"), người nói ngừng mà bạn đọc liền, ngập ngừng | ✅ |
-| R2 | NGỮ ĐIỆU: hướng giọng cuối từng câu + độ rộng cao độ, so **cùng câu** của người nói; lọc lỗi bám F0 (nhảy quãng tám, nhạc nền) | ⛔ |
+| R2 | NGỮ ĐIỆU (D-44): dải cao độ từng câu bạn vs người nói + đường cao độ thu nhỏ; "giọng đều" vào báo cáo. Không phán lên/xuống cuối câu (đo thấy không ổn định) | ✅ |
 | R3 | NHẤN & NHỊP: từ được nhấn theo **cụm** (giữa hai chỗ ngừng) bạn vs người nói; từ chức năng (to, of, the…) đọc quá dài/mạnh | ⛔ |
 | R4 | NỐI ÂM: điểm nối (phụ âm cuối + nguyên âm đầu) đánh dấu trong đoạn; báo khi bạn ngắt ở đó mà người nói đọc liền; nuốt âm chỉ là gợi ý | ⛔ |
 | R5 | Báo cáo cuối phiên (D-43): 3 điều nên tập trung, âm hay sai cả bài, trôi chảy, từng đoạn, từ cần luyện, lưu HTML; kết thúc sớm được | ✅ |

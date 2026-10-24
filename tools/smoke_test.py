@@ -285,6 +285,31 @@ def session_report_and_html():
 
 
 @case
+def intonation_range_not_direction():
+    # D-44: so DẢI cao độ từng câu (bền), không kết luận lên/xuống cuối câu
+    import math
+    import prosody
+
+    def track(amp, t0=0.0, dur=4.0):
+        ts = [t0 + i * 0.01 for i in range(int(dur * 100))]
+        return {"t": ts, "st": [None if i % 9 == 0 else round(amp * math.sin(i / 30.0), 2)
+                                for i in range(len(ts))]}
+    flat, lively = track(2.5), track(7.0, t0=10.0)
+    s1 = prosody.segment_pitch(flat, 0.5, 3.5)
+    assert s1 and 3 < s1["range"] < 6 and len(s1["curve"]) == prosody.CURVE_POINTS
+    assert prosody.segment_pitch(flat, 0.5, 0.7) is None            # < 30 khung có giọng
+    sents = [{"usr": (0.5, 3.5), "ref": (10.5, 13.5), "cov_usr": 1.0},
+             {"usr": (0.2, 1.8), "ref": (10.2, 11.8), "cov_usr": 0.3}]   # câu chưa đọc tới
+    v = app.intonation_view(sents, flat, lively)
+    assert v["flat"] and v["range_usr"] < app.FLAT_RATIO * v["range_ref"], v
+    assert v["sentences"][1]["range_usr"] is None and v["sentences"][1]["range_ref"]
+    assert v["lines"] and "giọng bạn đều" in v["lines"][0]
+    assert not any("cuối câu" in ln and ("lên" in ln or "xuống" in ln) for ln in v["lines"][:1])
+    v2 = app.intonation_view(sents, track(7.0), lively)      # người học dao động như người nói
+    assert not v2["flat"] and len(v2["lines"]) == 1, v2
+
+
+@case
 def tone_strip_keeps_letters():
     # strip_tone_vi trả chuỗi NFD (giữ dấu chữ như ă/â), nên chuẩn hóa NFC để so.
     import unicodedata
