@@ -1119,3 +1119,25 @@ file + "Mở thư mục?"), `_open_folder_of`; bỏ link nhỏ. `ytread_e2e.py` 
 **Chưa kiểm chứng:** hộp xác nhận + mở Explorer bằng tay (e2e trả "Không").
 **Việc tiếp theo:** người dùng lưu 4 đoạn (cửa sổ cũ vẫn mở, dùng link nhỏ) hoặc đọc lại ở bản mới →
 phân tích bản thu thật (nghi Whisper nghe nhầm "shown→sold", "just→shot"), chỉnh `PAUSE_*`; R2.
+
+## 2026-10-24 (tiếp 8) — Claude Opus 5.5 — Phân tích 4 đoạn đọc thật của người dùng
+
+**Dữ liệu:** Documents\Oriole (OneDrive), video TED "How Your Sense of Smell Helps You Savor Flavor"
+(3NFTa9kTVRU), phụ đề thủ công, 4 đoạn, app chấm bằng `small`. Người dùng lưu bằng tay (không có lưu
+tự động): đoạn 2 lẻ, "Lưu cả 3 đoạn" (1–3), đoạn 4 lẻ → đoạn 2 bị lưu 2 lần (giống hệt).
+
+**Kết quả (đúng/tổng):** small 151/250 (60 %); nghe lại bằng `medium` (không gợi ý câu, I2) 164/250.
+99 từ đỏ: **18 medium nghe đúng** → nghi app nghe nhầm (smell→"mail" ×3, of→"up" ×3, think→"steam",
+olfactory→"off", receptor→"door", cool→"called", recent→"sentence", around→"morale"…); 81 cả hai sai,
+GOP (so audio gốc cùng đoạn) thấp rõ ở: âm cuối/-s số nhiều (molecules→molecule ×3, senses, emotions,
+contains; Z/S/D/T 0–10 vs người nói 60–90), **n→l** (nose→"lowe's"/"low"/"lobe" ×3 — giọng Bắc mang sang
+tiếng Anh), DH/TH (the/these/that/than → this/do/some; DH 0–3 vs 80–89), nguyên âm đôi EY/OW (bacon→back,
+odor→odd/auto/outdoor), cụm s+phụ âm đầu (smell→mail, stinky→skin, sniff→sit, substances→subtle), từ
+ngắn bị nuốt (is, an, be, up).
+**Trôi chảy:** 101–135 từ/phút vs người nói 141–168; mỗi câu dài 1,2–1,8×. Ngắt nghỉ tốt: đoạn 1/3/4 số chỗ
+ngừng bằng người nói và trùng vị trí (dấu phẩy/cuối câu); đoạn 2 (từ khó volatiles, olfactory) 10 vs 5,
+ngừng 1,16 s sau "receptor". Ngưỡng `PAUSE_*` cho kết quả hợp lý — giữ nguyên.
+**Đoạn 4:** bản thu dừng sau "a lot of" (24,2 s; Whisper không bỏ đuôi) → 13 từ cuối "thiếu". Nghi tự
+dừng 3,5 s im lặng (ngập ngừng trước "400"?) hoặc người dùng bấm dừng — chưa xác nhận.
+**Đề xuất (chờ người dùng):** chấm Từ YouTube bằng `medium` nếu có trên máy (đo thời gian trước); tự dừng
+dài hơn / tắt cho đoạn văn; mục "âm hay sai" gom theo mẫu lỗi (R3/R5).
