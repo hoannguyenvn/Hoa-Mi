@@ -838,6 +838,7 @@ class YtReadSession:
         self._orig = {}            # chỉ số đoạn → lời Whisper nghe trên audio gốc
         self.orig_words = {}       # chỉ số đoạn → [{w, s, e, p}] của audio gốc
         self.all_words = []        # transcript do Whisper tạo: mốc từ của cả video
+        self.lock = threading.Lock()   # ytread_orig_hyp: nghe trước ở nền + lúc chấm
 
     def close(self):
         if self.work_dir:
@@ -950,6 +951,23 @@ def ytread_prepare(url, model_size, cancel=lambda: False, status=lambda msg: Non
         raise
 
 
+YT_LEARNER_MODEL = "medium"   # bản đọc người học (D-41): small nghe nhầm ~1/5 từ đỏ
+
+
+def ytread_model(selected, on_disk=whisper_model_on_disk):
+    """Cỡ model nghe BẢN ĐỌC người học ở chế độ Từ YouTube: `medium` nếu đã có trên máy
+    (không tự tải ~1,5 GB — I9) và model đang chọn nhỏ hơn. → (cỡ, đã_nâng_cấp).
+
+    Đo trên 4 đoạn thật (2026-10-24): small 151/250 từ đúng, medium 164/250; medium chậm ~3×
+    (6–10 s mỗi đoạn 25–35 s). Audio GỐC vẫn dùng model đang chọn (giọng chuẩn, rõ — medium
+    không đổi số "phụ đề có thể sai" mà thêm ~10 s)."""
+    if selected not in MODELS or MODELS.index(selected) >= MODELS.index(YT_LEARNER_MODEL):
+        return selected, False
+    if on_disk(YT_LEARNER_MODEL):
+        return YT_LEARNER_MODEL, True
+    return selected, False
+
+
 def ytread_orig_hyp(session, i, model):
     """Whisper nghe ĐOẠN GỐC thứ i → chữ (cache). None khi transcript do chính Whisper
     tạo (so với chính nó thì vô nghĩa) — khi đó không có "phụ đề có thể sai"."""
@@ -960,7 +978,12 @@ def ytread_orig_hyp(session, i, model):
                                      if p["start"] - YTREAD_PAD_SEC <= (w["s"] + w["e"]) / 2
                                      <= p["end"] + YTREAD_PAD_SEC]
         return None
-    if i not in session._orig:
+    with session.lock:
+        return _ytread_orig_locked(session, i, model)
+
+
+def _ytread_orig_locked(session, i, model):
+    if i not in session._orig and session.wav:
         import numpy as np
         p = session.paragraphs[i]
         with wave.open(session.wav, "rb") as w:
@@ -981,7 +1004,7 @@ def ytread_orig_hyp(session, i, model):
                                   "p": round(float(w.probability), 3)})
         session._orig[i] = " ".join(texts).strip()
         session.orig_words[i] = words      # mốc tuyệt đối trong session.wav (▶ Mẫu từng từ)
-    return session._orig[i]
+    return session._orig.get(i)
 
 
 # ---------- chấm phát âm (hàm thuần, dễ test) ----------
@@ -6494,6 +6517,9 @@ class App(tk.Tk):
             self._yt_mode_hint()
         self._seg._draw()
         self._update_prog(None)
+        if s and s.sub_kind != "whisper" and self._yt_idx not in s._orig:
+            threading.Thread(target=self._w_ytprefetch,
+                             args=(s, self._yt_idx, self.model_name.get()), daemon=True).start()
         k = self._yt_keep.get(self._yt_idx) if s else None
         if not self.p_working and not self.recording:
             ok = bool(k and k.get("wav") and os.path.exists(k["wav"]))
@@ -6647,20 +6673,31 @@ class App(tk.Tk):
 
     def _w_ytscore(self, wav_path, s, idx, model_size):
         try:
-            model = load_model(model_size)
-            asr = transcribe_practice(model, wav_path, "en")
+            learner, up = ytread_model(model_size)
+            if up:
+                self._queue.put(("prac_status", "Đang nghe lại bài đọc của bạn bằng model "
+                                                "medium (chính xác hơn, ~10 giây)…"))
+            asr = transcribe_practice(load_model(learner), wav_path, "en")
             if not asr["hyp"]:
                 self._queue.put(("prac_error", "Không nghe được chữ nào — thử đọc to, gần mic hơn."))
                 return
-            orig = ytread_orig_hyp(s, idx, model)
+            orig = ytread_orig_hyp(s, idx, load_model(model_size))
             res = read_aloud_diff(s.paragraphs[idx]["text"], asr["hyp"], orig)
             probs = asr["probs"]
-            res["words_t"], res["model"] = asr["words_t"], model_size
+            res["words_t"], res["model"] = asr["words_t"], learner
             res["conf"] = (sum(probs) / len(probs)) if probs else 1.0
             res["low_conf"] = bool(probs) and res["conf"] < 0.35
             self._queue.put(("yt_done", (idx, res, evidence_gate(res))))
         except Exception as e:
             self._queue.put(("prac_error", f"Lỗi chấm đoạn đọc: {e}"))
+
+    def _w_ytprefetch(self, s, idx, model_size):
+        """Nghe trước đoạn gốc trong lúc người học nghe/đọc → chấm xong nhanh hơn ~3–10 s.
+        Lỗi bỏ qua: lúc chấm sẽ thử lại (cùng khóa của phiên)."""
+        try:
+            ytread_orig_hyp(s, idx, load_model(model_size))
+        except Exception:
+            pass
 
     def _yt_done(self, idx, res, gate):
         if idx != self._yt_idx or not self._yt_sess:

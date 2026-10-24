@@ -73,7 +73,8 @@ def main():
     A._prac_score(wav)
     wait(A, lambda: A.prac_state != "scoring", 300)
     v = A._yt_view
-    print("chấm: %.1f s · trạng thái %s" % (time.time() - t0, A.prac_state))
+    print("chấm: %.1f s · trạng thái %s · model bản đọc %s" % (
+        time.time() - t0, A.prac_state, (A._yt_res or {}).get("model")))
     if v:
         print("  %s · %s" % (v["headline"], v["summary"]))
         for f in v["fixes"][:8]:

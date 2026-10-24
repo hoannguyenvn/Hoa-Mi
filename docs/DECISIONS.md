@@ -422,6 +422,17 @@ hiệu chuẩn với người học thật — chỉnh khi có bản lưu. Trans
 (`all_words`) để có ▶ Mẫu và so tốc độ (không có "phụ đề có thể sai"). Test:
 `fluency_pauses_and_sentences`.
 
+### D-41 — Từ YouTube: bản đọc người học chấm bằng `medium` (2026-10-24)
+**Quyết định (người dùng duyệt):** ở chế độ Từ YouTube, bản đọc của người học được Whisper `medium`
+nghe nếu model này đã có trên máy và model đang chọn nhỏ hơn (`ytread_model`; không tự tải — I9).
+Audio **gốc** vẫn dùng model đang chọn và được nghe **trước ở nền** khi mở một đoạn
+(`_w_ytprefetch`, khóa `YtReadSession.lock` để không chạy trùng lúc chấm). Bài câu không đổi.
+**Vì sao:** 4 đoạn đọc thật của người dùng: small 151/250 từ đúng, medium 164/250; 18/99 từ đỏ do small
+nghe nhầm (smell→"mail" ×3, of→"up" ×3…). Medium chậm ~3× (bản đọc 6–10 s / đoạn 25–35 s); với audio
+gốc medium không đổi số "phụ đề có thể sai" nhưng thêm ~10 s → không dùng.
+**Hệ quả:** chấm một đoạn ~10–12 s (lần đầu thêm ~2,4 s nạp model); `load_model` giữ 2 cỡ (medium +
+model đang chọn). Test: `ytread_learner_uses_medium_when_on_disk`.
+
 ## B. Những cách làm đã bị loại (đừng lặp lại)
 
 Nguồn: `PHASE2-DANH-GIA-DU-AN-CU.md` §2.2 và §6.

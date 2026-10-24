@@ -1141,3 +1141,17 @@ ngừng 1,16 s sau "receptor". Ngưỡng `PAUSE_*` cho kết quả hợp lý —
 dừng 3,5 s im lặng (ngập ngừng trước "400"?) hoặc người dùng bấm dừng — chưa xác nhận.
 **Đề xuất (chờ người dùng):** chấm Từ YouTube bằng `medium` nếu có trên máy (đo thời gian trước); tự dừng
 dài hơn / tắt cho đoạn văn; mục "âm hay sai" gom theo mẫu lỗi (R3/R5).
+
+## 2026-10-24 (tiếp 9) — Claude Opus 5.5 — D-41: bản đọc Từ YouTube chấm bằng medium
+
+**Người dùng:** đoạn 4 dừng là do tự bấm (không phải tự dừng — giữ `YT_SILENCE_SEC`); duyệt dùng medium.
+**Đo (4 đoạn thật):** small bản đọc 2–3,5 s, đúng 151/250; medium 5,6–9,6 s, đúng 164/250; audio gốc với
+medium ~10 s mà số "phụ đề có thể sai" gần như không đổi → chỉ bản đọc dùng medium.
+**Đã làm:** `ytread_model`, `YT_LEARNER_MODEL`; `YtReadSession.lock` + `_ytread_orig_locked`;
+`_w_ytscore` (medium cho bản đọc, model đang chọn cho gốc, `res["model"]`); `_w_ytprefetch` nghe trước
+đoạn gốc khi mở đoạn. Test `ytread_learner_uses_medium_when_on_disk` (83/83); `ytread_e2e` in model.
+**Đã kiểm chứng:** smoke 83/83, context_check; `ytread_e2e` trên video của người dùng: chấm 11,6–12,4 s,
+model bản đọc = medium, 0 lỗi callback.
+**Chưa kiểm chứng:** máy không có medium (rơi về model đang chọn — chỉ test hàm thuần).
+**Việc tiếp theo:** R2 ngữ điệu, hoặc mục "âm hay sai" theo mẫu lỗi (âm cuối/-s, n→l, th, nguyên âm đôi,
+cụm s-) — người dùng chọn.

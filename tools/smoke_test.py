@@ -212,6 +212,18 @@ def fluency_pauses_and_sentences():
 
 
 @case
+def ytread_learner_uses_medium_when_on_disk():
+    # D-41: bản đọc Từ YouTube chấm bằng medium nếu đã có trên máy (không tự tải — I9)
+    on, off = (lambda m: True), (lambda m: False)
+    assert app.ytread_model("small", on) == ("medium", True)
+    assert app.ytread_model("base", off) == ("base", False)
+    assert app.ytread_model("medium", on) == ("medium", False)
+    s = app.YtReadSession(None)
+    assert hasattr(s.lock, "acquire")       # nghe trước ở nền + lúc chấm dùng chung khóa
+    s.close()
+
+
+@case
 def tone_strip_keeps_letters():
     # strip_tone_vi trả chuỗi NFD (giữ dấu chữ như ă/â), nên chuẩn hóa NFC để so.
     import unicodedata

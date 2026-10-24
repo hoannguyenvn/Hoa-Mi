@@ -141,6 +141,8 @@ Ba chế độ:
     (**phụ đề có thể sai**: chính người nói trong video cũng không nói như phụ đề — từ này
     **không tính** điểm). Panel phải liệt kê từng từ với ▶ Mẫu (giọng trong video) và
     ▶ Bạn đọc. "Đọc lại đoạn này" để thử lại.
+  - Nếu máy đã có model `medium`, bản đọc của bạn được nghe bằng medium (chính xác hơn, chấm
+    ~10 giây/đoạn); đoạn gốc được nghe sẵn trong lúc bạn nghe/đọc.
   - Cách viết khác nhau vẫn tính là đúng: I'm = I am, gonna = going to, 1990 = nineteen
     ninety; từ đệm (um, uh) bỏ qua.
   - **Trôi chảy** (so với người nói, không tính điểm): tốc độ đọc, số từ mỗi hơi, chỗ bạn

@@ -129,6 +129,8 @@
       "token_spans",
       "ytread_view",
       "fluency_view",
+      "ytread_model",
+      "App._w_ytprefetch",
       "App._save_recording",
       "App._save_all",
       "App._save_bundle",
