@@ -379,6 +379,54 @@ def report_charts_and_stress_hints():
 
 
 @case
+def learner_profiles_and_progress():
+    # D-48: hồ sơ người học cục bộ — chép lịch sử cũ lần đầu, tên hợp lệ, ghi buổi YouTube, xu hướng
+    import json
+    import os
+    import tempfile
+    d = tempfile.mkdtemp(prefix="oriole_test_")
+    try:
+        legacy = os.path.join(d, "practice_history.json")
+        path = os.path.join(d, "learners.json")
+        with open(legacy, "w", encoding="utf-8") as f:
+            json.dump({"en_th": {"n": 3, "best": 75.0}}, f)
+        st = app.learners_load(path, legacy)
+        assert st["active"] == app.LEARNER_DEFAULT
+        assert st["learners"][app.LEARNER_DEFAULT]["lessons"]["en_th"]["n"] == 3
+        assert os.path.exists(legacy)                                   # file cũ để nguyên
+        assert app.learner_name_error(st, "  ") and app.learner_name_error(st, "tôi")
+        assert app.learner_name_error(st, "x" * 31) and not app.learner_name_error(st, "Lan")
+        app.learner_add(st, "  Lan   Anh ")
+        assert st["active"] == "Lan Anh" and st["learners"]["Lan Anh"]["yt"] == []
+        app.learner_rename(st, "Lan Anh", "Lan")
+        assert st["active"] == "Lan" and "Lan Anh" not in st["learners"]
+        rep = {"title": "T", "n_read": 2, "n_paras": 6, "correct": 60, "total": 100, "pct": 60,
+               "wpm_usr": 100, "wpm_ref": 150, "range_usr": 5, "range_ref": 12,
+               "func_usr": 0.4, "func_ref": 0.2, "patterns": [{"code": "final", "n": 8}],
+               "words": [{"word": "odor"}]}
+        app.learner_record_yt(st, app.yt_session_summary(rep, "v@1"))
+        rep2 = dict(rep, n_read=3, correct=70, pct=70)
+        app.learner_record_yt(st, app.yt_session_summary(rep2, "v@1"))     # cùng phiên → cập nhật
+        assert len(st["learners"]["Lan"]["yt"]) == 1 and st["learners"]["Lan"]["yt"][0]["pct"] == 70
+        later = dict(rep, correct=80, pct=80, wpm_usr=135, patterns=[{"code": "final", "n": 3}])
+        app.learner_record_yt(st, app.yt_session_summary(later, "v@2"))
+        assert app.learners_save(st, path)
+        st2 = app.learners_load(path, legacy)
+        assert st2["active"] == "Lan" and len(st2["learners"]["Lan"]["yt"]) == 2
+        pv = app.progress_view(st2["learners"]["Lan"]["yt"])
+        assert pv["n"] == 2 and [s[1] for s in pv["series"]] == [70, 80]
+        assert pv["patterns"][0][0] == "final" and pv["patterns"][0][2] > pv["patterns"][0][3]
+        assert pv["lines"] and "70% → gần nhất 80%" in pv["lines"][0]
+        assert app.progress_view([])["n"] == 0
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("{hỏng")
+        assert app.learners_load(path, os.path.join(d, "khong_co.json"))["learners"]  # file hỏng
+    finally:
+        import shutil
+        shutil.rmtree(d, ignore_errors=True)
+
+
+@case
 def tone_strip_keeps_letters():
     # strip_tone_vi trả chuỗi NFD (giữ dấu chữ như ă/â), nên chuẩn hóa NFC để so.
     import unicodedata

@@ -20,7 +20,8 @@
   thu từng đoạn, Lưu bản thu…, từng câu ▶ Mẫu/▶ Bạn đọc, TRÔI CHẢY). Lưu bản thu thành nút rõ ràng (Documents\Oriole,
   lưu cả các đoạn). Đã phân tích 4 đoạn thật (HANDOFF): `PAUSE_*` giữ nguyên; bản đọc
   chấm bằng `medium` (D-41). Mục ÂM HAY SAI (D-42) và báo cáo cuối phiên + kết thúc sớm (D-43) xong. R2 ngữ điệu (D-44), R3 nhịp (D-45), R4 nối âm (D-46) xong; đoạn văn tách câu + in đậm
-  từ nên nhấn + biểu đồ báo cáo (D-47).
+  từ nên nhấn + biểu đồ báo cáo (D-47); R6 hồ sơ người học + Tiến bộ (D-48). **Kế hoạch R1–R6 xong.**
+  Còn ngỏ: nuốt âm (elision), xóa người học, so lần đọc lại cùng đoạn.
   Kế tiếp theo kế hoạch: **R6 lịch sử theo hồ sơ người học cục bộ** (D-39).
 - [ ] **P4 — Chất lượng thu âm/nhận dạng + hiệu chuẩn điểm:** đợt 1 (D-36) + đợt 2 (D-37) xong.
   Bản thu thật đầu tiên (2026-10-24, `sound calibrate/`, 1 người đọc đoạn văn Việt 66 từ ~20 s,

@@ -30,6 +30,7 @@ import prosody  # noqa: E402
 
 # ---- an toàn: không đụng file của người dùng ----
 app.save_config = lambda cfg: None
+app.learners_save = lambda *a, **k: True      # kho người học (D-48) chỉ trong bộ nhớ
 app.App._save_hist = lambda self: None
 app.App._record_hist = lambda self, *a, **k: None
 
@@ -306,6 +307,22 @@ def main() -> int:
     theme("dark")
     A._yt_finish()
     shot("20d_yt_report_dark")
+    theme("light")
+    A._yt_report_hide()
+    # ---- Tiến bộ (D-48): 5 buổi giả trong bộ nhớ ----
+    L = A.learners["learners"][A.learners["active"]]
+    L["yt"] = [{"key": "k%d" % i, "date": "2026-10-%02d 20:00" % (10 + i), "title": "Talk %d" % i,
+                "n_read": 3, "n_paras": 6, "correct": c, "total": 180, "pct": round(100 * c / 180),
+                "wpm_usr": w, "wpm_ref": 155, "range_usr": r, "range_ref": 12.5,
+                "func_usr": f, "func_ref": 0.2, "patterns": {"final": p, "short": 9 - i, "nl": 3}}
+               for i, (c, w, r, f, p) in enumerate(((110, 100, 5.0, 0.40, 14), (118, 108, 5.6, 0.38, 12),
+                                                    (126, 115, 6.4, 0.33, 10), (131, 121, 7.1, 0.31, 8),
+                                                    (140, 128, 7.9, 0.27, 6)))]
+    A._show_progress()
+    shot("23_progress_light")
+    theme("dark")
+    A._show_progress()
+    shot("23b_progress_dark")
     theme("light")
     A._yt_report_hide()
 

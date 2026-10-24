@@ -24,6 +24,7 @@ os.chdir(ROOT)
 import app  # noqa: E402
 
 app.save_config = lambda cfg: None
+app.learners_save = lambda *a, **k: True      # không ghi learners.json thật (D-48)
 app.App._save_hist = lambda self: None
 
 

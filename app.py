@@ -840,6 +840,7 @@ class YtReadSession:
         self.all_words = []        # transcript do Whisper tạo: mốc từ của cả video
         self.lock = threading.Lock()   # ytread_orig_hyp: nghe trước ở nền + lúc chấm
         self.pitch = {}            # chỉ số đoạn → prosody.pitch_track của audio gốc (D-44)
+        self.started = time.strftime("%Y%m%d-%H%M%S")   # khóa buổi trong lịch sử (D-48)
 
     def close(self):
         if self.work_dir:
@@ -2289,7 +2290,8 @@ def report_html(rep, audio=None):
                CHART_COLORS["light"]["you"], CHART_COLORS["light"]["ref"],
                CHART_COLORS["dark"]["you"], CHART_COLORS["dark"]["ref"]),
            "<h1>Báo cáo luyện đọc to</h1>",
-           "<p class='muted'>%s<br>%s · đã đọc %d/%d đoạn</p>" % (
+           "<p class='muted'>%s%s<br>%s · đã đọc %d/%d đoạn</p>" % (
+               "%s · " % e(rep["learner"]) if rep.get("learner") else "",
                e(rep["title"]), e(rep["date"]), rep["n_read"], rep["n_paras"]),
            "<p><span class='big'>%d/%d từ đúng (%d%%)</span>" % (
                rep["correct"], rep["total"], rep["pct"])]
@@ -2446,6 +2448,143 @@ def _vi_cards(chips):
 
 
 HIST_TRIES_MAX = 30   # D-30: giữ 30 lần luyện gần nhất mỗi bài
+
+# ---------- hồ sơ người học cục bộ + lịch sử (D-48, R6) ----------
+LEARNERS_PATH = os.path.join(BASE_DIR, "learners.json")   # dữ liệu cá nhân — .gitignore (I16)
+LEARNER_DEFAULT = "Tôi"
+LEARNER_NAME_MAX = 30
+YT_HIST_MAX = 200      # số buổi đọc YouTube giữ lại mỗi người học
+
+
+def learners_load(path=LEARNERS_PATH, legacy=HISTORY_PATH):
+    """Đọc kho người học → {"version", "active", "learners": {tên: {"created", "lessons",
+    "yt": [buổi]}}}. Lần đầu (chưa có file): tạo người học mặc định và CHÉP lịch sử bài câu
+    cũ (practice_history.json) vào — file cũ để nguyên làm bản sao lưu. File hỏng → kho mới."""
+    store = None
+    try:
+        with open(path, encoding="utf-8") as f:
+            store = json.load(f)
+    except Exception:
+        store = None
+    if not isinstance(store, dict) or not isinstance(store.get("learners"), dict) \
+            or not store["learners"]:
+        lessons = {}
+        try:
+            with open(legacy, encoding="utf-8") as f:
+                old = json.load(f)
+            lessons = old if isinstance(old, dict) else {}
+        except Exception:
+            pass
+        store = {"version": 1, "active": LEARNER_DEFAULT,
+                 "learners": {LEARNER_DEFAULT: {"created": time.strftime("%Y-%m-%d"),
+                                                "lessons": lessons, "yt": []}}}
+    for _n, L in store["learners"].items():          # bền khi file thiếu khóa (I12 tinh thần)
+        if not isinstance(L.get("lessons"), dict):
+            L["lessons"] = {}
+        if not isinstance(L.get("yt"), list):
+            L["yt"] = []
+    if store.get("active") not in store["learners"]:
+        store["active"] = next(iter(store["learners"]))
+    return store
+
+
+def learners_save(store, path=LEARNERS_PATH):
+    """Ghi kho người học an toàn (file tạm rồi thay). Trả True nếu ghi được."""
+    try:
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(store, f, ensure_ascii=False, indent=1)
+        os.replace(tmp, path)
+        return True
+    except Exception:
+        return False
+
+
+def learner_name_error(store, name, old=None):
+    """Kiểm tên người học → lời nhắn lỗi (tiếng Việt) hoặc None nếu dùng được."""
+    n = " ".join((name or "").split())
+    if not n:
+        return "Tên không được để trống."
+    if len(n) > LEARNER_NAME_MAX:
+        return "Tên dài quá %d ký tự." % LEARNER_NAME_MAX
+    if any(k.lower() == n.lower() and k != old for k in store["learners"]):
+        return "Đã có người học tên “%s”." % n
+    return None
+
+
+def learner_add(store, name):
+    n = " ".join(name.split())
+    store["learners"][n] = {"created": time.strftime("%Y-%m-%d"), "lessons": {}, "yt": []}
+    store["active"] = n
+    return n
+
+
+def learner_rename(store, old, new):
+    n = " ".join(new.split())
+    store["learners"] = {(n if k == old else k): v for k, v in store["learners"].items()}
+    if store["active"] == old:
+        store["active"] = n
+    return n
+
+
+def yt_session_summary(rep, key, vid=""):
+    """Báo cáo phiên đọc to → bản ghi gọn lưu vào lịch sử người học (không lưu chữ máy nghe,
+    không lưu audio — chỉ số đo). key = định danh phiên (video + giờ bắt đầu)."""
+    return {"key": key, "date": time.strftime("%Y-%m-%d %H:%M"), "vid": vid,
+            "title": rep.get("title", ""), "url": rep.get("url", ""),
+            "n_read": rep.get("n_read", 0), "n_paras": rep.get("n_paras", 0),
+            "correct": rep.get("correct", 0), "total": rep.get("total", 0),
+            "pct": rep.get("pct", 0), "wpm_usr": rep.get("wpm_usr"), "wpm_ref": rep.get("wpm_ref"),
+            "range_usr": rep.get("range_usr"), "range_ref": rep.get("range_ref"),
+            "func_usr": rep.get("func_usr"), "func_ref": rep.get("func_ref"),
+            "patterns": {g["code"]: g["n"] for g in rep.get("patterns", [])},
+            "words": [w["word"] for w in rep.get("words", [])[:10]]}
+
+
+def learner_record_yt(store, summary, name=None):
+    """Thêm/cập nhật buổi đọc YouTube (theo "key") cho người học → kho. Hàm thuần."""
+    L = store["learners"][name or store["active"]]
+    rows = [r for r in L["yt"] if r.get("key") != summary["key"]]
+    rows.append(summary)
+    L["yt"] = rows[-YT_HIST_MAX:]
+    return store
+
+
+def progress_view(sessions):
+    """Lịch sử buổi đọc YouTube → dữ liệu màn Tiến bộ (D-48). Hàm thuần, chỉ mô tả.
+
+    series: [(nhãn ngày, % đúng, tốc độ % người nói, cao độ % người nói, từ ngắn × người nói)];
+    patterns: [(mã, tên, lỗi/100 từ lúc đầu, gần đây)] — so ≤ 3 buổi đầu với ≤ 3 buổi gần nhất;
+    lines: câu nhận xét xu hướng."""
+    rows = [s for s in sessions or [] if s.get("total")]
+    series = []
+    for s in rows:
+        def ratio(a, b, k=100.0):
+            return round(k * s[a] / s[b], 1) if s.get(a) and s.get(b) else None
+        series.append((s.get("date", "")[5:10].replace("-", "/"), s.get("pct"),
+                       ratio("wpm_usr", "wpm_ref"), ratio("range_usr", "range_ref"),
+                       ratio("func_usr", "func_ref", 1.0)))
+    k = min(3, len(rows) // 2) if len(rows) >= 2 else 0
+    pats = []
+    if k:
+        def rate(group, code):
+            words = sum(s["total"] for s in group) or 1
+            return round(100.0 * sum((s.get("patterns") or {}).get(code, 0) for s in group)
+                         / words, 1)
+        early, late = rows[:k], rows[-k:]
+        codes = {c for s in rows for c in (s.get("patterns") or {})}
+        for c in sorted(codes, key=lambda c: -rate(early, c)):
+            if c in pron_en.PATTERNS:
+                pats.append((c, pron_en.PATTERNS[c][0], rate(early, c), rate(late, c)))
+    lines = []
+    if len(rows) >= 2:
+        a, b = rows[0], rows[-1]
+        lines.append("Từ đúng: buổi đầu %d%% → gần nhất %d%% (%d buổi)" % (
+            a.get("pct", 0), b.get("pct", 0), len(rows)))
+        sa, sb = series[0][2], series[-1][2]
+        if sa and sb:
+            lines.append("Tốc độ so với người nói: %d%% → %d%%" % (round(sa), round(sb)))
+    return {"series": series, "patterns": pats, "lines": lines, "n": len(rows)}
 
 
 def hist_add_try(hist, sid, view, ts):
@@ -4055,6 +4194,19 @@ class App(tk.Tk):
         self._rail_model_b.pack(anchor="w", padx=(self.px(12), 0), pady=(0, self.px(6)))
         for w in (self._rail_model, self._rail_model_a, self._rail_model_b):
             w.bind("<Button-1>", self._model_menu)
+        # người học (D-48): chọn / thêm / đổi tên, xem tiến bộ
+        self._rail_learner = self._frame(foot, bg="bg", cursor="hand2")
+        self._rail_learner.pack(side="bottom", fill="x", padx=(self.px(12), self.px(12)),
+                                pady=(0, self.px(2)))
+        self._rail_learner_a = self._lbl(self._rail_learner, "Người học", bg="bg", fg="muted",
+                                         size=9)
+        self._rail_learner_a.pack(anchor="w", padx=(self.px(12), 0), pady=(self.px(6), 0))
+        self._rail_learner_b = self._lbl(self._rail_learner, "", bg="bg", size=10,
+                                         weight="bold")
+        self._rail_learner_b.pack(anchor="w", padx=(self.px(12), 0), pady=(0, self.px(6)))
+        for w in (self._rail_learner, self._rail_learner_a, self._rail_learner_b):
+            w.bind("<Button-1>", self._learner_menu)
+        self._update_rail_learner()
         self.model_name.trace_add("write", lambda *_: self._update_rail_model())
         self.lang.trace_add("write", lambda *_: self._update_rail_model())
         self._update_rail_model()
@@ -4100,6 +4252,69 @@ class App(tk.Tk):
         self._rail_model_b.configure(
             text="Model %s · %s ▾" % (self.model_name.get(),
                                       LANG_NAME.get(self.lang.get(), "Tự động")))
+
+    def _update_rail_learner(self):
+        name = self.learners["active"]
+        self._rail_learner_b.configure(text=(name if len(name) <= 18 else name[:17] + "…")
+                                       + " ▾")
+
+    def _learner_menu(self, _e=None):
+        """Người học: đổi người, thêm, đổi tên, xem tiến bộ (D-48) — không đăng nhập (I9)."""
+        if self.recording or self.p_working:
+            return
+        m = tk.Menu(self, tearoff=0, font=(self.F, 10))
+        m.add_command(label="Người học trên máy này", state="disabled")
+        cur = tk.StringVar(value=self.learners["active"])
+        for name in sorted(self.learners["learners"], key=str.lower):
+            m.add_radiobutton(label=name, value=name, variable=cur,
+                              command=lambda n=name: self._learner_switch(n))
+        m.add_separator()
+        m.add_command(label="Xem tiến bộ của “%s”" % self.learners["active"],
+                      command=self._show_progress)
+        m.add_command(label="Thêm người học…", command=self._learner_add)
+        m.add_command(label="Đổi tên “%s”…" % self.learners["active"],
+                      command=self._learner_rename)
+        w = self._rail_learner
+        m.tk_popup(w.winfo_rootx(), w.winfo_rooty() - self.px(8) - m.winfo_reqheight())
+
+    def _learner_ask(self, title, prompt, initial="", old=None):
+        from tkinter import simpledialog
+        while True:
+            name = simpledialog.askstring(title, prompt, initialvalue=initial, parent=self)
+            if name is None:
+                return None
+            err = learner_name_error(self.learners, name, old)
+            if not err:
+                return name
+            messagebox.showwarning(title, err)
+            initial = name
+
+    def _learner_add(self):
+        name = self._learner_ask("Thêm người học", "Tên người học (chỉ lưu trên máy này):")
+        if name:
+            learner_add(self.learners, name)
+            self._learner_switch(self.learners["active"])
+
+    def _learner_rename(self):
+        old = self.learners["active"]
+        name = self._learner_ask("Đổi tên người học", "Tên mới:", old, old)
+        if name and name != old:
+            learner_rename(self.learners, old, name)
+            learners_save(self.learners)
+            self._update_rail_learner()
+
+    def _learner_switch(self, name):
+        """Đổi người học: lịch sử bài câu + buổi YouTube từ nay ghi cho người này."""
+        if name not in self.learners["learners"]:
+            return
+        self.learners["active"] = name
+        learners_save(self.learners)
+        self.hist = self.learners["learners"][name]["lessons"]
+        self._update_rail_learner()
+        self._update_prog(self._current_set_id())
+        if getattr(self, "_progress_on", False):
+            self._show_progress()
+        self._log("Người học: %s" % name)
 
     def _model_menu(self, _e=None):
         """Model + ngôn ngữ nhận dạng: menu bật từ chân thanh điều hướng (Q-04/D-28)."""
@@ -6367,21 +6582,12 @@ class App(tk.Tk):
 
     # ---------- lịch sử luyện (tiến bộ) ----------
     def _load_hist(self):
-        try:
-            with open(HISTORY_PATH, encoding="utf-8") as f:
-                data = json.load(f)
-            return data if isinstance(data, dict) else {}
-        except Exception:
-            return {}
+        """Lịch sử bài câu của NGƯỜI HỌC đang chọn (D-48); kho người học nạp một lần."""
+        self.learners = learners_load()
+        return self.learners["learners"][self.learners["active"]]["lessons"]
 
     def _save_hist(self):
-        try:
-            tmp = HISTORY_PATH + ".tmp"
-            with open(tmp, "w", encoding="utf-8") as f:
-                json.dump(self.hist, f, ensure_ascii=False, indent=1)
-            os.replace(tmp, HISTORY_PATH)
-        except Exception:
-            pass
+        learners_save(self.learners)
 
     def _update_prog(self, sid):
         if not sid or sid == "custom":
@@ -7353,6 +7559,20 @@ class App(tk.Tk):
         return "Cả video (%d đoạn đã đọc): %s" % (
             len(done), " · ".join("%s %d từ" % (t, n) for t, n in top))
 
+    def _yt_record_session(self):
+        """Cập nhật buổi đọc này trong lịch sử người học đang chọn — sau MỖI đoạn được chấm,
+        nên không mất dữ liệu nếu người học không bấm "Kết thúc" (D-48)."""
+        s = self._yt_sess
+        if not s:
+            return
+        info, done = self._yt_report_input()
+        if not any(d.get("res") and not d.get("gate") for d in done):
+            return
+        rep = session_report(info, done)
+        learner_record_yt(self.learners, yt_session_summary(rep, "%s@%s" % (s.vid, s.started),
+                                                            s.vid))
+        learners_save(self.learners)
+
     # ----- báo cáo cuối phiên (D-43) -----
     def _yt_report_input(self):
         s = self._yt_sess
@@ -7375,6 +7595,7 @@ class App(tk.Tk):
             return
         self._stop_play()
         self._yt_rep = session_report(info, done)
+        self._yt_rep["learner"] = self.learners["active"]
         self._yt_report_render(self._yt_rep)
         if self._prac_body.winfo_manager():
             self._prac_body.pack_forget()
@@ -7382,10 +7603,181 @@ class App(tk.Tk):
             self.yt_report.pack(fill="both", expand=True)
 
     def _yt_report_hide(self):
+        self._progress_on = False
         if getattr(self, "yt_report", None) is not None and self.yt_report.winfo_manager():
             self._stop_play()
             self.yt_report.pack_forget()
             self._prac_body.pack(fill="both", expand=True)
+
+    # ----- tiến bộ của người học (D-48) -----
+    def _show_progress(self):
+        if self.recording or self.p_working:
+            return
+        self._show_screen("prac")
+        self._progress_render()
+        self._progress_on = True
+        if self._prac_body.winfo_manager():
+            self._prac_body.pack_forget()
+        if not self.yt_report.winfo_manager():
+            self.yt_report.pack(fill="both", expand=True)
+
+    def _progress_render(self):
+        """Màn Tiến bộ: các buổi đọc YouTube của người học đang chọn — % từ đúng, tốc độ & dao
+        động cao độ so với người nói, độ dài từ ngắn, mẫu lỗi lúc đầu vs gần đây, bảng buổi."""
+        for ch in self.yt_report.winfo_children():
+            ch.destroy()
+        P = self.P
+        name = self.learners["active"]
+        L = self.learners["learners"][name]
+        rows = [s for s in L["yt"] if s.get("total")]
+        pv = progress_view(rows)
+        col = CHART_COLORS["dark" if self.theme_name.get() == "dark" else "light"]
+        aqua = "#199e70" if self.theme_name.get() == "dark" else "#1baf7a"   # ô màu 3 (D-47)
+        outer, inner = self._scroll_area(self.yt_report, "card")
+        outer.pack(fill="both", expand=True)
+        box = self._frame(inner, bg="card")
+        box.pack(fill="x", padx=self.px(48), pady=(self.px(28), self.px(36)))
+        fnt, fb = (self.F, 9), (self.F, 9, "bold")
+        top = self._frame(box, bg="card")
+        top.pack(fill="x")
+        ttk.Button(top, text="Quay lại luyện", style="Ghost.TButton",
+                   command=self._yt_report_hide).pack(side="right", anchor="n")
+        self._lbl(top, "Tiến bộ của %s" % name, size=20, weight="bold", anchor="w").pack(fill="x")
+        paras = sum(s.get("n_read", 0) for s in rows)
+        sub = "%d buổi đọc YouTube · %d đoạn" % (len(rows), paras)
+        if rows:
+            sub += " · gần nhất %s" % rows[-1].get("date", "")
+        lessons = len([k for k, v in L["lessons"].items() if isinstance(v, dict) and v.get("n")])
+        if lessons:
+            sub += " · Luyện câu: %d bài đã luyện" % lessons
+        self._lbl(top, sub, fg="muted", anchor="w").pack(fill="x", pady=(self.px(2), 0))
+        if not rows:
+            self._lbl(box, "Chưa có buổi đọc YouTube nào. Vào Luyện phát âm → Từ YouTube và đọc ít "
+                           "nhất một đoạn — kết quả tự lưu vào đây sau mỗi đoạn.",
+                      justify="left", anchor="w", wraplength=self.px(700)).pack(
+                fill="x", pady=(self.px(24), 0))
+            return
+        for ln in pv["lines"]:
+            self._lbl(box, "•  " + ln, anchor="w").pack(fill="x", pady=(self.px(4), 0))
+        if pv["n"] < 2:
+            self._lbl(box, "Đọc thêm ít nhất một buổi nữa để thấy xu hướng.", fg="muted",
+                      anchor="w").pack(fill="x", pady=(self.px(8), 0))
+
+        wrap = self._frame(box, bg="card", height=1)
+        wrap.pack(fill="x", pady=(self.px(20), 0))
+
+        def card(title, w, h):
+            fr = self._frame(wrap, bg="card")
+            self._lbl(fr, title, fg="muted", size=9, anchor="w").pack(fill="x")
+            cv = tk.Canvas(fr, width=self.px(w), height=self.px(h), bd=0, highlightthickness=0,
+                           bg=P["card"])
+            cv.pack(anchor="w", pady=(self.px(4), 0))
+            return cv
+
+        def line_chart(title, series, lo, hi, ref=None, unit="", legend=None):
+            """series: [(màu, [giá trị | None])]; ref: đường mốc (vd 100 % = bằng người nói)."""
+            W, H = 340, 180
+            cv = card(title, W, H + (18 if legend else 0))
+            L_, T, B, R = self.px(40), self.px(14 + (18 if legend else 0)), self.px(24), self.px(30)
+            Wp, Hp = self.px(W), self.px(H + (18 if legend else 0))
+            if legend:
+                x = 0
+                for colr, lab in legend:
+                    cv.create_rectangle(x, self.px(4), x + self.px(10), self.px(14), fill=colr,
+                                        outline="")
+                    cv.create_text(x + self.px(16), self.px(9), text=lab, anchor="w",
+                                   fill=P["muted"], font=fnt)
+                    x += self.px(28) + int(len(lab) * self.px(6))
+
+            def Y(v):
+                return T + (Hp - T - B) * (1 - (max(lo, min(hi, v)) - lo) / float(hi - lo))
+            n = max(len(s) for _c, s in series)
+            X = (lambda i: L_ + (Wp - L_ - R) * (i / float(max(1, n - 1))) if n > 1
+                 else L_ + (Wp - L_ - R) / 2.0)
+            for g in (lo, (lo + hi) / 2.0, hi):
+                cv.create_line(L_, Y(g), Wp - R, Y(g), fill=P["border"])
+                cv.create_text(L_ - 6, Y(g), text="%s%s" % (_num(float(g)), unit), anchor="e",
+                               fill=P["muted"], font=fnt)
+            if ref is not None:
+                cv.create_line(L_, Y(ref), Wp - R, Y(ref), fill=P["muted"], dash=(4, 3))
+            for colr, vals in series:
+                pts = [(X(i), Y(v)) for i, v in enumerate(vals) if v is not None]
+                if len(pts) >= 2:
+                    cv.create_line(*[c for p in pts for c in p], fill=colr,
+                                   width=max(2, self.px(2)))
+                r = self.px(4)
+                for x, y in pts:
+                    cv.create_oval(x - r - 2, y - r - 2, x + r + 2, y + r + 2, fill=P["card"],
+                                   outline="")            # vòng nền tách các điểm chồng nhau
+                    cv.create_oval(x - r, y - r, x + r, y + r, fill=colr, outline="")
+                if pts:                                    # chỉ ghi giá trị điểm cuối
+                    last = [v for v in vals if v is not None][-1]
+                    cv.create_text(pts[-1][0], pts[-1][1] - self.px(12), text="%s%s" % (
+                        _num(float(last)), unit), fill=P["fg"], font=fb)
+            labs = [s[0] for s in pv["series"]]
+            if labs:
+                cv.create_text(X(0), Hp - self.px(10), text=labs[0], fill=P["muted"], font=fnt)
+                if n > 1:
+                    cv.create_text(X(n - 1), Hp - self.px(10), text=labs[-1], fill=P["muted"],
+                                   font=fnt)
+
+        ser = pv["series"]
+        line_chart("% từ đúng theo buổi", [(col["you"], [s[1] for s in ser])], 0, 100, unit="%")
+        sp, pr = [s[2] for s in ser], [s[3] for s in ser]
+        if any(v is not None for v in sp + pr):
+            hi = max(120, max([v for v in sp + pr if v is not None] + [0]) + 10)
+            line_chart("So với người nói (100% = bằng người nói)",
+                       [(col["you"], sp), (aqua, pr)], 0, hi, ref=100, unit="%",
+                       legend=[(col["you"], "Tốc độ"), (aqua, "Dao động cao độ")])
+        fr = [s[4] for s in ser]
+        if any(v is not None for v in fr):
+            hi = max(2.5, max(v for v in fr if v is not None) + 0.3)
+            line_chart("Độ dài từ ngắn (× người nói, càng gần 1 càng tốt)", [(col["you"], fr)],
+                       0.5, hi, ref=1.0, unit="×")
+        if pv["patterns"]:
+            pats = pv["patterns"][:6]
+            rowh = 50
+            cv = card("Mẫu lỗi (lỗi / 100 từ): lúc đầu vs gần đây", 380, rowh * len(pats) + 24)
+            cv.create_rectangle(0, self.px(4), self.px(10), self.px(14), fill=P["muted"],
+                                outline="")
+            cv.create_text(self.px(16), self.px(9), text="Lúc đầu", anchor="w", fill=P["muted"],
+                           font=fnt)
+            cv.create_rectangle(self.px(84), self.px(4), self.px(94), self.px(14),
+                                fill=col["you"], outline="")
+            cv.create_text(self.px(100), self.px(9), text="Gần đây", anchor="w",
+                           fill=P["muted"], font=fnt)
+            mx = max(max(a, b) for _c, _t, a, b in pats) or 1
+            for i, (_c, t, a, b) in enumerate(pats):
+                y = self.px(24 + i * rowh)
+                cv.create_text(0, y + self.px(6), text=t, anchor="w", fill=P["fg"],
+                               font=(FONT_IPA, 9) if has_ipa(t) else fnt)
+                for j, (v, colr) in enumerate(((a, P["muted"]), (b, col["you"]))):
+                    yy = y + self.px(18 + j * 14)
+                    w = max(self.px(4), self.px(300) * v / float(mx))
+                    cv.create_rectangle(0, yy, w, yy + self.px(9), fill=colr, outline="")
+                    cv.create_text(w + self.px(6), yy + self.px(5), text=_num(float(v)),
+                                   anchor="w", fill=P["fg"], font=fnt)
+        key = [None]
+
+        def relayout(_e=None):
+            key[0] = self._flow(wrap, self.px(36), self.px(18), key[0])
+        wrap.bind("<Configure>", relayout)
+        self.after_idle(relayout)
+
+        self._lbl(box, "CÁC BUỔI GẦN ĐÂY", fg="muted", size=9, weight="bold", anchor="w").pack(
+            fill="x", pady=(self.px(26), self.px(6)))
+        self._hline(box, pady=(0, self.px(6)))
+        for s in reversed(rows[-10:]):
+            row = self._frame(box, bg="card")
+            row.pack(fill="x", pady=(self.px(3), 0))
+            t = s.get("title", "") or s.get("vid", "")
+            self._lbl(row, "%s   ·   %s" % (s.get("date", ""), t if len(t) <= 60 else t[:59] + "…"),
+                      anchor="w").pack(side="left")
+            bits = ["%d/%d đoạn" % (s.get("n_read", 0), s.get("n_paras", 0)),
+                    "%d%% từ đúng" % s.get("pct", 0)]
+            if s.get("wpm_usr"):
+                bits.append("%d từ/phút" % s["wpm_usr"])
+            self._lbl(row, " · ".join(bits), fg="muted", anchor="e").pack(side="right")
 
     def _yt_goto(self, idx):
         self._yt_report_hide()
@@ -7549,8 +7941,9 @@ class App(tk.Tk):
                    command=self._yt_report_hide).pack(side="left", padx=(self.px(10), 0))
         lbl(top, "Báo cáo luyện đọc to", size=20, weight="bold", margin=self.px(320)).pack(
             fill="x")
-        lbl(top, "%s · đã đọc %d/%d đoạn · %s" % (rep["title"], rep["n_read"], rep["n_paras"],
-                                                 rep["date"]), fg="muted",
+        lbl(top, "%s%s · đã đọc %d/%d đoạn · %s" % (
+            "%s · " % rep["learner"] if rep.get("learner") else "", rep["title"], rep["n_read"],
+            rep["n_paras"], rep["date"]), fg="muted",
             margin=self.px(320)).pack(fill="x", pady=(self.px(2), 0))
         lbl(box, "%d/%d từ đúng (%d%%)" % (rep["correct"], rep["total"], rep["pct"]), size=18,
             weight="bold").pack(fill="x", pady=(self.px(18), 0))
@@ -7567,6 +7960,14 @@ class App(tk.Tk):
         if bits:
             lbl(box, " · ".join(bits), fg="muted").pack(fill="x")
         self._report_charts(box, report_charts(rep), caps)
+        hist = self.learners["learners"][self.learners["active"]]["yt"]
+        pv = progress_view([s for s in hist if s.get("total")])
+        if pv["n"] >= 2:                          # tiến bộ qua các buổi (D-48)
+            caps("TIẾN BỘ — %d BUỔI" % pv["n"])
+            for ln in pv["lines"]:
+                lbl(box, "•  " + ln).pack(fill="x", pady=(self.px(2), 0))
+            links(box, [("Xem biểu đồ tiến bộ →", self._show_progress)]).pack(
+                anchor="w", pady=(self.px(6), 0))
 
         if rep["focus"]:
             caps("3 ĐIỀU NÊN TẬP TRUNG")
@@ -7693,6 +8094,7 @@ class App(tk.Tk):
             self._set_prac_state("idle")
             return
         self._yt_keep[idx] = {"wav": self.last_wav, "res": res, "gate": gate}
+        self._yt_record_session()
         self._yt_show(res, gate)
         self.p_status.set("")
 

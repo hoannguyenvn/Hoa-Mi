@@ -84,7 +84,7 @@
 | R3 | NHỊP (D-45): từ chức năng bạn vs người nói + ví dụ; báo cáo "Tốc độ & nhịp". Không so từ được nhấn (đo thấy sai trên chính người nói) | ✅ |
 | R4 | NỐI ÂM (D-46): mối nối gạch chân trong đoạn (bật/tắt), ▶ từng cụm, báo cáo liệt kê. Không chấm ngắt/nối (đo thấy không tách được). Nuốt âm: chưa làm | ✅ |
 | R5 | Báo cáo cuối phiên (D-43): 3 điều nên tập trung, âm hay sai cả bài, trôi chảy, từng đoạn, từ cần luyện, lưu HTML; kết thúc sớm được | ✅ |
-| R6 | So lần trước, Từ cần luyện, lịch sử theo hồ sơ người học cục bộ (Y4 cũ) | ⛔ |
+| R6 | Hồ sơ người học cục bộ + lịch sử buổi đọc + màn Tiến bộ có biểu đồ (D-48) | ✅ |
 
 R1 kiểm chứng: `ytread_e2e` (giữ/khôi phục khi đổi đoạn, lưu đủ 4 file, đóng app xóa hết), nhánh
 transcript Whisper ("Me at the zoo", ép không phụ đề): 37 từ có mốc, 3/3 câu có ▶ Mẫu.

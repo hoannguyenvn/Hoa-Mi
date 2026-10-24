@@ -63,7 +63,8 @@ Mục tiêu: một model khác mở repo, đọc 3 file (`PROJECT-STATE`, `HANDO
 | `tools/build_lessons.py` | Sinh lại bài + audio mẫu | `main()` |
 | `gen_mau.py` | Sinh lại bộ âm mẫu cơ bản | `main()` |
 | `config.json` | Cài đặt người dùng (tự tạo) | `load_config` / `save_config` |
-| `practice_history.json` | Tiến bộ luyện (tự tạo) | `_load_hist` / `_save_hist` |
+| `practice_history.json` | Tiến bộ luyện cũ (chỉ đọc một lần để chép, D-48) | `learners_load` |
+| `learners.json` | Người học + lịch sử bài câu + buổi YouTube (tự tạo, D-48) | `learners_load` / `learners_save` |
 
 ## 4. Bất biến kỹ thuật (không được phá)
 

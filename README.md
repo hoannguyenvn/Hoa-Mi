@@ -148,6 +148,9 @@ Ba chế độ:
   - **Âm hay sai**: lỗi được gom theo thói quen — âm cuối & -s số nhiều, âm th, n đọc thành l,
     nguyên âm đôi (bacon, odor), cụm phụ âm đầu (smell, sniff), từ ngắn bị nuốt — kèm số từ, ví dụ
     từ chính bài đọc của bạn, mẹo sửa, ▶ Mẫu / ▶ Bạn đọc. Đọc từ 2 đoạn: thêm tổng cả video.
+  - **Người học & tiến bộ**: ở thanh bên trái, khối **Người học ▾** để chọn/thêm/đổi tên người học (chỉ
+    lưu trên máy này, không cần tài khoản). Mỗi buổi đọc YouTube tự lưu cho người học đang chọn; **Xem
+    tiến bộ** cho biểu đồ % từ đúng, tốc độ và cao độ so với người nói, từ ngắn, mẫu lỗi lúc đầu vs gần đây.
   - **Báo cáo cuối**: bấm **Kết thúc · xem báo cáo** bất cứ lúc nào (vd đọc 3/6 đoạn rồi dừng) hoặc
     **Xem báo cáo →** ở đoạn cuối. Báo cáo gồm tổng điểm, 3 điều nên tập trung, âm hay sai cả bài,
     trôi chảy, từng đoạn (nghe lại, mở lại đoạn) và từ cần luyện, kèm **biểu đồ**: % từ đúng từng

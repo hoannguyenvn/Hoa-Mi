@@ -55,6 +55,7 @@ và skill nào cần nạp. Dùng file này thay vì grep toàn repo.
 | F3.20 | Nối âm — dạy, không chấm (D-46) | gạch chân mối nối trong đoạn (bật/tắt), NỐI ÂM + ▶ từng cụm, báo cáo liệt kê cụm | `pron_en.link_points`, `linking_view`, `App._yt_toggle_links` | `app-phonemes` | "talk about", "think of" được gạch |
 | F3.21 | Đoạn văn tách câu + in đậm từ nên nhấn (D-47) | khoảng trắng/· giữa câu, in đậm, gạch chân nối âm, "Ẩn gợi ý" | `pron_en.stress_word`, `App._yt_fill_text` | `app-ui` | "talk" đậm, "the" thường |
 | F3.22 | Biểu đồ báo cáo (D-47) | 3 biểu đồ trong app (Canvas) và bao-cao.html (SVG) | `report_charts`, `report_svg`, `App._report_charts`, `CHART_COLORS` | `app-ui` | báo cáo có mục BIỂU ĐỒ |
+| F3.23 | Hồ sơ người học + Tiến bộ (D-48) | Người học ▾ ở thanh trái; buổi YouTube tự lưu; màn Tiến bộ có biểu đồ | `learners_load/save`, `learner_add/rename`, `yt_session_summary`, `learner_record_yt`, `progress_view`, `App._learner_menu`, `App._show_progress` | `app-ui` | đổi người học → lịch sử bài câu đổi theo |
 | F3.12 | Mic & kiểm tra | chọn, làm mới, kiểm tra | `_refresh_mics`, `_test_mic`, `_find_mic_auto` | `app-recording` | nói "a" → dB/TỐT |
 
 ## 4. Cài đặt & nền tảng (Tab 3)

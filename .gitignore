@@ -8,6 +8,8 @@ downloads/
 # Dữ liệu cá nhân, tự tạo khi chạy (I12, I16)
 config.json
 practice_history.json
+learners.json
+learners.json.tmp
 
 # Model, file tạm
 *.tmp

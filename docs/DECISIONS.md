@@ -508,6 +508,21 @@ Màu: ô 1–2 bảng màu tham chiếu đã kiểm CVD (`CHART_COLORS`: xanh = 
 **Hệ quả:** bảng "Từng đoạn" trong HTML cuộn ngang riêng (thẻ audio rộng). Test:
 `report_charts_and_stress_hints`.
 
+### D-48 — R6: hồ sơ người học cục bộ + lịch sử tiến bộ (2026-10-24)
+**Quyết định (D-39 bổ sung):** kho `learners.json` (cạnh app, .gitignore — I16) giữ mọi người học trên máy:
+{"active", "learners": {tên: {"created", "lessons" (lịch sử bài câu, định dạng D-30), "yt" (buổi đọc
+YouTube)}}}. Không đăng nhập, không mạng (I9). Lần đầu: tạo người học "Tôi" và **chép** practice_history.json
+vào (file cũ để nguyên làm bản sao lưu). Thanh điều hướng có khối "Người học ▾": đổi người, thêm, đổi tên, xem
+tiến bộ (chưa có xóa — tránh mất dữ liệu). Buổi đọc YouTube tự lưu sau **mỗi** đoạn được chấm
+(`yt_session_summary`, khóa = video@giờ bắt đầu, chỉ số đo — không lưu chữ máy nghe/audio). Màn **Tiến bộ**
+(`progress_view`, `_progress_render`): % từ đúng theo buổi, tốc độ & dao động cao độ so với người nói (một
+biểu đồ, cùng thang %, mốc 100 %), độ dài từ ngắn × người nói (mốc 1×), mẫu lỗi / 100 từ lúc đầu vs gần đây,
+bảng buổi gần đây. Báo cáo có tên người học và mục "Tiến bộ" khi ≥ 2 buổi.
+**Vì sao:** người dùng muốn "lịch sử học theo người học để xem tiến bộ" (D-39); lưu sau mỗi đoạn để không phụ
+thuộc nút Kết thúc.
+**Hệ quả:** `_load_hist`/`_save_hist` đi qua kho người học; `ui_shots`/`ytread_e2e` chặn `learners_save`. Ô màu
+3 (aqua) cho chuỗi thứ hai "Dao động cao độ" trên biểu đồ tiến bộ. Test: `learner_profiles_and_progress`.
+
 ## B. Những cách làm đã bị loại (đừng lặp lại)
 
 Nguồn: `PHASE2-DANH-GIA-DU-AN-CU.md` §2.2 và §6.

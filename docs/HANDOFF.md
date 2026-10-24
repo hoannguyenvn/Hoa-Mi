@@ -1249,3 +1249,19 @@ từng đoạn cuộn riêng (thẻ audio làm tràn ngang ở 377 px); màn bá
 xem bằng trình duyệt trong app (sáng/tối, không tràn ngang ở 377 px); e2e thật 0 lỗi callback.
 **Chưa kiểm chứng:** người dùng xem trên máy.
 **Việc tiếp theo:** R6 — hồ sơ người học cục bộ + lịch sử tiến bộ.
+
+## 2026-10-24 (tiếp 16) — Claude Opus 5.5 — D-48: R6 hồ sơ người học + Tiến bộ
+
+**Đã làm (`app.py`):** kho `learners.json` (`LEARNERS_PATH`, `learners_load` chép practice_history.json lần
+đầu, `learners_save` ghi an toàn, `learner_name_error/add/rename`); `_load_hist`/`_save_hist` đi qua kho;
+khối "Người học ▾" ở thanh trái (`_learner_menu`, `_learner_ask` dùng simpledialog, `_learner_switch`);
+`YtReadSession.started`, `yt_session_summary`, `learner_record_yt`, `_yt_record_session` sau mỗi đoạn được
+chấm; `progress_view` + màn Tiến bộ (`_show_progress`, `_progress_render`: 3 biểu đồ đường + mẫu lỗi lúc
+đầu/gần đây + bảng buổi); báo cáo có tên người học + mục Tiến bộ (≥ 2 buổi), HTML ghi tên. `.gitignore` thêm
+learners.json. `ui_shots`/`ytread_e2e` chặn `learners_save`; `ui_shots` thêm ảnh Tiến bộ sáng/tối (5 buổi giả
+trong bộ nhớ). Test `learner_profiles_and_progress` (90/90).
+**Đã kiểm chứng:** smoke 90/90, context_check; ảnh; e2e thật 0 lỗi; script App thật: thêm "Lan" → lịch sử bài
+câu 0, đổi lại "Tôi" → 6 bài, màn Tiến bộ mở được; không ghi learners.json khi thử.
+**Chưa kiểm chứng:** hộp thoại thêm/đổi tên bằng tay; dữ liệu thật qua nhiều buổi.
+**Việc tiếp theo:** kế hoạch R1–R6 xong. Người dùng thử; còn ngỏ: nuốt âm, xóa người học, so lần đọc lại cùng
+đoạn; P4 hiệu chuẩn, Phase 4/5 UI.

@@ -275,3 +275,10 @@ bằng `_flow`, tự xuống hàng) và `report_svg` (SVG trong bao-cao.html). Q
 đo một biểu đồ/cặp thanh), màu chuỗi lấy từ `CHART_COLORS` theo theme (xanh = bạn, cam = người nói), chữ và
 nhãn dùng màu chữ của theme, đầu thanh bo 4 px, giá trị ghi ở đầu thanh. Thêm biểu đồ mới: thêm vào
 `report_charts` rồi vẽ ở cả hai nơi; kiểm sáng/tối bằng `tools/ui_shots.py`.
+
+## Người học & Tiến bộ (D-48)
+
+`self.learners` = kho `learners_load()`; `self.hist` = `lessons` của người học đang chọn (bài câu dùng như
+trước). Đổi người: `_learner_switch` (cập nhật `self.hist`, nhãn thanh trái, panel tiến bộ). Buổi YouTube ghi
+ở `_yt_record_session` sau mỗi `_yt_done`. Màn Tiến bộ dùng chung khung `yt_report` với báo cáo
+(`_progress_on`). Công cụ thử phải chặn `app.learners_save` để không ghi dữ liệu thật.
