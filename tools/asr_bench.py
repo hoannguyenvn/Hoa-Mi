@@ -81,17 +81,8 @@ def read_audio(path):
 
 
 def builtin_items():
-    """Câu mẫu có sẵn: 14 bài Anh (thường + chậm) + câu mẫu Việt/Anh cơ bản."""
-    items = []
-    with open(app.LESSONS_PATH, encoding="utf-8") as f:
-        lessons = json.load(f).get("lessons") or []
-    for L in lessons:
-        for suf in ("", "_slow"):
-            p = ROOT / "mau" / "en" / ("%s%s.wav" % (L["id"], suf))
-            if p.exists() and L.get("target"):
-                items.append((p.stem, p, L["target"], "en"))
-    items.append(("vi_cau", ROOT / "mau" / "vi_cau.wav", "Lan năm nay lên lớp.", "vi"))
-    items.append(("en_cau", ROOT / "mau" / "en_cau.wav", "She sells seashells.", "en"))
+    """Câu mẫu có sẵn: câu mẫu tiếng Việt cơ bản (giọng TTS — chỉ so trước/sau, I13)."""
+    items = [("vi_cau", ROOT / "mau" / "vi_cau.wav", "Lan năm nay lên lớp.", "vi")]
     return [it for it in items if it[1].exists()]
 
 

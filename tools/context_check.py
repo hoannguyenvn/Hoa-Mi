@@ -8,8 +8,8 @@ Việc kiểm tra (không cần mạng, không cần model, không mở UI):
   1. Các file tài liệu bắt buộc tồn tại và còn mục neo.
   2. Symbol Python được nhắc trong docs/context-map.json vẫn tồn tại (AST).
   3. VERSION trong app.py khớp README.
-  4. lessons_en.json hợp lệ + audio mẫu tồn tại.
-  5. config.json chỉ chứa khóa trong DEFAULT_CFG.
+  4. (nếu có) file bài học JSON hợp lệ + audio mẫu tồn tại.
+  5. config.json (nếu có trên máy) chỉ chứa khóa trong DEFAULT_CFG.
   6. requirements.txt có các gói bắt buộc.
   7. Số lượng asset tối thiểu.
   8. Mỗi skill có SKILL.md, frontmatter name/description, ID hợp lệ, body <= 500 dòng.
@@ -292,6 +292,9 @@ def check_lessons(report: Report, rel: str, cfg: dict) -> int:
 
 def check_config(report: Report, rel: str, cfg: dict, trees: dict[str, ast.Module]) -> None:
     path = ROOT / rel
+    if not path.exists():
+        report.ok(f"{rel}: chưa có (tự tạo khi chạy app) — bỏ qua")
+        return
     try:
         data = json.loads(read_text(path))
     except Exception as exc:
@@ -344,7 +347,7 @@ def check_assets(report: Report, spec: dict) -> None:
             report.fail(f"{pattern}: có {len(files)} file, cần >= {minimum}")
         else:
             report.ok(f"{pattern}: {len(files)} file")
-    for pattern in ("mau/en/en_th.wav", "mau/en/en_th_slow.wav"):
+    for pattern in spec.get("required") or []:
         if not (ROOT / pattern).exists():
             report.fail(f"Thiếu asset bắt buộc: {pattern}")
 
@@ -410,10 +413,7 @@ def write_snapshot(
         "AGENTS.md",
         "README.md",
         "app.py",
-        "pron_en.py",
-        "gop.py",
         "prosody.py",
-        "lessons_en.json",
         "requirements.txt",
         "docs/context-map.json",
         "docs/PROJECT-STATE.md",
@@ -447,9 +447,7 @@ def write_snapshot(
         "",
         "## Dữ liệu",
         "",
-        f"- `lessons_en.json`: **{lesson_count}** bài",
         f"- audio `mau/`: **{len(list((ROOT / 'mau').glob('*.wav')))}** clip",
-        f"- audio `mau/en/`: **{len(list((ROOT / 'mau/en').glob('*.wav')))}** clip",
         f"- skills: **{len(skill_rows)}**",
         "",
         "## Skills",
@@ -512,6 +510,8 @@ def main() -> int:
             check_config(report, rel, cfg, trees)
         elif kind == "requirements":
             check_requirements(report, rel, cfg)
+        elif not (ROOT / rel).exists() and cfg.get("optional"):
+            report.ok(f"{rel}: chưa có (tự tạo khi chạy app) — bỏ qua")
         else:
             try:
                 json.loads(read_text(ROOT / rel))

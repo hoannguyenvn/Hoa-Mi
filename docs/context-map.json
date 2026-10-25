@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "project": {
-    "name": "Oriole",
+    "name": "Hoa Mi",
     "version_source": "app.py:VERSION",
     "readme": "README.md"
   },
@@ -13,12 +13,10 @@
     "docs/DECISIONS.md",
     "docs/HANDOFF.md",
     "docs/ROADMAP.md",
-    "docs/UI-PLAN.md",
-    "docs/YT-READING-PLAN.md"
+    "docs/UI-PLAN.md"
   ],
   "python": {
     "app.py": [
-      "load_en_lessons",
       "format_time",
       "clock_time",
       "srt_time",
@@ -113,7 +111,6 @@
       "App._set_icon",
       "App._clear_prac_result",
       "build_result_view",
-      "gop_level",
       "stt_controls",
       "prac_controls",
       "hist_add_try",
@@ -121,61 +118,20 @@
       "App._set_stt_state",
       "App._set_prac_state",
       "App._render_result",
-      "App._yt_load",
-      "App._yt_start",
-      "App._yt_score",
-      "App._w_ytscore",
-      "App._yt_render",
-      "token_spans",
-      "ytread_view",
-      "fluency_view",
-      "error_pattern_view",
-      "intonation_view",
-      "rhythm_samples",
-      "rhythm_view",
-      "linking_view",
-      "report_charts",
       "learners_load",
       "learners_save",
       "learner_name_error",
       "learner_add",
       "learner_rename",
-      "yt_session_summary",
-      "learner_record_yt",
-      "progress_view",
       "App._learner_menu",
       "App._learner_switch",
-      "App._show_progress",
-      "App._progress_render",
-      "App._yt_record_session",
-      "report_svg",
-      "App._report_charts",
-      "App._yt_toggle_links",
-      "ytread_orig_pitch",
-      "session_report",
-      "report_html",
-      "App._yt_finish",
-      "App._yt_report_render",
-      "App._yt_save_report",
-      "pattern_example_text",
-      "App._yt_session_patterns",
-      "ytread_model",
-      "App._w_ytprefetch",
       "App._save_recording",
-      "App._save_all",
       "App._save_bundle",
       "App._sync_rec_pills",
       "recordings_dir",
-      "App._yt_show",
-      "App._yt_drop_keep",
       "App._src_label",
       "strip_marks_vi",
       "vi_north_key",
-      "read_aloud_diff",
-      "pick_en_subtitle",
-      "YtReadSession",
-      "ytread_prepare",
-      "ytread_orig_hyp",
       "_overlap_words",
       "evidence_gate",
       "vi_spell",
@@ -235,33 +191,6 @@
       "App._autosave",
       "App._fill_info"
     ],
-    "pron_en.py": [
-      "phonemes",
-      "ipa",
-      "word_ipa",
-      "align",
-      "compare_words",
-      "analyze_pairs",
-      "TIPS",
-      "LETTER_TIPS",
-      "error_patterns",
-      "syllables",
-      "link_points",
-      "stress_word"
-    ],
-    "gop.py": [
-      "available",
-      "score",
-      "forget"
-    ],
-    "yt_read.py": [
-      "clean_caption",
-      "build_paragraphs",
-      "number_words",
-      "en_tokens",
-      "sentence_ranges",
-      "is_clause_end"
-    ],
     "prosody.py": [
       "read_wav",
       "f0_track",
@@ -273,13 +202,6 @@
       "pitch_track",
       "segment_pitch"
     ],
-    "tools/build_lessons.py": [
-      "sentence_ipa",
-      "focus_text",
-      "make_wav",
-      "main",
-      "build_word_times"
-    ],
     "gen_mau.py": [
       "mp3_to_wav16k",
       "main"
@@ -290,45 +212,24 @@
     "tools/smoke_test.py": [
       "main"
     ],
-    "tools/ytread_e2e.py": [
-      "main"
-    ],
-    "tools/ytread_bench.py": [
-      "bench",
-      "main"
-    ],
     "tools/asr_bench.py": [
       "main",
       "run_one",
       "degrade"
     ],
-    "tools/ui_shots.py": [
+    "tools/ui_check.py": [
       "main",
-      "grab_png"
+      "fake_result"
     ]
   },
   "data": {
-    "lessons_en.json": {
-      "type": "lessons",
-      "min_lessons": 14,
-      "required_fields": [
-        "id",
-        "target",
-        "words",
-        "tips",
-        "pairs",
-        "ipa",
-        "focus_ipa",
-        "samples"
-      ],
-      "sample_dir": "mau/en"
-    },
     "config.json": {
       "type": "config",
       "defaults_symbol": "app.py:DEFAULT_CFG"
     },
     "practice_history.json": {
-      "type": "json"
+      "type": "json",
+      "optional": true
     },
     "requirements.txt": {
       "type": "requirements",
@@ -344,10 +245,14 @@
   },
   "assets": {
     "globs": {
-      "mau/*.wav": 12,
-      "mau/en/*.wav": 74,
+      "mau/*.wav": 5,
       "assets/fonts/*.ttf": 3
-    }
+    },
+    "required": [
+      "mau/vi_cau.wav",
+      "mau/vi_na.wav",
+      "mau/vi_la.wav"
+    ]
   },
   "skills": [
     "project-context",
@@ -355,7 +260,6 @@
     "app-youtube",
     "app-recording",
     "app-pronunciation",
-    "app-phonemes",
     "app-prosody",
     "app-ui",
     "app-lessons",

@@ -23,8 +23,6 @@ import wave
 from tkinter import filedialog, messagebox, ttk
 from datetime import timedelta
 
-import gop  # chấm âm vị bằng model acoustic (wav2vec2 CTC) — tùy chọn
-import pron_en  # phân tích âm vị tiếng Anh (CMUdict + căn chỉnh âm vị)
 import prosody  # phân tích ngữ điệu (cao độ) bằng numpy
 
 APP_TITLE = "Hoa Mi"
@@ -1262,7 +1260,6 @@ def score_pronunciation(target, hyp, lang):
             "hyp": " ".join(hw)}
 
 
-GOP_LEVEL_STRONG = 25 # điểm GOP dưới mức này → "lệch rõ"; còn lại trong issues → "hơi lệch"
 VI_SOUND_CODES = {"nl": "N/L", "tone": "dấu thanh", "rhyme": "vần/dấu"}  # "âm hay sai" bài Việt
 
 # ---------- cổng bằng chứng (D-29): không hiện điểm khi máy không chắc ----------
@@ -1455,8 +1452,8 @@ def hist_add_try(hist, sid, view, ts):
 def hist_weakest(hist, lang):
     """Âm hay sai nhất, CHỈ trong các bài cùng ngôn ngữ (D-30) → (nhãn, số lần) | None.
 
-    EN: mã ARPAbet → "/θ/". VI: mã VI_SOUND_CODES → "N/L". Bỏ qua dữ liệu cũ lẫn
-    ngôn ngữ (vd âm vị tiếng Anh ghi vào bài Việt khi Whisper nhận nhầm ngôn ngữ).
+    Mã VI_SOUND_CODES → "N/L". Bỏ qua dữ liệu cũ lẫn ngôn ngữ (vd âm vị tiếng Anh ghi
+    vào bài Việt khi Whisper nhận nhầm ngôn ngữ, hoặc bài Anh cũ chép từ Oriole).
     """
     tot = {}
     for sid, h in hist.items():
@@ -1469,8 +1466,7 @@ def hist_weakest(hist, lang):
     if not tot:
         return None
     ph = max(tot, key=tot.get)
-    label = VI_SOUND_CODES[ph] if lang == "vi" else "/%s/" % pron_en.ARPABET_IPA.get(ph, ph.lower())
-    return label, tot[ph]
+    return VI_SOUND_CODES[ph], tot[ph]
 
 
 STT_STATES = ("idle", "recording", "processing", "result", "error")
@@ -1588,7 +1584,7 @@ def stage_words(target, view=None):
 
 
 # ---------- ngữ điệu, trọng âm, tốc độ: chỉ mô tả, không chấm (S-5 / S-5b, D-10 / D-34) ----------
-SAMPLE_TIMES_PATH = os.path.join(MAU_DIR, "en", "word_times.json")
+SAMPLE_TIMES_PATH = os.path.join(MAU_DIR, "word_times.json")
 INTON_FLAT = 0.35         # |độ dốc cuối câu| (bán cung / 10 % câu) nhỏ hơn → "đi ngang"
 INTON_FLAT_RANGE = 0.5    # khoảng cao độ của bạn < 50 % của mẫu → "giọng hơi đều"
 SPEED_SAME = 0.15         # chênh tốc độ ≤ 15 % → "gần giống mẫu"
@@ -1737,11 +1733,6 @@ def progress_summary(h, weak=None, lang=None, n=10):
             "line1": line1, "line2": line2}
 
 
-def gop_level(score):
-    """Mức chữ cho điểm GOP (I7: không hiện như % đúng)."""
-    return "lệch rõ" if float(score) < GOP_LEVEL_STRONG else "hơi lệch"
-
-
 # Xác suất Whisper của một từ "đúng" dưới mức này → "máy chưa chắc". asr_bench (từ TTS đọc
 # đúng): p<0,5 báo oan ~1/5 câu sạch, p<0,25 không báo oan câu sạch/ồn, 1–2 từ ở mic yếu.
 WORD_UNSURE_P = 0.25
@@ -1780,9 +1771,6 @@ def build_result_view(res, lesson=None):
     items = res.get("items") or []
     is_en = res.get("det_lang") == "en"
     lang = res.get("det_lang") or (lesson or {}).get("lang") or "auto"
-    g = res.get("gop")
-    phon = res.get("phon") or {}
-    issues = phon.get("issues") or []
 
     words, chips = [], []
     for tw, st, hw, note in items:
@@ -1801,56 +1789,16 @@ def build_result_view(res, lesson=None):
     extras_total = len(extras)
 
     n_iss = 0
-    if is_en:
-        n_iss = len(g.get("issues") or []) if g else len(issues)
 
-    # ---- thẻ "Cần sửa" (S-2/S-4): tối đa 4, phụ âm trước nguyên âm ----
+    # ---- thẻ "Cần sửa" (S-2/S-4): tối đa 4 ----
     cards, covered = [], set()
-    if is_en and g:
-        for it in g.get("issues") or []:
-            wi = it.get("wi")
-            covered.add(wi)
-            heard = chips[wi]["heard"] if isinstance(wi, int) and 0 <= wi < len(chips) else None
-            lv = gop_level(it["score"])
-            cards.append({"title": "/%s/ trong “%s”" % (it.get("ipa_exp") or it.get("ph", ""), it["word"]),
-                          "level": lv, "kind": "bad" if lv == "lệch rõ" else "warn",
-                          "tip": it["tip"], "ipa": True, "word": it["word"],
-                          "sample": "en/w_%s.wav" % it["word"].lower(), "heard": heard,
-                          "detail": "%d%%%s" % (round(it["score"]), (" · mẫu %d%%" % round(it["ref_score"]))
-                                               if it.get("ref_score") is not None else "")})
-    elif is_en and issues:
-        seen = set()
-        for it in issues:
-            covered.add(it.get("i"))
-            key = (it["exp"], it["got"], it["word"])
-            if key in seen:
-                continue
-            seen.add(key)
-            got = it.get("ipa_got")
-            level = ("nghe thành [%s]" % got) if got else "bị mất"
-            if it.get("approx"):
-                level += " · đoán theo chữ"
-            cards.append({"title": "/%s/ trong “%s”" % (it.get("ipa_exp") or it["exp"], it["word"]),
-                          "level": level, "kind": "warn", "tip": it["tip"], "ipa": True,
-                          "word": it["word"], "sample": "en/w_%s.wav" % it["word"].lower(),
-                          "heard": it.get("heard_word"), "detail": None,
-                          "vowel": it.get("kind") == "vowel"})
-    elif not is_en:
+    if not is_en:
         cards = _vi_cards(chips)
         covered = {i for i, w in enumerate(chips) if w["code"] in ("nl", "tone", "rhyme")}
     cards_more = max(0, len(cards) - 4)
     cards = cards[:4]
 
-    # âm GOP "lệch rõ" theo từ gốc (wi = chỉ số từ tách khoảng trắng, như gop.score nhận) —
-    # để câu trên sân khấu không ghi ✓ cho từ mà mô hình âm học thấy lệch rõ. Không đổi điểm (I4).
-    gop_marks = {}
-    if is_en and g:
-        for it in g.get("issues") or []:
-            wi = it.get("wi")
-            if isinstance(wi, int) and gop_level(it["score"]) == "lệch rõ":
-                ipa = it.get("ipa_exp") or pron_en.ARPABET_IPA.get(it.get("ph"), it.get("ph"))
-                if ipa and ipa not in gop_marks.setdefault(wi, []):
-                    gop_marks[wi].append(ipa)
+    gop_marks = {}   # khóa giữ cho stage_words; Hoa Mi không chấm GOP
 
     unsure_words = word_unsure_marks(res, chips)
 
@@ -1891,18 +1839,10 @@ def build_result_view(res, lesson=None):
         f"Máy nghe bạn đọc là: “{hyp_show}”"
         + ("  (máy nghe chưa chắc)" if res.get("low_conf") else ""))
 
-    # đếm "âm hay sai" theo NGÔN NGỮ CỦA BÀI (D-30): EN = âm vị ARPAbet, VI = mã n/l/thanh/vần
+    # đếm "âm hay sai" theo NGÔN NGỮ CỦA BÀI (D-30): mã n/l/thanh/vần
     sounds = {}
     lesson_lang = (lesson or {}).get("lang")
-    if state == "result" and lesson_lang == "en" and is_en:
-        if g:
-            for it in g.get("issues") or []:
-                if it.get("ph"):
-                    sounds[it["ph"]] = sounds.get(it["ph"], 0) + 1
-        else:
-            for ph, n in (phon.get("counts") or {}).items():
-                sounds[ph] = sounds.get(ph, 0) + int(n)
-    elif state == "result" and lesson_lang == "vi" and not is_en:
+    if state == "result" and lesson_lang == "vi" and not is_en:
         for w in chips:
             if w["code"] in VI_SOUND_CODES:
                 sounds[w["code"]] = sounds.get(w["code"], 0) + 1
@@ -1918,8 +1858,8 @@ def build_result_view(res, lesson=None):
         "state": state, "gate": gate,
         "target": res.get("target", ""), "words": words, "chips": chips,
         "extras": extras, "extras_total": extras_total, "notes": notes,
-        "is_en": is_en, "cards": cards, "cards_more": cards_more, "has_gop": bool(is_en and g),
-        "gop_has_ref": bool(g and g.get("has_ref")),
+        "is_en": is_en, "cards": cards, "cards_more": cards_more, "has_gop": False,
+        "gop_has_ref": False,
         "n_issues": n_iss, "perfect": perfect, "correct": correct, "total": total,
         "gop_marks": gop_marks, "unsure_words": unsure_words, "model": res.get("model"),
         "score": score, "ring": ring, "headline": headline, "summary": summary,
@@ -5576,13 +5516,8 @@ class App(tk.Tk):
             tw_n = len(target.split())
             res["garbage"] = bool(hw_n >= 8 and hw_n >= 2 * tw_n
                                   and res["score"] < 35)
-            pairs = [(i, tw, hw) for i, (tw, st, hw, _n) in enumerate(res["items"])
-                     if st != "ok" and tw and hw]
-            if res.get("det_lang") == "en" and pairs:
-                res["phon"] = pron_en.analyze_pairs(pairs)
-            else:
-                res["phon"] = {"issues": [], "counts": {}, "top": [],
-                               "by_phoneme": {}, "unknown": []}
+            res["phon"] = {"issues": [], "counts": {}, "top": [],
+                           "by_phoneme": {}, "unknown": []}
             res["inton"] = None
             res["stress"] = None
             if ref_wav:
@@ -5599,15 +5534,6 @@ class App(tk.Tk):
                 except Exception:
                     res["stress"] = None
             res["gop"] = None
-            if (lang == "en" or res.get("det_lang") == "en") and gop.available():
-                try:
-                    self._queue.put(("prac_status",
-                                     "Đang chấm âm vị (GOP)… lần đầu sẽ lâu hơn "
-                                     "(nạp model)."))
-                    tw = [w for w in re.split(r"\s+", target.strip()) if w]
-                    res["gop"] = gop.score(wav_path, tw, ref_wav=ref_wav)
-                except Exception:
-                    res["gop"] = None
             self._queue.put(("prac_done", res))
         except Exception as e:
             self._queue.put(("prac_error", str(e)))
@@ -5708,9 +5634,9 @@ class App(tk.Tk):
                 sections.append("notes")
             if self._inton:
                 sections.append("inton")
-            if v["has_gop"] or self._inton:
-                # Q-03: mọi con số (GOP, bán cung, độ lệch) chỉ nằm trong MỘT mục "Chi tiết số
-                # đo"; mặc định là chữ (I7, S-5)
+            if self._inton:
+                # Q-03: mọi con số (bán cung, độ lệch) chỉ nằm trong MỘT mục "Chi tiết số
+                # đo"; mặc định là chữ (S-5)
                 tog = self._link_lbl(self.pp_detail, "Chi tiết số đo " +
                                      ("▾" if self._show_details else "▸"), self._toggle_details,
                                      bg="side", size=9)
@@ -5718,14 +5644,6 @@ class App(tk.Tk):
                 self._embeds.append(tog)
                 if self._show_details:
                     lines = []
-                    if v["has_gop"]:
-                        lines = ["%s:  %s" % (c["title"], c["detail"]) for c in v["cards"]
-                                 if c.get("detail")]
-                        lines.append(
-                            "Điểm GOP 0–100 do mô hình âm học chấm, so với bản mẫu cùng câu"
-                            " — không phải phần trăm phát âm đúng." if v["gop_has_ref"] else
-                            "Điểm GOP 0–100 do mô hình âm học chấm (ngưỡng tuyệt đối vì "
-                            "không có bản mẫu) — không phải phần trăm phát âm đúng.")
                     if self._inton:
                         lines.append("Ngữ điệu — " + self._inton_text(self._inton))
                     for ln in lines:
@@ -6219,14 +6137,12 @@ class App(tk.Tk):
             except Exception:
                 ok[mod] = False
         core = all(ok.values())
-        gop_ok = gop.available()
         self.info_lines[0].configure(text="%s %s · chạy hoàn toàn trên máy · Python %s"
                                      % (APP_TITLE, VERSION, sys.version.split()[0]))
         self.info_lines[1].configure(
-            text="Nhận dạng, tải YouTube, phụ đề, thu âm: %s · Chấm âm vị chuyên sâu: %s"
+            text="Nhận dạng, tải YouTube, phụ đề, thu âm: %s"
             % ("✓ sẵn sàng" if core else "✗ thiếu " + ", ".join(m for m, v in ok.items()
-                                                                if not v),
-               "✓" if gop_ok else "chưa cài (tùy chọn)"),
+                                                                if not v)),
             fg=self.P["ok_fg"] if core else self.P["bad_fg"])
         self.info_lines[2].configure(text="ffmpeg: %s" % (yt_ffmpeg_location() or "(chưa có)"),
                                      fg=self.P["muted"])

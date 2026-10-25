@@ -22,7 +22,6 @@ if str(ROOT) not in sys.path:
 
 import app  # noqa: E402  (import sau khi thêm ROOT vào sys.path)
 import numpy as np  # noqa: E402
-import pron_en  # noqa: E402
 import prosody  # noqa: E402
 
 CASES: list[tuple[str, callable]] = []
@@ -419,21 +418,6 @@ def recorder_noise_floor_and_practice_silence():
     assert "PRAC_SILENCE_SEC" in inspect.getsource(app.App._prac_start)
 
 
-# ---------------------------------------------------------------- âm vị / F0
-@case
-def ipa_think_has_theta():
-    ipa = pron_en.word_ipa("think")
-    assert "θ" in ipa, ipa
-
-
-@case
-def phoneme_issue_think_tink():
-    rep = pron_en.analyze_pairs([(0, "think", "tink")])
-    assert rep["issues"], rep
-    assert any(it["exp"] == "TH" for it in rep["issues"]), rep["issues"]
-    assert any("θ" in it["label"] for it in rep["issues"]), rep["issues"]
-
-
 @case
 def f0_track_sine():
     sr = 16000
@@ -774,26 +758,9 @@ def _view_of(target, hyp, lang, lesson_lang=None, **extra):
     res = app.score_pronunciation(target, hyp, lang)
     res.update(target=target, det_lang=lang, gop=None, low_conf=False, garbage=False)
     res.update(extra)
-    pairs = [(i, tw, hw) for i, (tw, st, hw, _n) in enumerate(res["items"])
-             if st != "ok" and tw and hw]
     if "phon" not in extra:
-        res["phon"] = (pron_en.analyze_pairs(pairs) if lang == "en" and pairs else
-                       {"issues": [], "counts": {}, "top": [], "by_phoneme": {}, "unknown": []})
+        res["phon"] = {"issues": [], "counts": {}, "top": [], "by_phoneme": {}, "unknown": []}
     return app.build_result_view(res, {"lang": lesson_lang or lang})
-
-
-@case
-def result_view_english_errors():
-    # D-31 / A-02: "nói gì" nằm trong hàm thuần, test được không cần Tk.
-    v = _view_of("Think about this thing.", "tink about dis thing", "en")
-    kinds = [(c["target"], c["kind"], c["heard"]) for c in v["chips"]]
-    assert kinds[0] == ("think", "warn", "tink") and kinds[1][1] == "ok", kinds
-    assert v["headline"] == "Đúng 2/4 từ" and not v["perfect"]
-    assert v["score_line"] == "2/4 từ", v["score_line"]
-    assert v["cards"] and v["cards"][0]["title"].startswith("/θ/"), v["cards"]
-    assert v["summary"].startswith("Lỗi chính: /θ/"), v["summary"]
-    assert v["sounds"].get("TH"), v["sounds"]
-    assert v["state"] == "result"
 
 
 @case
@@ -814,20 +781,6 @@ def result_view_vietnamese_counts_by_lesson_language():
     assert wrong["sounds"] == {}, wrong["sounds"]
     missing = _view_of("Lan năm nay lên", "lan năm nay", "vi")
     assert missing["chips"][-1]["kind"] == "missing" and missing["chips"][-1]["heard"] is None
-
-
-@case
-def result_view_gop_levels_not_percent():
-    # I7: GOP thành mức chữ cho giao diện mới; số vẫn giữ trong view cho "Chi tiết".
-    it = pron_en._issue("TH", "T", "think", 0, 3)
-    it.update(score=18.0, ref_score=71.0, wi=0, ph="TH")
-    it2 = pron_en._issue("DH", "D", "this", 0, 3)
-    it2.update(score=31.0, ref_score=66.0, wi=2, ph="DH")
-    v = _view_of("Think about this thing.", "tink about dis thing", "en",
-                 gop={"issues": [it, it2], "has_ref": True})
-    assert [c["level"] for c in v["cards"]] == ["lệch rõ", "hơi lệch"]
-    assert v["has_gop"] and "18%" in v["cards"][0]["detail"]
-    assert v["sounds"] == {"TH": 1, "DH": 1} and v["n_issues"] == 2
 
 
 @case
@@ -1170,26 +1123,6 @@ def transcription_screen_states():
     assert v("error", True) == ("result", "error") and v("error", False) == ("empty", "error")
     assert [app.short_duration(x) for x in (18, 75, 3723, 0)] == ["0:18", "1:15", "1:02:03",
                                                                    "0:00"]
-
-
-@case
-def gop_clearly_off_marks_stage_word():
-    # D-35: chữ đúng ("think") nhưng GOP thấy /θ/ lệch rõ → gạch cam trên câu, điểm KHÔNG đổi
-    it = pron_en._issue("TH", "T", "think", 0, 3)
-    it.update(score=12.0, ref_score=70.0, wi=0, ph="TH")
-    it2 = pron_en._issue("DH", "D", "this", 0, 3)
-    it2.update(score=40.0, ref_score=70.0, wi=2, ph="DH")      # hơi lệch → không gạch
-    v = _view_of("Think about this thing.", "think about this thing", "en",
-                 gop={"issues": [it, it2], "has_ref": True})
-    assert v["correct"] == 4 and v["headline"] == "Đúng 4/4 từ", v["headline"]
-    assert v["gop_marks"] == {0: ["θ"]}, v["gop_marks"]
-    w = app.stage_words("Think about this thing.", v)
-    assert w[0] == {"text": "Think", "kind": "warn", "note": "âm /θ/ lệch"}, w[0]
-    assert [x["kind"] for x in w[1:]] == ["ok", "ok", "ok"]
-    # lỗi cấp từ (máy nghe sai chữ) vẫn ưu tiên ghi chú "nghe ‘…’"
-    v2 = _view_of("Think about this thing.", "tink about this thing", "en",
-                  gop={"issues": [it], "has_ref": True})
-    assert app.stage_words("Think about this thing.", v2)[0]["note"] == "nghe “tink”"
 
 
 def main() -> int:
