@@ -1265,3 +1265,41 @@ câu 0, đổi lại "Tôi" → 6 bài, màn Tiến bộ mở được; không g
 **Chưa kiểm chứng:** hộp thoại thêm/đổi tên bằng tay; dữ liệu thật qua nhiều buổi.
 **Việc tiếp theo:** kế hoạch R1–R6 xong. Người dùng thử; còn ngỏ: nuốt âm, xóa người học, so lần đọc lại cùng
 đoạn; P4 hiệu chuẩn, Phase 4/5 UI.
+
+## 2026-10-25 — Claude Opus 5.5 — Đánh giá góc nhìn người học + rà hạ tầng + D-49 tách sản phẩm
+
+**Mục tiêu phiên:** người dùng hỏi (1) tính năng cần cải thiện/thêm cho người học tiếng Anh,
+(2) hạ tầng âm thanh/thu âm cần sửa gì, (3) tách phần luyện tiếng Việt sang app khác.
+
+**Đã làm (chỉ tài liệu, không đổi code):**
+- `docs/ROADMAP.md` — viết lại: "Thứ tự đề xuất"; phase **S** (tách sản phẩm S1–S4); phase **L**
+  (L1 ôn tập từ lỗi, L2 thêm câu + nghe cặp tối thiểu, L3 chống Whisper sửa hộ, L4 nghe-nhắc/shadowing,
+  L5 luyện hẹp + phản hồi gọn, L6 trọng âm/chính tả/chẩn đoán); phase **A** (A1–A12 hạ tầng);
+  P3 chuyển sang app tiếng Việt; P6 gộp vào A9; P5 đóng gói đổi tên P7.
+- `docs/DECISIONS.md` — D-49; bỏ Q-01; thêm Q-05 (tab Chuyển văn bản), Q-06 (tên/repo app mới).
+- `docs/PROJECT-STATE.md` — mục 1 thêm việc S; mục 4; sửa "~4.500 dòng" → ~8.700.
+
+**Phát hiện khi rà (chưa sửa, đã ghi vào ROADMAP A):**
+- `mau/*.wav` đều 16 kHz mono → âm mẫu mất dải > 8 kHz (s/sh/th) — A1.
+- `enhance_audio` cắt im lặng ở max(0,015; 4 % đỉnh) + 80 ms → có thể nuốt /s/, /t/ cuối — A4.
+- `enhance_audio` luôn `tanh` sau chuẩn hóa 0,7 → méo nhẹ mọi đỉnh — A4.
+- Mic bluetooth HFP làm giảm cả chất lượng tiếng phát — A3.
+
+**Quyết định mới:** D-49.
+
+**Đã kiểm chứng:**
+- `tools/context_check.py` (container Linux) → 47 OK · 2 FAIL; 2 FAIL chỉ vì clone sạch không có
+  `config.json`/`practice_history.json` (file cá nhân, .gitignore) — y hệt trước khi sửa.
+- `tools/smoke_test.py` → **chưa chạy được**: container không có `tkinter`. Phiên này không đổi code.
+
+**Chưa kiểm chứng / cần người dùng thử:** không có thay đổi code; các phát hiện A1/A4 là đọc code,
+chưa đo bằng `asr_bench`.
+
+**Việc tiếp theo (ưu tiên giảm dần):**
+1. Người dùng trả lời Q-06 + Q-05; S1 tag `split-base-vi`; S2 dựng app tiếng Việt (repo mới).
+2. A1–A4 (đo trước/sau bằng `asr_bench`).
+3. P1 + A12 (CI), rồi S3 gỡ phần Việt khỏi Oriole.
+
+**Cảnh báo cho model sau:**
+- **Không** gỡ phần tiếng Việt khỏi Oriole trước khi app mới chạy được (D-49).
+- `learners.json` giữ mục `vi*` cũ — không xóa dữ liệu người học.

@@ -1,6 +1,6 @@
 # PROJECT STATE — Oriole
 
-- **Cập nhật lần cuối:** 2026-10-24 (D-38 giọng Bắc; D-39 đọc to YouTube Y1–Y3; D-40 phản hồi cả câu — R1)
+- **Cập nhật lần cuối:** 2026-10-25 (D-49 tách sản phẩm: Oriole = tiếng Anh; ROADMAP thêm phase S, L, A)
 - **Phiên bản code:** 2.3 (`VERSION` trong `app.py`)
 - **Trạng thái:** chạy được trên máy hiện tại; git repo `main` (D-33); chưa có test tự động đầy đủ.
 - **Nguồn sự thật:** code + `docs/context-map.json`. Tài liệu này chỉ tóm tắt.
@@ -8,6 +8,12 @@
 ## 1. Đang làm / làm tiếp
 
 > Cập nhật mục này ở **cuối mỗi phiên**. Tối đa 3 việc.
+
+- [ ] **S — Tách sản phẩm (D-49, ROADMAP phase S):** Oriole chỉ còn cho người học tiếng Anh; luyện
+  tiếng Việt (N/L, thanh) sang app riêng. **Kế tiếp: S1** — người dùng trả lời Q-06 (tên + repo app
+  mới) và Q-05 (giữ tab Chuyển văn bản?); tag `split-base-vi`; rồi S2 (dựng app mới từ bản clone).
+  **Chưa gỡ gì khỏi Oriole** — S3 chỉ sau khi app mới chạy được. Sau đó theo "Thứ tự đề xuất" trong
+  ROADMAP: A1–A4 (âm mẫu 24 kHz, cắt đuôi âm cuối, tanh, cảnh báo bluetooth) → P1 + CI → L2 → L1.
 
 - [ ] **P2 — Đại tu giao diện theo `docs/UI-PLAN.md`**: GATE A (D-27), font + app-style (D-28),
   GATE B (D-29…D-32) đã duyệt. **B1–B5 xong** (§5.1–5.6). **Kế tiếp: Phase 4** (UI-PLAN §7)
@@ -72,7 +78,7 @@ Ký hiệu: ✅ chạy ổn · 🟡 chạy nhưng có giới hạn · ⛔ chưa 
 
 | Mức | Vấn đề | Ảnh hưởng | Hướng xử lý |
 |---|---|---|---|
-| Cao | `app.py` ~4.500 dòng, UI + pipeline + scoring chung một file | khó review, dễ tạo circular change | tách dần theo skill; không tái cấu trúc big-bang |
+| Cao | `app.py` ~8.700 dòng, UI + pipeline + scoring chung một file | khó review, dễ tạo circular change | tách dần theo skill; không tái cấu trúc big-bang |
 | Cao | Chưa có test UI/ASR/mic; `smoke_test` chỉ phủ hàm thuần | sửa UI/luồng có thể phá mà không báo | mở rộng dần; ghi rõ "chưa kiểm chứng" |
 | TB | Skill/tài liệu có thể lệch code nếu sửa mà không cập nhật | model sau làm sai chỗ | luôn chạy `context_check` + sửa tài liệu cùng phiên |
 | Cao | Chưa hiệu chuẩn thang điểm với giáo viên | người học không biết tin điểm đến đâu | thu ~100 bản ghi, 2 giáo viên chấm, Spearman |
@@ -97,11 +103,13 @@ Ký hiệu: ✅ chạy ổn · 🟡 chạy nhưng có giới hạn · ⛔ chưa 
 
 Từ `PHASE2-DANH-GIA-DU-AN-CU.md` §8, vẫn còn mở:
 
-1. Ưu tiên Phase 2: **tiếng Việt** (luật + thanh điệu) hay **tiếng Anh** (GOP) trước?
+1. ~~Ưu tiên tiếng Việt hay tiếng Anh?~~ — đóng bởi D-49: Oriole = tiếng Anh.
 2. Có chấp nhận thêm ~120 MB cho gói GOP tiếng Anh (onnxruntime + model) không,
    hay giữ app thuần nhẹ?
 3. Âm mẫu: tiếp tục TTS (edge-tts) hay thu/kiếm bản ghi người thật cho ~20 bài cốt lõi?
 4. Có cần xuất PDF báo cáo không, hay TXT/CSV là đủ?
+5. (Q-05) Oriole giữ tab Chuyển văn bản hay chỉ còn luyện tiếng Anh? Đề xuất: giữ.
+6. (Q-06) Tên + repo GitHub của app luyện tiếng Việt?
 
 Khi người dùng trả lời, ghi thành `D-xx` trong `docs/DECISIONS.md` và cập nhật mục 1.
 

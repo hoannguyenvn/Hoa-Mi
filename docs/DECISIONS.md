@@ -523,6 +523,21 @@ thuộc nút Kết thúc.
 **Hệ quả:** `_load_hist`/`_save_hist` đi qua kho người học; `ui_shots`/`ytread_e2e` chặn `learners_save`. Ô màu
 3 (aqua) cho chuỗi thứ hai "Dao động cao độ" trên biểu đồ tiến bộ. Test: `learner_profiles_and_progress`.
 
+### D-49 — Oriole chỉ dành cho người học tiếng Anh; luyện tiếng Việt (N/L) sang app riêng (2026-10-25)
+**Quyết định:** người dùng chốt: Oriole giữ cho người Việt **học tiếng Anh**. Phần luyện tiếng Việt
+(bài `vi1–vi3`, Học âm N/L, luật thanh/vần, giọng Bắc D-38, `small` cho bài Việt D-37) chuyển sang một
+app riêng. Cách làm (ROADMAP phase S): (1) tag điểm tách trong Oriole; (2) app mới = `git clone` Oriole
+có lịch sử sang repo riêng, đổi tên/thư mục dữ liệu/`recordings_dir` trước, rồi gỡ phần tiếng Anh theo
+thứ tự người gọi → module; (3) **chỉ sau khi** app mới chạy được mới gỡ phần tiếng Việt khỏi Oriole,
+mỗi bước một commit + smoke/context; (4) bản sửa phần dùng chung chuyển bằng `git cherry-pick`, chưa
+tách gói chung. Oriole giữ giao diện tiếng Việt, font, chữ tiếng Việt trong `evidence_gate`.
+**Vì sao:** hai nhóm người học khác nhau (người Việt sửa N/L/thanh điệu vs người Việt học tiếng Anh);
+gộp làm danh sách bài, luật chấm và lộ trình rối. Clone có lịch sử giữ test/tài liệu và cho phép
+cherry-pick; gỡ khỏi Oriole sau cùng để Oriole luôn dùng được.
+**Hệ quả:** Q-01 đóng (tiếng Anh). P3 (thanh điệu F0) chuyển sang lộ trình app mới. `learners.json`
+không xóa mục `vi*` cũ — Oriole bỏ qua id không còn bài. Tab Chuyển văn bản: chờ Q-05. Tên app mới: Q-06.
+Điểm tách (tag/hash): *chưa tạo — ghi vào đây ở bước S1.*
+
 ## B. Những cách làm đã bị loại (đừng lặp lại)
 
 Nguồn: `PHASE2-DANH-GIA-DU-AN-CU.md` §2.2 và §6.
@@ -551,9 +566,10 @@ Nguồn: `PHASE2-DANH-GIA-DU-AN-CU.md` §2.2 và §6.
 
 | Mã | Câu hỏi | Ảnh hưởng |
 |---|---|---|
-| Q-01 | Ưu tiên tiếng Việt hay tiếng Anh ở Phase 2? | thứ tự roadmap, nội dung bài |
 | Q-02 | Thêm ~120 MB cho GOP/onnxruntime? | dependency, đóng gói |
 | Q-03 | Âm mẫu TTS hay bản ghi người thật? | chất lượng mẫu, chi phí |
 | Q-04 | Có cần xuất PDF không? | UI, dependency |
+| Q-05 | Oriole giữ tab Chuyển văn bản (file/YouTube → SRT, đa ngôn ngữ) hay chỉ còn luyện tiếng Anh? Đề xuất: giữ (phục vụ xem video tiếng Anh) | phạm vi S3, README |
+| Q-06 | Tên + repo GitHub của app luyện tiếng Việt? | S1–S2 |
 
 Khi có câu trả lời: thêm `D-20…` tương ứng và xóa dòng khỏi bảng chờ.
