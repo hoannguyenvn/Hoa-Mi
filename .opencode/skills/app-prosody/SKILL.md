@@ -1,6 +1,6 @@
 ---
 name: App Prosody & Intonation Chart
-description: Sửa phần ngữ điệu trong Oriole — tách F0 bằng autocorrelation, quy đổi bán cung so với trung vị người nói, DTW, và biểu đồ Canvas ở Tab 2. Dùng khi người dùng nhắc tới ngữ điệu, cao độ, F0, contour, lên/xuống giọng, biểu đồ cao độ, hoặc prosody.py.
+description: Sửa phần ngữ điệu trong Hoa Mi — tách F0 bằng autocorrelation, quy đổi bán cung so với trung vị người nói, DTW, và biểu đồ Canvas ở Tab 2. Dùng khi người dùng nhắc tới ngữ điệu, cao độ, F0, contour, lên/xuống giọng, biểu đồ cao độ, hoặc prosody.py.
 ---
 
 # Prosody & Intonation
@@ -39,7 +39,7 @@ Không dùng librosa, Praat, torchaudio. Chỉ `wave` + `numpy` (I8).
 - 1/2/3/4 byte mẫu → scale đúng (`/128`, `/32768`, `/8388608`, `/2147483648`).
 - Nhiều kênh → trung bình cộng.
 - Khác 16 kHz → nội suy tuyến tính (`np.interp`). Đủ tốt cho F0, **không** dùng
-  để chấm âm vị (GOP đọc lại bằng cùng hàm này nhưng cần đúng mẫu).
+  để chấm âm vị.
 - Định dạng lạ → `ValueError("định dạng WAV không hỗ trợ")`.
 
 ### `f0_track` — các ngưỡng không được tùy tiện đổi
@@ -93,12 +93,12 @@ Bất kỳ lỗi/thiếu dữ liệu → `None`; UI ẩn thẻ.
 - `ref_wav` lấy từ `PRACTICE_SETS[sid]["samples"][0][1]` — tức **câu đầy đủ**, không
   phải clip từ khóa, và không có cho `custom`.
 - Hệ quả: **Học âm** (guide, `sid=None`) và 3 bài Việt `vi1`–`vi3` (không có
-  `samples`) **không bao giờ** có biểu đồ — chỉ 14 bài tiếng Anh có.
+  `samples`) **chưa** có biểu đồ — sẽ có khi bài có bản ghi mẫu người thật (I13).
 - `_prac_done` đặt `self._inton` (chỉ khi `result`) rồi `_render_result`; mục NGỮ ĐIỆU
   (`p_int_card`) trong panel phải: câu nhận xét `p_int_cap` (xanh ✓ / cam), Canvas `p_int`
   118 px, `p_int_stress`, `p_int_speed`. Điền bởi `_fill_inton(v)` từ `inton_view`.
 - Số đo (`_inton_text`: thời lượng, cuối câu, khoảng cao độ, độ lệch) chỉ nằm trong mục
-  **chung** "Chi tiết số đo ▸" ở cuối panel (cùng số GOP, `_toggle_details`) — một link duy
+  **chung** "Chi tiết số đo ▸" ở cuối panel (`_toggle_details`) — một link duy
   nhất cho mọi con số.
 - `_draw_intonation` (S-5): **không** trục số — chỉ vạch giữa (trung vị) + "cao"/"thấp";
   chú thích nét đứt "Mẫu" / nét liền "Bạn" ở góc trên; dải `band` sau từ cần sửa; nhãn từ
@@ -117,8 +117,9 @@ Bất kỳ lỗi/thiếu dữ liệu → `None`; UI ẩn thẻ.
   < `STRESS_MIN_WORDS` (3) từ → `None`. Test `stress_picks_loud_high_word` (WAV tổng hợp).
 - `_w_prac` (khi có `ref_wav`): `res["stress"] = {"usr": word_stress(bản thu, words_t),
   "ref": word_stress(mẫu, ref_words), "ref_words": ref_words}`; `ref_words` lấy từ
-  `mau/en/word_times.json` (`load_sample_word_times`, sinh bằng
-  `tools/build_lessons.py --word-times`).
+  `mau/word_times.json` (`load_sample_word_times`; **chưa có** trong Hoa Mi — file thiếu → `{}`).
+  Trọng âm từ là khái niệm tiếng Anh (kế thừa từ Oriole); với tiếng Việt cần thay bằng
+  phân tích thanh điệu (ROADMAP T1).
 - `inton_view(res, view)` (hàm thuần, app.py) → `labels` (nhãn từ theo mốc của BẠN trên
   trục 0..1, `err` = từ cần sửa, `su`/`sr` = bạn/mẫu nhấn), `caption` + `tone`
   (`inton_caption`), `stress` (`stress_note`), `speed` (`speed_note`: ±15 % → "gần giống";
@@ -153,16 +154,3 @@ Bất kỳ lỗi/thiếu dữ liệu → `None`; UI ẩn thẻ.
 | Đường cong nhảy quãng tám | `_clean` bị bỏ hoặc ngưỡng 1.8/0.55 bị đổi |
 | Test sine fail sau khi đổi hop | `times`/`frame` lệch, hoặc ngưỡng peak 0.32 quá cao |
 | Thẻ ngữ điệu còn hiện sau khi đổi bài | `_refresh_practice` không gọi `pack_forget` |
-
-## Ngữ điệu đoạn văn YouTube (D-44)
-
-`pitch_track(path, start, end)` → {t tuyệt đối, st bán cung so trung vị đoạn}; `segment_pitch(track, s, e)`
-→ {range (p90 − p10), curve CURVE_POINTS điểm, frames}. `app.intonation_view` so dải từng câu (bỏ câu có
-`cov_usr` < 0,6), `FLAT_RATIO` 0,6 → "giọng đều". **Không** phán lên/xuống cuối câu ở chế độ này (R-15):
-đo thấy hướng F0 cuối câu đổi chiều theo cửa sổ. Muốn thêm phải đo lại trên bản lưu thật trước.
-
-## Nhịp đoạn văn YouTube (D-45)
-
-`app.rhythm_samples(res, mine, orig)` → thời lượng từ chức năng / một âm tiết từ chính (token đúng, mốc hai
-bên, không chung mốc); `rhythm_view` → "từ ngắn dài gấp x lần" khi ≥ `RHYTHM_SLOW` (1,5). Không so từ được
-nhấn (R-16): `word_stress` trên đoạn văn chấm cả người nói nhấn vào of/to/the.

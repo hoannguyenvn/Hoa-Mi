@@ -1,6 +1,6 @@
 ---
 name: App Recording & Microphone
-description: Sửa thu âm, chọn micro, tự dò micro có tín hiệu, tự dừng khi im lặng, chuẩn hóa âm lượng và ghi WAV 16 kHz trong Oriole. Dùng khi người dùng nhắc tới micro, thu âm, sounddevice, tín hiệu yếu, WDM-KS, hoặc chất lượng bản ghi.
+description: Sửa thu âm, chọn micro, tự dò micro có tín hiệu, tự dừng khi im lặng, chuẩn hóa âm lượng và ghi WAV 16 kHz trong Hoa Mi. Dùng khi người dùng nhắc tới micro, thu âm, sounddevice, tín hiệu yếu, WDM-KS, hoặc chất lượng bản ghi.
 ---
 
 # Recording & Microphone

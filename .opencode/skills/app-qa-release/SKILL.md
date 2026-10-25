@@ -1,6 +1,6 @@
 ---
 name: App QA & Release
-description: Nghiệm thu và đóng gói Oriole — chạy context_check, smoke_test, py_compile, ma trận kiểm thử thủ công (file, YouTube, micro, luyện phát âm, theme/DPI), dependency, run.bat và giới hạn khi phát hành. Dùng khi người dùng nhắc tới test, kiểm thử, nghiệm thu, đóng gói, run.bat, requirements, cài đặt máy mới, hoặc trước khi bàn giao.
+description: Nghiệm thu và đóng gói Hoa Mi — chạy context_check, smoke_test, py_compile, ma trận kiểm thử thủ công (file, YouTube, micro, luyện phát âm, theme/DPI), dependency, run.bat và giới hạn khi phát hành. Dùng khi người dùng nhắc tới test, kiểm thử, nghiệm thu, đóng gói, run.bat, requirements, cài đặt máy mới, hoặc trước khi bàn giao.
 ---
 
 # QA & Release
@@ -17,10 +17,10 @@ $env:PYTHONIOENCODING='utf-8'          # console hay là cp1252
 
 & $PY tools\context_check.py            # tài liệu/symbol/skill/asset
 & $PY tools\context_check.py --snapshot # sinh docs/CONTEXT-SNAPSHOT.md
-& $PY tools\smoke_test.py               # 74 test khói
+& $PY tools\smoke_test.py               # 72 test khói
 & $PY tools\asr_bench.py --compare F.json  # chuỗi thu → nhận dạng (cần model Whisper, ~1 phút)
-& $PY tools\ui_shots.py before          # chụp 21 trạng thái UI vào %TEMP%\oriole_shots\before
-& $PY -m py_compile app.py pron_en.py gop.py prosody.py yt_read.py gen_mau.py tools\build_lessons.py tools\context_check.py tools\smoke_test.py tools\asr_bench.py
+& $PY tools\ui_check.py --shots $env:TEMP\hoami_ui  # chạy App thật qua mọi màn/bài; ảnh cần Pillow
+& $PY -m py_compile app.py prosody.py gen_mau.py tools\context_check.py tools\smoke_test.py tools\asr_bench.py tools\ui_check.py
 ```
 
 - `context_check` FAIL ⇒ **dừng**, sửa drift trước khi thêm tính năng.
@@ -28,15 +28,15 @@ $env:PYTHONIOENCODING='utf-8'          # console hay là cp1252
 - `py_compile` không in gì = OK; `__pycache__` không được commit/chia sẻ.
   Liệt kê file rõ ràng: PowerShell **không** mở rộng `tools\*.py` cho lệnh native.
 
-### `smoke_test.py` phủ gì (74 case)
+### `smoke_test.py` phủ gì (72 case)
 
 | Nhóm | Case |
 |---|---|
-| Bài học | `lessons_loaded` (18 SET_IDS), `lessons_have_samples` |
-| L1 | đọc đúng 100%, th/tink, n/l, sai thanh điệu, `strip_tone_vi`, từ thừa, `norm_words`, `flag_pair` |
+| Bài học | `lessons_loaded` (vi1–vi3 + custom, guide N/L/NL), `lessons_have_samples` |
+| L1 | đọc đúng 100%, n/l, sai thanh điệu, `strip_tone_vi`, từ thừa, `norm_words`, `flag_pair` |
 | Cue/SRT | timestamp, txt có giờ, `_fix_cues`, `split_long_cues` |
 | Audio | `resample_length`, silence quiet, chuẩn hóa gain |
-| Âm vị/F0 | IPA `think`, `analyze_pairs`, sine 150 Hz |
+| F0 | sine 150 Hz |
 | Audio (tiếp) | `enhance_lifts_weak_mic` (D-21), `resample_blocks_aliasing`, `highpass_matches_one_pole_loop`, `enhance_gain_ignores_click` (D-36) |
 | ASR luyện (D-36/37) | `guess_lang_from_target_text`, `practice_asr_options`, `whisper_model_is_cached`, `vietnamese_practice_uses_small_when_on_disk`, `unsure_word_loses_tick_not_points`, `snr_estimate_and_quality_note`, `recorder_noise_floor_and_practice_silence` |
 | Config | khóa + kiểu khớp `DEFAULT_CFG` |
@@ -44,12 +44,11 @@ $env:PYTHONIOENCODING='utf-8'          # console hay là cp1252
 | YouTube | `yt_worker_always_reports_back` (D-24), `yt_subtitle_429_falls_back_not_fatal` (D-25), `yt_progress_is_a_fraction` |
 | File tạm (I10) | `remove_temp_is_safe`, `practice_replay_wav_is_replaced_not_leaked`, `w_file_removes_temp_recording_on_error` |
 | Luyện / recorder | `practice_hyp_falls_back_to_segment_text`, `recording_belongs_to_one_tab` |
-| View / trạng thái / lịch sử (B2) | `result_view_english_errors`, `result_view_perfect_and_extras`, `result_view_vietnamese_counts_by_lesson_language`, `result_view_gop_levels_not_percent`, `screen_states_drive_controls`, `history_keeps_tries_and_migrates`, `weakest_sound_is_per_language`, `practice_keeps_word_timings` |
+| View / trạng thái / lịch sử (B2) | `result_view_perfect_and_extras`, `result_view_vietnamese_counts_by_lesson_language`, `screen_states_drive_controls`, `history_keeps_tries_and_migrates`, `weakest_sound_is_per_language`, `practice_keeps_word_timings` |
 | Cổng bằng chứng / tiếng Việt (B3) | `evidence_gate_blocks_hallucination_and_noise`, `unsure_view_shows_no_score_and_is_not_stored`, `perfect_needs_every_word`, `vietnamese_rhyme_state_named`, `vi_spell_splits_syllable`, `ipa_text_detected_for_font`, `wav_segment_bounds_clamped`, `theme_text_contrast_ok` |
 | Khung app-style (B4a) | `stage_words_mark_each_original_word`, `shell_helpers` |
 | Ngữ điệu, trọng âm, tiến bộ (B4b) | `stress_picks_loud_high_word`, `heard_words_map_to_target`, `intonation_caption_rules`, `speed_and_stress_sentences`, `intonation_view_labels_and_markers`, `progress_summary_lines` |
 | Màn Văn bản (B5) | `transcription_screen_states` |
-| GOP trên câu (D-35) | `gop_clearly_off_marks_stage_word` |
 | Giao diện (B1) | `ui_font_bundled_and_registered`, `indicator_images_follow_theme`, `window_icon_drawn_in_code`, `language_names_map_to_codes` |
 
 Chạy **trước và sau** mỗi thay đổi. Thêm hành vi mới ⇒ thêm case, không sửa case cũ
@@ -72,11 +71,11 @@ cho "xanh" trừ khi hành vi cố ý đổi (ghi lý do vào `DECISIONS.md`).
 | M9 | Nhúng phụ đề | bật checkbox, mở VLC | bật/tắt phụ đề mềm được |
 | M10 | Mic | Cài đặt → Kiểm tra mic → nói "a" | dB hợp lý, trạng thái TỐT/NHỎ/TO |
 | M11 | Mic ngoài | kết nối tai nghe/USB → Quét lại → Tự dò | thấy thiết bị mới; bluetooth thiếu Hands-Free thì có gợi ý |
-| M12 | Luyện đúng | đọc đúng câu bài `en_th` | điểm cao, không cảnh báo |
-| M13 | Luyện sai âm | "think" → "tink" | báo âm vị TH, gợi ý lưỡi/răng |
+| M12 | Luyện đúng | đọc đúng câu bài `vi1` | điểm cao, không cảnh báo |
+| M13 | Luyện sai âm | đọc "Lan" thành "Nan" | báo N/L, mẹo bịt mũi |
 | M14 | Im lặng | chấm file im lặng | **không** có điểm, báo lỗi rõ |
 | M15 | Tiến bộ | luyện 2 lần | `n` tăng, best/last đúng |
-| M16 | Ngữ điệu | bài có mẫu | biểu đồ hiện, nét đứt + nét liền |
+| M16 | Ngữ điệu | (chưa có bài có mẫu người thật) | ghi chú "Biểu đồ ngữ điệu sẽ có…" |
 | M17 | Theme | đổi Sáng/Tối | mọi widget đổi, mở lại vẫn nhớ |
 | M18 | DPI | Windows 150% | chữ/nút không cắt, không chồng |
 | M19 | Phím tắt | Ctrl+O/Ctrl+Enter/Ctrl+S/Esc | đúng hành vi |
@@ -97,18 +96,12 @@ numpy>=1.24
 yt-dlp>=2024.8.6
 imageio-ffmpeg>=0.5.1
 cmudict>=0.1.3
-# tùy chọn
-torch>=2.6
-transformers>=4.40
-edge-tts>=7.3.1        # chỉ khi sinh lại audio mẫu
+edge-tts>=7.3.1        # chỉ khi sinh lại audio mẫu (gen_mau.py)
 ```
 
 - `context_check` bắt buộc 6 gói đầu: `faster-whisper`, `av`, `sounddevice`,
   `numpy`, `yt-dlp`, `imageio-ffmpeg`. Bỏ gói nào ⇒ FAIL.
-- `torch`/`transformers` là **tùy chọn** cho GOP; thiếu thì app vẫn chạy, chỉ ẩn GOP.
-- `edge-tts` chỉ dùng khi build bài/audio, không cần lúc chạy.
-- Cài torch CPU:
-  `pip install torch --index-url https://download.pytorch.org/whl/cpu`
+- `edge-tts` chỉ dùng khi sinh audio mẫu, không cần lúc chạy. Hoa Mi không có GOP/torch.
 - Không thêm dependency nặng nếu numpy làm được (I8). Thêm gói ⇒ ghi `DECISIONS.md`.
 
 ## 4. `run.bat`
@@ -121,7 +114,7 @@ Luồng: `cd` về thư mục app → kiểm tra `C:\Users\ADMIN\miniforge3\pyth
 - `HF_HUB_DISABLE_SYMLINKS_WARNING=1` để bớt cảnh báo HuggingFace trên Windows.
 - Không đặt `pip install` vào luồng chạy bình thường (chậm, cần mạng).
 - Muốn đóng gói: giữ nguyên cấu trúc tương đối vì `BASE_DIR` lấy theo vị trí
-  `app.py`; `mau/`, `lessons_en.json`, `README.md` phải nằm cạnh `app.py`.
+  `app.py`; `mau/`, `README.md` phải nằm cạnh `app.py`.
 
 ## 5. Phát hành
 
@@ -132,19 +125,19 @@ Luồng: `cd` về thư mục app → kiểm tra `C:\Users\ADMIN\miniforge3\pyth
 - [ ] `docs/PROJECT-STATE.md` + `docs/HANDOFF.md` cập nhật kết quả **thật**.
 - [ ] Không có `config.json`/`practice_history.json` chứa dữ liệu cá nhân,
       không có cookie/token (I16), không có `__pycache__`, model, file tải về.
-- [ ] `mau/` đủ 12 + 74 WAV; `lessons_en.json` parse được.
+- [ ] `mau/vi_*.wav` đủ (xem `context-map.json` assets).
 
 ### Gói tối thiểu để chạy
 ```
-app.py  pron_en.py  gop.py  prosody.py
-lessons_en.json  mau/  assets/fonts/  requirements.txt  run.bat  README.md
+app.py  prosody.py
+mau/  assets/fonts/  requirements.txt  run.bat  README.md
 ```
 `config.json` và `practice_history.json` do app tự tạo.
 
 ### Chưa có (đừng hứa)
 - Không `.exe`, không installer, không icon, không auto-update.
 - Không GPU, không hàng đợi nhiều file, không xuất PDF/CSV.
-- Lần chạy đầu cần mạng để tải model Whisper; GOP tải thêm ~1,2 GB.
+- Lần chạy đầu cần mạng để tải model Whisper (bài Việt dùng `small` nếu có trên máy).
 
 ## 6. Khi FAIL — xử lý
 
@@ -163,11 +156,11 @@ lessons_en.json  mau/  assets/fonts/  requirements.txt  run.bat  README.md
 ```
 Đã chạy:
   context_check.py        -> X OK / Y FAIL
-  smoke_test.py           -> 74/74 PASS
+  smoke_test.py           -> 72/72 PASS
   py_compile              -> OK
 Đã thử tay:
   M1 (file mp3 14s)       -> PASS
-  M12/M13 (en_th)         -> PASS
+  M12/M13 (vi1)           -> PASS
 Chưa kiểm chứng:
   M6–M9 (YouTube)         -> không có mạng trong phiên
   M10–M11 (mic)           -> không có thiết bị

@@ -1,6 +1,6 @@
 ---
 name: App Transcription Pipeline
-description: Sửa luồng chuyển file audio/video hoặc bản ghi thành văn bản, SRT/TXT, tải model Whisper, tiến trình, hủy tác vụ, xem trước và xuất file trong Oriole. Dùng khi người dùng nhắc tới nhận dạng giọng nói, transcript, phụ đề, Faster-Whisper, hoặc Tab 1.
+description: Sửa luồng chuyển file audio/video hoặc bản ghi thành văn bản, SRT/TXT, tải model Whisper, tiến trình, hủy tác vụ, xem trước và xuất file trong Hoa Mi. Dùng khi người dùng nhắc tới nhận dạng giọng nói, transcript, phụ đề, Faster-Whisper, hoặc Tab 1.
 ---
 
 # Transcription Pipeline

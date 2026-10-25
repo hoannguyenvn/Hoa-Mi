@@ -1,6 +1,6 @@
 ---
 name: Skill Authoring (Repo Convention)
-description: Tạo hoặc sửa skill trong .opencode/skills của Oriole — frontmatter name/description, độ dài, cấu trúc mục, đăng ký trong docs/context-map.json và cập nhật AGENTS.md. Dùng khi người dùng muốn thêm skill mới, sửa skill, đổi trigger/description, hoặc khi context_check báo lỗi skill.
+description: Tạo hoặc sửa skill trong .opencode/skills của Hoa Mi — frontmatter name/description, độ dài, cấu trúc mục, đăng ký trong docs/context-map.json và cập nhật AGENTS.md. Dùng khi người dùng muốn thêm skill mới, sửa skill, đổi trigger/description, hoặc khi context_check báo lỗi skill.
 ---
 
 # Skill Authoring
@@ -27,7 +27,7 @@ Frontmatter tối thiểu:
 ```markdown
 ---
 name: App Something
-description: Sửa ... trong Oriole. Dùng khi người dùng nhắc tới ..., ..., hoặc tên file/module.
+description: Sửa ... trong Hoa Mi. Dùng khi người dùng nhắc tới ..., ..., hoặc tên file/module.
 ---
 
 # Something
@@ -46,7 +46,7 @@ Nên:
 - Bắt đầu bằng hành động: "Sửa ...", "Thêm ...", "Chẩn đoán ...".
 - Liệt kê 4–8 từ khóa người dùng thật sẽ nói: "micro", "thu âm", "tín hiệu yếu",
   "WDM-KS", "chất lượng bản ghi".
-- Nêu tên file/symbol nếu là điểm vào: `pron_en.py`, `_prac_done`, `Tab 2`.
+- Nêu tên file/symbol nếu là điểm vào: `prosody.py`, `_prac_done`, `Tab 2`.
 
 Không nên:
 - "Tài liệu về ..." (không có hành động).
@@ -72,7 +72,7 @@ Quy tắc nội dung:
 - Nêu lý do cho ngưỡng quan trọng ("0.32 vì ..."), để người sau không đổi bừa.
 - Nêu rõ việc **không** được làm, đặc biệt khi có bất biến.
 - Liên kết skill khác thay vì lặp nội dung: `app-pronunciation` giữ điểm,
-  `app-phonemes` giữ âm vị, `app-prosody` giữ ngữ điệu.
+  `app-prosody` giữ ngữ điệu.
 
 ## 4. Tạo skill mới — các bước
 
@@ -128,7 +128,7 @@ skill với code; đừng coi "context_check xanh" là đủ.
 ```markdown
 ---
 name: App X
-description: Sửa X trong Oriole — <3-4 việc cụ thể>. Dùng khi người dùng nhắc tới <từ khóa>, <tên file>, hoặc <tên tab>.
+description: Sửa X trong Hoa Mi — <3-4 việc cụ thể>. Dùng khi người dùng nhắc tới <từ khóa>, <tên file>, hoặc <tên tab>.
 ---
 
 # X

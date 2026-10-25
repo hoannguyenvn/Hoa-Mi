@@ -7,7 +7,29 @@ Quy tắc:
 - Khi code mâu thuẫn với file này: code là hiện trạng, nhưng phải hoặc sửa code,
   hoặc sửa quyết định — không để lệch.
 
-## A. Quyết định đang có hiệu lực
+## 0. Hoa Mi — quyết định riêng (mới nhất ở trên)
+
+### HM-01 — Hoa Mi tách từ Oriole: chỉ luyện phát âm tiếng Việt (2026-10-25)
+**Quyết định:** người dùng chốt (D-49 của Oriole): Oriole giữ cho người học tiếng Anh; phần
+luyện tiếng Việt (bài N/L `vi1–vi3`, Học âm N/L, luật thanh/vần, giọng Bắc D-38, `small` cho bài
+Việt D-37) thành app riêng **Hoa Mi**. Repo này là `git clone` của Oriole tại `957f995` (giữ lịch
+sử), rồi: đổi danh tính (tên, `Documents\Hoa Mi`, tiền tố file tạm `hoami_`), bỏ 14 bài Anh,
+Học âm TH/SH, `mau/en`, `lessons_en.json`, `tools/build_lessons.py`, chế độ **Từ YouTube** (đọc to
+tiếng Anh, D-39…D-47, `yt_read.py`, báo cáo, màn Tiến bộ), `pron_en.py`, `gop.py`, torch/cmudict.
+Giữ tab **Chuyển thành văn bản** (file/YouTube/ghi âm → SRT), hồ sơ người học (D-48, bỏ phần
+buổi YouTube), ngữ điệu theo bản mẫu (chưa bài nào có mẫu người thật). Câu Tùy chỉnh chỉ tiếng Việt.
+`VERSION` bắt đầu lại từ 1.0.
+**Vì sao:** hai nhóm người học khác nhau; gộp chung làm danh sách bài, luật chấm, lộ trình rối.
+Clone có lịch sử cho phép `git cherry-pick` sửa lỗi phần dùng chung (`docs/UPSTREAM.md`).
+**Hệ quả:** khóa view `has_gop`/`gop_marks`/`phon` giữ nguyên (luôn rỗng) để không đổi
+`_prac_done`. Các D-xx bên dưới là lịch sử kế thừa: D-08, D-09, D-35, D-39…D-47 **không còn áp
+dụng** ở Hoa Mi (phần tiếng Anh); D-34 (trọng âm) chỉ còn trong code ngữ điệu, chưa dùng; D-49 là
+quyết định tách phía Oriole. `tools/ui_shots.py` (chỉ Windows) thay bằng `tools/ui_check.py`
+(chạy cả Linux/Xvfb). Test: 72 case smoke + `ui_check`.
+
+## A. Quyết định kế thừa từ Oriole (D-01…D-49)
+
+> Giữ nguyên văn để biết vì sao code như hiện tại. Xem HM-01 cho phần không còn áp dụng.
 
 ### D-01 — Desktop Tkinter, một file `app.py`
 **Quyết định:** giữ app desktop offline, UI `tkinter`, pipeline chung trong `app.py`.
@@ -566,10 +588,8 @@ Nguồn: `PHASE2-DANH-GIA-DU-AN-CU.md` §2.2 và §6.
 
 | Mã | Câu hỏi | Ảnh hưởng |
 |---|---|---|
-| Q-02 | Thêm ~120 MB cho GOP/onnxruntime? | dependency, đóng gói |
-| Q-03 | Âm mẫu TTS hay bản ghi người thật? | chất lượng mẫu, chi phí |
-| Q-04 | Có cần xuất PDF không? | UI, dependency |
-| Q-05 | Oriole giữ tab Chuyển văn bản (file/YouTube → SRT, đa ngôn ngữ) hay chỉ còn luyện tiếng Anh? Đề xuất: giữ (phục vụ xem video tiếng Anh) | phạm vi S3, README |
-| Q-06 | Tên + repo GitHub của app luyện tiếng Việt? | S1–S2 |
+| HQ-01 | Hoa Mi có giữ tab Chuyển thành văn bản (file/YouTube → SRT) lâu dài không, hay chỉ còn luyện phát âm? Hiện: giữ. | phạm vi app, README |
+| HQ-02 | Chuẩn giọng: chỉ chấp nhận Bắc (D-38), hay thêm chuẩn Nam (vd v/d, -n/-ng cuối)? Bài luyện riêng r/d/gi, s/x, tr/ch cần cờ chấm theo bài. | luật chấm, nội dung |
+| Q-03 | Âm mẫu TTS hay bản ghi người thật? (cần cho biểu đồ ngữ điệu/thanh điệu) | chất lượng mẫu, chi phí |
 
-Khi có câu trả lời: thêm `D-20…` tương ứng và xóa dòng khỏi bảng chờ.
+Khi có câu trả lời: thêm `HM-xx` tương ứng và xóa dòng khỏi bảng chờ.

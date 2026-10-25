@@ -1,5 +1,8 @@
 # UI PLAN — Oriole visual overhaul
 
+> **Hoa Mi:** tài liệu lịch sử kế thừa từ Oriole (thiết kế giao diện B1–B5). Phần nói về bài tiếng
+> Anh, GOP, chế độ Từ YouTube không còn áp dụng (HM-01).
+
 > Status: **GATE A passed 2026-10-22** — user approved the spec and accepted the default
 > answers for Q-01…Q-07 (§6). **GATE B passed 2026-10-22** (D-29…D-32). **Phase 3 build
 > in progress: B1, B2 done 2026-10-22 (§5.1–5.2), B3 done 2026-10-23 (§5.3), B1–B5 done 2026-10-23 (§5.1–5.6); next Phase 4 (manual verification).** Design

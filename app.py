@@ -26,7 +26,7 @@ from datetime import timedelta
 import prosody  # phân tích ngữ điệu (cao độ) bằng numpy
 
 APP_TITLE = "Hoa Mi"
-VERSION = "2.3"
+VERSION = "1.0"
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MAU_DIR = os.path.join(BASE_DIR, "mau")  # thư viện âm mẫu giọng bản ngữ (offline)

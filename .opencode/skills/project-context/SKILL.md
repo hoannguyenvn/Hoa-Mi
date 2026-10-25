@@ -1,6 +1,6 @@
 ---
 name: Project Context & Handoff
-description: Quản lý bộ nhớ dài hạn của dự án Oriole qua nhiều phiên và nhiều AI model. Dùng khi bắt đầu hoặc kết thúc phiên, khi chuyển sang model khác, khi cần khôi phục việc đang làm dở, khi cập nhật PROJECT-STATE/HANDOFF/DECISIONS, hoặc khi nghi tài liệu đã lệch code.
+description: Quản lý bộ nhớ dài hạn của dự án Hoa Mi qua nhiều phiên và nhiều AI model. Dùng khi bắt đầu hoặc kết thúc phiên, khi chuyển sang model khác, khi cần khôi phục việc đang làm dở, khi cập nhật PROJECT-STATE/HANDOFF/DECISIONS, hoặc khi nghi tài liệu đã lệch code.
 ---
 
 # Project Context & Handoff
@@ -74,7 +74,7 @@ Code > tài liệu. Nhưng nếu lệch, **sửa tài liệu trong cùng phiên*
 
 ## Prompt bàn giao cho model mới
 
-> Bạn tiếp quản dự án **Oriole** tại `D:\Oriole`.
+> Bạn tiếp quản dự án **Hoa Mi** tại `D:\Hoa Mi`.
 > Đọc theo thứ tự: `AGENTS.md` → `docs/PROJECT-STATE.md` → mục cuối
 > `docs/HANDOFF.md` → `docs/DECISIONS.md` → skill khớp tính năng.
 > Chạy `tools/context_check.py` trước khi sửa. Không đọc toàn bộ `app.py`.

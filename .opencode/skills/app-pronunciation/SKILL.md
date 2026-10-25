@@ -1,12 +1,12 @@
 ---
 name: App Pronunciation Scoring (L1)
-description: Sửa cách chấm phát âm theo từ, luật lỗi n/l, th, s/sh, âm cuối, thanh điệu tiếng Việt, cổng tin cậy và màn hình kết quả trong Oriole. Dùng khi người dùng nhắc tới điểm phát âm, từ đúng/sai, lỗi thanh điệu, "máy nghe thành gì", hoặc Tab 2.
+description: Sửa cách chấm phát âm tiếng Việt theo từ, luật lỗi n/l, thanh điệu, vần, giọng Bắc, cổng tin cậy và màn hình kết quả trong Hoa Mi. Dùng khi người dùng nhắc tới điểm phát âm, từ đúng/sai, lỗi thanh điệu, "máy nghe thành gì", hoặc Tab 2.
 ---
 
 # Pronunciation Scoring — L1
 
 Đây là lớp **đúng/sai nội dung**: so câu mẫu với câu ASR nghe được. Nó là nguồn
-duy nhất của `score`. Âm vị (`app-phonemes`) và ngữ điệu (`app-prosody`) chỉ bổ sung,
+duy nhất của `score`. Ngữ điệu (`app-prosody`) chỉ bổ sung,
 không đổi điểm.
 
 ## Đọc trước
@@ -24,11 +24,11 @@ không đổi điểm.
 | Worker | `App._w_prac` |
 | Hiển thị | `App._prac_done`, `App._prac_error`, `App._prac_stop_and_score` |
 | Cổng bằng chứng (D-29) | `evidence_gate`, `HALLUCINATION_PHRASES`, `UNSURE_RATIO`, `GARBAGE_RATIO`, `GARBAGE_SCORE`, `UNSURE_TIPS` |
-| View (D-31) | `build_result_view`, `gop_level`, `_vi_cards`, `App._render_result` |
+| View (D-31) | `build_result_view`, `_vi_cards`, `App._render_result` |
 | Lịch sử | `App._load_hist`, `App._save_hist`, `App._record_hist`, `App._update_prog`, `hist_add_try`, `hist_weakest` |
 
-Module liên quan: `pron_en.analyze_pairs` (chỉ tiếng Anh), `gop.score`,
-`prosody.compare`.
+Module liên quan: `prosody.compare`. Hoa Mi không có `pron_en`/`gop` (đã bỏ khi tách khỏi
+Oriole, HM-01); view vẫn giữ khóa `has_gop=False`, `gop_marks={}`, `phon` rỗng cho ổn định.
 
 ## Công thức và trạng thái
 
@@ -126,7 +126,7 @@ transcribe_practice(model, wav_path, asr_lang)   # PRAC_ASR_OPTS:
 
 `_prac_done` = `build_result_view(res, lesson)` → `_set_prac_state(v["state"])` →
 `_render_result(v)`. Mọi quyết định (cổng bằng chứng, khen hoàn hảo, thẻ "Cần sửa", ghi chú
-nào ẩn vì đã có thẻ, mức GOP, câu tóm tắt, vòng điểm, đếm âm cho lịch sử) nằm trong
+nào ẩn vì đã có thẻ, câu tóm tắt, vòng điểm, đếm âm cho lịch sử) nằm trong
 `build_result_view` và có test. Renderer chỉ vẽ (B4 sẽ thay bố cục, giữ nguyên view).
 Lịch sử: `hist_add_try(hist, sid, view, ts)` thêm `tries` (≤ 30), bỏ qua view `unsure`;
 `hist_weakest(hist, lang)` chỉ cộng bài cùng ngôn ngữ (bài Việt: mã `nl`, `tone`, `rhyme`).
@@ -142,19 +142,17 @@ Lịch sử: `hist_add_try(hist, sid, view, ts)` thêm `tries` (≤ 30), bỏ qu
   cho **mọi ngôn ngữ** (test `perfect_needs_every_word`).
 - Câu trên sân khấu (B4a): `stage_words(target, view)` (hàm thuần) → mỗi từ GỐC (giữ hoa,
   dấu câu) gạch chân cam/đỏ + "nghe ‘…’" / "(thiếu)" / ✓ bên dưới (P-02); `unsure` hoặc
-  chưa chấm → không tô màu. Từ đúng chữ mà GOP có âm "lệch rõ" (`view["gop_marks"]`) →
-  gạch cam + "âm /θ/ lệch" (D-35; không đổi điểm, I4; "hơi lệch" không gạch). Từ đúng mà
+  chưa chấm → không tô màu. Từ đúng mà
   Whisper p < `WORD_UNSURE_P` (0,25; `word_unsure_marks` → `view["unsure_words"]`) → kind
   `unsure` "máy chưa chắc", chặn "Hoàn hảo" (D-37). **Không** nâng ngưỡng lên 0,5: báo oan ~1/5
   câu đọc đúng; và xác suất từ không bắt được Whisper "sửa hộ" (tink → Think p 0,80).
   Từ thừa: dòng "Đọc thêm: …" trong panel, **chỉ** khi `result`
   (khi `unsure` đó là chữ bịa — D-29).
-- "CẦN SỬA" trong panel: tối đa 4 dòng `_mk_fix`. EN: theo GOP
-  (mức chữ "lệch rõ"/"hơi lệch") hoặc âm vị CMUdict. VI (`_vi_cards`): gom N/L theo chiều
+- "CẦN SỬA" trong panel: tối đa 4 dòng `_mk_fix` (`_vi_cards`): gom N/L theo chiều
   + mẹo `_VI_TIPS` + mẫu `vi_la.wav`/`vi_na.wav`; mỗi lỗi thanh/vần một thẻ với cách đọc
   tách `vi_spell`. Mỗi thẻ: ▶ Mẫu (nếu file tồn tại), ▶ Bạn đọc (`_play_heard` →
   `play_wav_segment` theo `words_t`).
-- Số GOP chỉ trong "Chi tiết số đo ▸" (`_toggle_details`, Q-03, I7).
+- Số đo ngữ điệu chỉ trong "Chi tiết số đo ▸" (`_toggle_details`, Q-03).
 - `unsure`: hộp "Thử lại như sau" (`UNSURE_TIPS`), câu máy nghe ẩn dưới
   "Máy nghe được gì? ▸" (`_toggle_heard`), màu xám, không bao giờ đỏ.
 - Chữ IPA dùng `FONT_IPA` (`has_ipa`) — Be Vietnam Pro thiếu ký tự IPA (D-28).
@@ -162,20 +160,20 @@ Lịch sử: `hist_add_try(hist, sid, view, ts)` thêm `tries` (≤ 30), bỏ qu
 
 ## Lịch sử
 
-`practice_history.json`:
+`learners.json` → `learners[tên]["lessons"]` (D-48; `practice_history.json` cũ chỉ đọc một lần):
 ```json
 {
-  "en_th": {"n": 3, "best": 92.0, "last": 80.0,
-            "ts": "2026-10-22 10:00", "ph": {"TH": 2, "DH": 1}}
+  "vi1": {"n": 3, "best": 92.0, "last": 80.0,
+          "ts": "2026-10-22 10:00", "ph": {"nl": 2, "tone": 1}}
 }
 ```
 - Chỉ ghi khi `sid` tồn tại và khác `custom` (guide không có id).
-- `ph` lấy từ `gop.issues[].ph`, nếu không có GOP thì từ `phon.counts`.
+- `ph` lấy từ `view["sounds"]` (mã `nl`, `tone`, `rhyme`).
 - Ghi nguyên tử `.tmp` + `os.replace`.
 - "Âm yếu nhất" = âm có tổng đếm lớn nhất trong các bài **cùng ngôn ngữ** (D-30).
 - Đáy panel (S-7, B4b): `progress_summary(h, weak, lang)` (hàm thuần) → `spark` (đúng/tổng
   của ≤ 10 lần gần nhất, vẽ bằng `_draw_spark`, ẩn khi < 2 lần), `line1` "6 lần · tốt nhất
-  3/4 · lần trước 2/4" (file cũ thiếu `tries` → dạng %), `line2` "Âm hay sai (tiếng Anh): /θ/,
+  3/4 · lần trước 2/4" (file cũ thiếu `tries` → dạng %), `line2` "Âm hay sai: N/L,
   4 lần".
 
 ## Khi sửa — checklist

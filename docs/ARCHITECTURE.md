@@ -1,4 +1,4 @@
-# KIẾN TRÚC — Oriole v2.3
+# KIẾN TRÚC — Hoa Mi v1.0
 
 Mục đích: đủ để một model chưa từng đọc repo hiểu luồng dữ liệu, chỗ sửa, và
 các ràng buộc thread/UI mà không phải đọc 3.300 dòng `app.py`.
@@ -19,7 +19,7 @@ các ràng buộc thread/UI mà không phải đọc 3.300 dòng `app.py`.
 │  Worker threads (daemon)                                               │
 │  ├─ App._w_file      : Whisper → cues → payload                        │
 │  ├─ App._w_yt        : yt-dlp → phụ đề/Whisper → .srt/.txt → mux       │
-│  ├─ App._w_prac      : Whisper word timestamps → L1 → phon/GOP → inton  │
+│  ├─ App._w_prac      : Whisper word timestamps → L1 → inton (nếu mẫu)  │
 │  └─ mic probe / play / test mic                                        │
 └────────────────────────────────────────────────────────────────────────┘
 ```
@@ -32,13 +32,10 @@ main thread (`_poll`, `_on_result`, `_prac_done`, `_prac_error`).
 | Module | Trách nhiệm | Phụ thuộc |
 |---|---|---|
 | `app.py` | UI, điều phối, ASR, subtitle I/O, mic, L1 scoring, lịch sử | tkinter, numpy, faster-whisper, sounddevice, yt-dlp |
-| `pron_en.py` | ARPAbet↔IPA, CMUdict, Needleman–Wunsch, gợi ý sửa | `cmudict` (tùy chọn) |
-| `gop.py` | CTC Viterbi, GOP từng âm vị, so bản mẫu | `torch`, `transformers` (tùy chọn) |
 | `prosody.py` | đọc WAV, F0 autocorrelation, contour bán cung, DTW | numpy |
-| `lessons_en.json` | nội dung 14 bài tiếng Anh | — |
-| `mau/` | audio mẫu offline (TTS, edge-tts) | — |
-| `tools/build_lessons.py` | sinh `lessons_en.json` + 74 clip | edge-tts, mạng |
-| `gen_mau.py` | sinh 12 clip Việt/Anh cơ bản | edge-tts, mạng |
+| `mau/` | audio mẫu tiếng Việt offline (TTS, edge-tts, chỉ để nghe) | — |
+| `gen_mau.py` | sinh âm mẫu `vi_*.wav` | edge-tts, mạng |
+| `tools/ui_check.py` | chạy App thật qua mọi màn/bài, bắt lỗi callback | tkinter (Pillow tùy chọn) |
 
 ## 3. Mô hình dữ liệu
 
@@ -80,8 +77,8 @@ Các hàm thuần (dễ test, không phụ thuộc UI):
 | `hyp` | `str` | chuỗi máy nghe được |
 | `target`, `det_lang` | `str` | câu mẫu, ngôn ngữ phát hiện |
 | `conf`, `low_conf`, `garbage` | số/bool | cổng tin cậy |
-| `phon` | `dict` | `pron_en.analyze_pairs` (khi tiếng Anh) |
-| `gop` | `dict \| None` | `gop.score(...)` |
+| `phon` | `dict` | luôn rỗng ở Hoa Mi (khóa giữ cho ổn định, HM-01) |
+| `gop` | `None` | luôn `None` ở Hoa Mi |
 | `inton` | `dict \| None` | `prosody.compare(ref, usr)` |
 | `words_t` | `list[{w, s, e, p}]` | từ Whisper nghe + giây bắt đầu/kết thúc + xác suất (cho nhãn biểu đồ, S-5) |
 | `stress` | `{"usr", "ref", "ref_words"}` \| `None` | trọng âm từng từ (`prosody.word_stress`) của bạn và của mẫu + mốc từ mẫu — chỉ mô tả (S-5b, D-34) |
@@ -146,7 +143,7 @@ App._run()
 - `pick_downloaded_file` lọc theo `vid`, thời gian, đuôi media.
 - `_YtCancelled` được kiểm tra trong `progress_hooks`.
 - Phụ đề "auto" có thể là **bản dịch** của YouTube; app log cảnh báo khi ngôn ngữ
-  không phải bản gốc/tiếng Anh.
+  không phải bản gốc.
 
 ## 6. Luồng 3 — Luyện phát âm
 
@@ -167,9 +164,7 @@ Chọn bài (PRACTICE_SETS / GUIDES / custom)
               câu tự gõ: ngôn ngữ = guess_lang(target);
               bài Việt: practice_model → small nếu có trên máy)
       score_pronunciation(target, hyp, lang)          # L1
-      pron_en.analyze_pairs(...) nếu tiếng Anh
-      prosody.compare(ref_wav, wav) nếu có mẫu
-      gop.score(...) nếu tiếng Anh + torch/model
+      prosody.compare(ref_wav, wav) nếu có mẫu (chưa bài nào có)
   → App._prac_done(res)
       v = build_result_view(res, lesson)      # hàm thuần, có test
       _set_prac_state(v["state"])
@@ -214,7 +209,7 @@ trình; bảng điều khiển theo trạng thái là hàm thuần `stt_controls
 |---|---|---|
 | Nguồn đầu vào mới (vd. URL khác) | `_run` + một `_w_*` mới | validate, cancel, queue contract |
 | Định dạng phụ đề mới | `_parse_*` + `read_subtitle_file` | fixture test |
-| Bài học mới | `lessons_en.json` + audio trong `mau/en/` | `app-lessons` skill |
+| Bài học mới | `PRACTICE_SETS` / `GUIDES` + audio `mau/vi_*.wav` | `app-lessons` skill |
 | Phép chấm mới | `_w_prac` sau `score_pronunciation` | khóa kết quả mới + UI + tài liệu |
 | Theme mới | `THEMES` | kiểm tra tương phản cả 2 theme |
 | Model ASR khác | `load_model` | cùng interface `transcribe` |
@@ -226,5 +221,5 @@ trình; bảng điều khiển theo trạng thái là hàm thuần `stt_controls
 3. Quên xóa file temp khi lỗi → rác trong `%TEMP%`.
 4. Đổi khóa dict kết quả mà không sửa `_prac_done`/`_on_result` → KeyError.
 5. Dùng `open(...)` không `encoding="utf-8"` → hỏng tiếng Việt trên Windows.
-6. Tin `samples` trong `lessons_en.json` → app thực tế tự ghép tên từ `id`.
+6. Thêm bài mà quên id trong `_VI_IDS` / `GUIDE_IDS` → bài không hiện.
 7. Chấm điểm khi `peak0 < MIC_MIN_PEAK` (0,008) → Whisper bịa.

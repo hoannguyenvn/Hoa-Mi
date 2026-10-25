@@ -13,7 +13,8 @@
     "docs/DECISIONS.md",
     "docs/HANDOFF.md",
     "docs/ROADMAP.md",
-    "docs/UI-PLAN.md"
+    "docs/UI-PLAN.md",
+    "docs/UPSTREAM.md"
   ],
   "python": {
     "app.py": [

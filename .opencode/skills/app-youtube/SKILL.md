@@ -1,6 +1,6 @@
 ---
 name: App YouTube Download & Subtitles
-description: Sửa luồng tải YouTube trong Oriole, gồm yt-dlp, chọn phụ đề có sẵn hay Whisper, tải MP4/MP3, đặt tên file, nhúng phụ đề mềm, hủy tác vụ và dọn file tạm. Dùng khi người dùng nhắc tới YouTube, yt-dlp, phụ đề tải về, SRT/VTT, hoặc nhúng subtitle.
+description: Sửa luồng tải YouTube trong Hoa Mi, gồm yt-dlp, chọn phụ đề có sẵn hay Whisper, tải MP4/MP3, đặt tên file, nhúng phụ đề mềm, hủy tác vụ và dọn file tạm. Dùng khi người dùng nhắc tới YouTube, yt-dlp, phụ đề tải về, SRT/VTT, hoặc nhúng subtitle.
 ---
 
 # YouTube Download & Subtitles
@@ -123,8 +123,6 @@ Phụ đề (trong helper): `writesubtitles`, `writeautomaticsub`, `subtitleslan
 - `_dedupe_cues` gộp cue trùng/lặp của phụ đề tự động, kể cả dạng **cuộn** (cue mới mở đầu
   bằng ≥ 3 từ cuối cue cũ → cắt phần lặp, `_overlap_words`). Trước 2026-10-24 transcript tự
   động bị gấp đôi (~300 wpm).
-- Đọc to transcript (D-39): `pick_en_subtitle` (chỉ phụ đề tiếng Anh gốc, không bản dịch),
-  `ytread_prepare` → `YtReadSession` (thư mục tạm, `close()`), `ytread_orig_hyp`.
 - `_fix_cues` + `split_long_cues` trước khi xuất.
 
 Nếu thêm định dạng mới: viết parser trả **cùng kiểu cue**, thêm fixture, và cập

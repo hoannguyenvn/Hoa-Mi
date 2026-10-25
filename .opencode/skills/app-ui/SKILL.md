@@ -1,6 +1,6 @@
 ---
 name: App UI (Tkinter Shell)
-description: Sửa giao diện Tkinter của Oriole — theme sáng/tối, DPI scaling px(), khung app-style (thanh điều hướng + 3 màn hình), queue/_poll 80 ms, config.json, phím tắt và đóng app. Dùng khi người dùng nhắc tới giao diện, cửa sổ, tab, màu, theme, DPI, phóng to, phím tắt, config, hoặc app.py phần App.
+description: Sửa giao diện Tkinter của Hoa Mi — theme sáng/tối, DPI scaling px(), khung app-style (thanh điều hướng + 3 màn hình), queue/_poll 80 ms, config.json, phím tắt và đóng app. Dùng khi người dùng nhắc tới giao diện, cửa sổ, tab, màu, theme, DPI, phóng to, phím tắt, config, hoặc app.py phần App.
 ---
 
 # UI Shell (Tkinter)
@@ -95,10 +95,6 @@ Worker **không** gọi widget, kể cả `StringVar.set`. Chỉ `self._queue.pu
 | `prac_autostop` | `reason`: `"silence"`/`"nospeech"`/`"max"` | `_prac_stop_and_score(reason)` |
 | `prac_done` | `res` dict | `_prac_done` |
 | `prac_error` | `str` | `_prac_error` |
-| `yt_ready` | `YtReadSession` | `_yt_ready` (đọc to YouTube, D-39) |
-| `yt_fail` | `str` hoặc `"__cancelled__"` | `_yt_fail` |
-| `yt_done` | `(idx, res, gate)` | `_yt_done` → `ytread_view` → `_yt_render` |
-| `yt_listen_done` | `(id(phiên), idx)` | nghe xong đoạn gốc → bắt đầu thu (chế độ Nghe rồi đọc) |
 | `mic_found` | `(idx, name, api, peak)` hoặc `None` | chọn micro nếu `peak >= MIC_MIN_PEAK` |
 
 Thêm loại mới: xử lý trong `_poll`, không tạo `after` riêng trong thread.
@@ -154,12 +150,9 @@ subs, embed, sub_lang, mic, geometry
   (Luyện: nút tròn "Thu âm" + `lbl_plevel` + thanh mức âm; Văn bản: `lbl_rec_level`).
   `Esc` dùng nó.
   Test: `recording_belongs_to_one_tab`.
-- `self.busy` chỉ khóa Tab 1; `self.p_working` khóa Tab 2 (`scoring` **và** `loading`).
-- Chế độ **Từ YouTube** dùng lại sân khấu Luyện: `_stage_repack("yt", …)` thay câu bằng
-  `yt_head` + `yt_text` và đặt khối thu âm thành **cột bên phải** đoạn văn (không bên dưới —
-  người học phải thấy cả đoạn khi thu); panel phải hẹp hơn (`YT_SIDE_FRAC`); khối thu âm, `p_samples`, panel phải (`pp_yt`) dùng chung. Rẽ nhánh
-  ở `_prac_start`, `_prac_score`, `_step_lesson`, `_prac_mode_changed`. Hủy tải bằng cờ
-  riêng `_yt_cancel` (không dùng `cancel_flag` của Tab 1).
+- `self.busy` chỉ khóa Tab 1; `self.p_working` khóa Tab 2 (`scoring`).
+- Màn Luyện có 2 chế độ: **Luyện câu** (`set`) và **Học âm** (`guide`). Chế độ "Từ YouTube"
+  (đọc to tiếng Anh) đã bỏ khi tách khỏi Oriole (HM-01).
 - Bản thu từng đoạn YouTube nằm trong `_yt_keep` (đoạn → wav/res/gate). `last_wav` trỏ tới bản
   của đoạn đang xem; đổi đoạn/chế độ **không** xóa file (chỉ gán lại), chỉ `_yt_drop_keep`
   (lấy video khác, đóng app) mới xóa. Đừng gọi `_set_last_wav(None)` khi đổi đoạn.
@@ -174,7 +167,7 @@ subs, embed, sub_lang, mic, geometry
   mọi chữ IPA dùng `FONT_IPA` (Segoe UI): style `Card.Ipa.TLabel`, `Card.HintIpa.TLabel`,
   tag Text `"ipa"` (nhãn/mẹo âm vị trong `_prac_done`).
 - Radio/checkbox: layout `TCheckbutton`/`TRadiobutton` dùng element ảnh
-  `Oriole.Check.indicator` / `Oriole.Radio.indicator`; ảnh vẽ bằng `indicator_rows`
+  `HoaMi.Check.indicator` / `HoaMi.Radio.indicator`; ảnh vẽ bằng `indicator_rows`
   (hàm thuần, khử răng cưa) và **vẽ lại** trong `_theme_indicators` mỗi lần đổi theme.
   Khoảng cách tới chữ nằm trong ảnh (cột trong suốt) vì element ảnh bỏ qua `-padding`.
 - `TCombobox`/`TEntry`: map `disabled` đứng **trước** `readonly`.
@@ -186,8 +179,8 @@ subs, embed, sub_lang, mic, geometry
 - Ô Ngôn ngữ: combobox gắn `self.lang_label` (tên tiếng Việt, `LANG_LABELS`); `self.lang`
   vẫn giữ mã và là thứ được lưu/đọc — hai biến tự đồng bộ qua trace.
 - Icon cửa sổ: `_set_icon()` vẽ bằng `logo_rows` (không file ảnh).
-- Kiểm tra bằng mắt: `tools/ui_shots.py <nhãn>` chụp 21 trạng thái vào
-  `%TEMP%\oriole_shots\<nhãn>\` mà không ghi config/lịch sử.
+- Kiểm tra: `tools/ui_check.py [--shots THƯ_MỤC]` chạy App thật qua mọi màn/bài/kết quả,
+  báo lỗi callback Tk, chụp ảnh nếu có Pillow; không ghi config/lịch sử (chạy được cả Linux + Xvfb).
 
 ### Màn Văn bản + Cài đặt (B5, S-8)
 
@@ -258,7 +251,7 @@ subs, embed, sub_lang, mic, geometry
 | Mất geometry sau khi mở lại | không lưu trong `_on_close`, hoặc cửa sổ nhỏ hơn ngưỡng |
 | `config.json` bị context_check báo khóa lạ | thêm khóa mà không thêm `DEFAULT_CFG` |
 | Radio Cài đặt đảo ngược theme | cho `_toggle_theme` tự đảo; radio đã set biến trước |
-| Radio/checkbox trông sai ở theme tối, checkbox hiện "✕" | quay lại chỉ báo mặc định của clam thay vì ảnh `Oriole.*.indicator` |
+| Radio/checkbox trông sai ở theme tối, checkbox hiện "✕" | quay lại chỉ báo mặc định của clam thay vì ảnh `HoaMi.*.indicator` |
 | IPA lẫn cỡ chữ (θ, ŋ to nhỏ khác nhau) | hiện IPA bằng font giao diện thay vì `FONT_IPA` |
 | Dải màu tràn hết chiều ngang trong kết quả | tag (`ok`/`warn`) phủ cả ký tự `\n` — chèn xuống dòng ngoài tag |
 | `TclError: ... is not managed` khi đổi bài | pack/`before=` vào Text có thanh cuộn thay vì `.holder` |
@@ -268,17 +261,9 @@ subs, embed, sub_lang, mic, geometry
 | Glyph thành ô vuông (vd "⬇") | Be Vietnam Pro thiếu ký tự — chỉ dùng ▶ ■ ● ✓ ✕ (đã thử) hoặc bỏ ký hiệu |
 | Thanh cuộn panel không hiện | pack thanh cuộn sau Canvas đã `expand` — phải `before=cv` |
 
-## Biểu đồ báo cáo (D-47)
+## Người học (D-48)
 
-Một nguồn dữ liệu `report_charts(rep)` → hai cách vẽ: `App._report_charts` (Canvas, các thẻ biểu đồ xếp
-bằng `_flow`, tự xuống hàng) và `report_svg` (SVG trong bao-cao.html). Quy tắc: không trục đôi (mỗi thước
-đo một biểu đồ/cặp thanh), màu chuỗi lấy từ `CHART_COLORS` theo theme (xanh = bạn, cam = người nói), chữ và
-nhãn dùng màu chữ của theme, đầu thanh bo 4 px, giá trị ghi ở đầu thanh. Thêm biểu đồ mới: thêm vào
-`report_charts` rồi vẽ ở cả hai nơi; kiểm sáng/tối bằng `tools/ui_shots.py`.
-
-## Người học & Tiến bộ (D-48)
-
-`self.learners` = kho `learners_load()`; `self.hist` = `lessons` của người học đang chọn (bài câu dùng như
-trước). Đổi người: `_learner_switch` (cập nhật `self.hist`, nhãn thanh trái, panel tiến bộ). Buổi YouTube ghi
-ở `_yt_record_session` sau mỗi `_yt_done`. Màn Tiến bộ dùng chung khung `yt_report` với báo cáo
-(`_progress_on`). Công cụ thử phải chặn `app.learners_save` để không ghi dữ liệu thật.
+`self.learners` = kho `learners_load()`; `self.hist` = `lessons` của người học đang chọn. Đổi người:
+`_learner_switch` (cập nhật `self.hist`, nhãn thanh trái, panel tiến bộ). Khóa `yt` trong kho được giữ cho
+tương thích dữ liệu nhưng Hoa Mi không ghi vào. Công cụ thử phải chặn `app.learners_save` để không ghi dữ
+liệu thật.

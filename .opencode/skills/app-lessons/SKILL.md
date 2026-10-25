@@ -1,149 +1,66 @@
 ---
 name: App Lessons & Sample Audio
-description: Thêm hoặc sửa bài luyện trong Oriole — schema lessons_en.json, 14 bài tiếng Anh, audio mẫu mau/en/<id>.wav, <id>_slow.wav, w_<word>.wav, và tools/build_lessons.py. Dùng khi người dùng nhắc tới bài học, thêm bài, audio mẫu, giọng đọc mẫu, lessons_en.json, hoặc build_lessons.py.
+description: Thêm hoặc sửa bài luyện tiếng Việt trong Hoa Mi — bộ câu PRACTICE_SETS (vi1–vi3, Tùy chỉnh), bài Học âm GUIDES (N, L, so sánh N–L), audio mẫu mau/vi_*.wav và gen_mau.py. Dùng khi người dùng nhắc tới bài học, thêm bài, Học âm, audio mẫu, giọng đọc mẫu, hoặc gen_mau.py.
 ---
 
 # Lessons & Sample Audio
 
-Bài luyện tiếng Anh là **dữ liệu**, không phải code. Thêm bài = sửa `LESSONS` trong
-`tools/build_lessons.py` → sinh lại `lessons_en.json` + audio → cập nhật test/đếm.
+Hoa Mi chỉ có bài **tiếng Việt** (HM-01). Bài hiện nằm **trong code** (`app.py`), chưa
+có file JSON riêng.
 
-Đọc trước: `docs/FEATURES.md` §3, §5; `docs/DECISIONS.md` D-13 (TTS chỉ để nghe),
-D-14 (nội dung bằng JSON).
+Đọc trước: `docs/FEATURES.md` §3, §5; `docs/DECISIONS.md` D-13 (TTS chỉ để nghe), D-38
+(giọng Bắc r/d/gi, s/x, tr/ch được tính đúng).
 
-## 1. Schema `lessons_en.json`
+## 1. Nơi khai báo
 
-```json
-{
-  "version": 1,
-  "lessons": [
-    {
-      "id": "en_th",
-      "group": "Phụ âm",
-      "title": "Anh — Âm /θ/ và /ð/ (think, this)",
-      "focus": ["TH", "DH"],
-      "target": "Think about this thing.",
-      "words": ["think", "about", "this", "thing"],
-      "tips": ["...", "..."],
-      "pairs": [["think", "tink"], ["this", "dis"]],
-      "ipa": "θɪŋk əˈbaʊt ðɪs θɪŋ",
-      "focus_ipa": "/θ/ /ð/",
-      "samples": {"normal": "en_th.wav", "slow": "en_th_slow.wav"}
-    }
-  ]
-}
-```
-
-### Trường bắt buộc (theo `docs/context-map.json`)
-
-`id`, `target`, `words`, `tips`, `pairs`, `ipa`, `focus_ipa`, `samples`.
-`pairs` được phép `[]` nhưng **phải có khóa**. `samples.normal` và `samples.slow`
-phải trỏ tới file tồn tại trong `mau/en/`.
-
-### Trường app thực sự đọc (`load_en_lessons`)
-
-| Trường | Dùng để |
-|---|---|
-| `id` | khóa trong `PRACTICE_SETS`, tên file audio |
-| `title` | tên trong combobox |
-| `target` | câu mẫu để chấm |
-| `words` | từ khóa; app lấy **2 từ đầu** làm nút nghe mẫu |
-| `tips` | danh sách gạch đầu dòng ở thẻ hướng dẫn |
-| `ipa` | dòng `IPA: ...` |
-| `focus_ipa` | đầu dòng gợi ý `Âm trọng tâm: ...` |
-| `pairs` | 3 cặp đầu vào gợi ý `Cặp dễ lẫn: ...` |
-| `hint` | **có đọc nhưng build_lessons không sinh ra** → hiện luôn rỗng |
-
-`group`, `focus`, `samples` **app bỏ qua** khi nạp; `samples` chỉ để
-`context_check` xác minh asset. Đừng giả định sửa `samples` trong JSON là đổi được
-đường dẫn phát — app tự ghép `en/<id>.wav`, `en/<id>_slow.wav`, `en/w_<word>.wav`.
-
-### Audio
-
-| File | Nội dung | Tốc độ |
+| Thành phần | Ở đâu | Ghi chú |
 |---|---|---|
-| `mau/en/<id>.wav` | cả câu `target` | `+0%` |
-| `mau/en/<id>_slow.wav` | cả câu `target` | `-30%` |
-| `mau/en/w_<word>.wav` | từng từ, đọc `"<word>."` | `+0%` |
-| `mau/en/word_times.json` | mốc từng từ của `<id>.wav` (`{"lessons": {id: [{w,s,e}]}}`) | — |
+| Bộ câu luyện | `PRACTICE_SETS` + `_VI_IDS` + `SET_IDS` | khóa `name`, `lang` (luôn `"vi"`), `target`, `hint`; tùy chọn `ipa`, `tips`, `samples` |
+| Câu tự gõ | `PRACTICE_SETS["custom"]` | `lang = "vi"`, chữ lấy từ ô nhập |
+| Học âm | `GUIDES` + `GUIDE_IDS` | `name`, `lang`, `target`, `instruction`, `samples=[(nhãn, file trong mau/)]` |
+| Audio mẫu | `mau/vi_*.wav` | 16 kHz mono, sinh bằng `gen_mau.py` |
 
-Tất cả 16 kHz mono PCM (do `gen_mau.mp3_to_wav16k`). Không dùng TTS để **chấm** (D-13).
+`samples` của bộ câu: phần tử đầu là bản mẫu dùng cho biểu đồ ngữ điệu (`_prac_record`
+lấy `samples[0]`). Bộ `vi1–vi3` hiện **chưa có** mẫu → không có biểu đồ (đúng: TTS không
+dùng để chấm, I13; chờ bản ghi người thật).
 
-## 2. Sinh lại (`tools/build_lessons.py`)
+## 2. Sinh lại audio mẫu (`gen_mau.py`)
 
 ```powershell
-$env:PYTHONIOENCODING='utf-8'
-& "C:\Users\ADMIN\miniforge3\python.exe" tools\build_lessons.py          # bỏ qua file đã có
-& "C:\Users\ADMIN\miniforge3\python.exe" tools\build_lessons.py --force  # ghi đè tất cả
-& "C:\Users\ADMIN\miniforge3\python.exe" tools\build_lessons.py --word-times  # chỉ mốc từ (offline)
+& "C:\Users\ADMIN\miniforge3\python.exe" gen_mau.py          # bỏ qua file đã có
+& "C:\Users\ADMIN\miniforge3\python.exe" gen_mau.py --force  # ghi đè
 ```
 
-- `build_word_times()` (S-5b): Whisper `small` (cache, offline) trên `<id>.wav`, đưa mảng
-  16 kHz (`prosody.read_wav`, tránh lỗi PyAV) và `initial_prompt=target` — chỉ cho audio
-  **mẫu** đã biết câu; **không bao giờ** dùng prompt khi nhận dạng bản thu người học (I2).
-  Chạy ở cuối `main()`; bài đã có mốc thì bỏ qua trừ `--force`. Test
-  `heard_words_map_to_target` kiểm tra 14 bài phủ đủ mọi từ của câu.
+- Giọng `vi-VN-HoaiMyNeural` (edge-tts, cần mạng lúc tạo; app chạy offline).
+- `CLIPS` = (chữ, giọng, tên file). Thêm dấu chấm sau từ đơn để TTS ngắt tự nhiên.
+- **Đã biết:** `GUIDES["n"]` trỏ `vi_nen.wav`, `GUIDES["l"]` trỏ `vi_len.wav` nhưng hai file
+  này **chưa có** trong `mau/` → nút ▶ tương ứng bị xám. Chạy `gen_mau.py` để tạo.
 
-- Cần mạng + `edge-tts` (`VOICE = "en-US-AriaNeural"`).
-- `sentence_ipa()` ghép `pron_en.word_ipa()` từng từ; từ lạ giữ chữ thường.
-- `focus_text()` đổi mã ARPAbet → `/ipa/`.
-- `main()` ghi JSON UTF-8, newline `\n`, indent 2; sau đó TTS.
-- `make_wav()` bỏ qua file đã tồn tại trừ `--force`; file MP3 tạm luôn xóa trong
-  `finally` (I10).
-- `tts()` thử 4 lần, chờ tăng dần — mạng chập chờn không làm hỏng cả bộ.
+## 3. Thêm một bài câu
 
-**Quan trọng:** sửa `target` mà chạy **không** `--force` sẽ giữ audio cũ → câu mẫu
-và audio lệch nhau. Sửa nội dung câu/từ ⇒ luôn `--force` (sinh lại cả `word_times.json`).
+1. Thêm khóa mới vào `PRACTICE_SETS` (`"lang": "vi"`), thêm id vào `_VI_IDS`.
+2. `hint` ngắn, nói âm cần chú ý; `target` có dấu đầy đủ.
+3. Cập nhật test `lessons_loaded` trong `tools/smoke_test.py` (danh sách `SET_IDS`).
+4. Chạy `tools/smoke_test.py`, `tools/ui_check.py`, `tools/context_check.py`.
 
-## 3. Thêm một bài — các bước
+## 4. Thêm một bài Học âm
 
-1. Thêm dict vào `LESSONS` trong `tools/build_lessons.py`:
-   - `id` duy nhất, kebab/snake ngắn, bắt đầu `en_` (quy ước hiện tại);
-   - `group` ∈ `Phụ âm` / `Âm cuối` / `Nguyên âm` / `Nâng cao`;
-   - `title` tiếng Việt, có ví dụ;
-   - `focus` là mã ARPAbet **có trong** `pron_en.ARPABET_IPA`;
-   - `target` 1 câu, độ dài vừa phải (5–10 từ), có âm trọng tâm;
-   - `words` là các từ **xuất hiện trong** `target`;
-   - `tips` 2–3 dòng, mô tả khẩu hình;
-   - `pairs` cặp đúng/sai, mỗi cặp `[đúng, máy_hay_nghe_sai]`.
-2. Chạy `tools\build_lessons.py --force` (hoặc không `--force` nếu chỉ thêm bài mới).
-3. Kiểm tra file mới trong `mau/en/` và `len(lessons)`.
-4. Cập nhật `tools/smoke_test.py → lessons_loaded`: hiện assert **18** `SET_IDS`
-   (3 Việt + 14 Anh + `custom`). Thêm 1 bài ⇒ 19. Quên bước này là FAIL ngay.
-5. Cập nhật số đếm trong `docs/FEATURES.md` §5, `docs/PROJECT-STATE.md`,
-   `README.md` nếu có ghi "14 bài / 74 clip".
-6. Chạy `context_check.py` + `smoke_test.py`.
+1. Thêm dict vào `GUIDES`, id vào `GUIDE_IDS`; `instruction` là các bước khẩu hình + "Lỗi
+   hay gặp".
+2. Thêm clip vào `CLIPS` của `gen_mau.py`, chạy lại.
+3. Cập nhật `lessons_loaded` (danh sách `GUIDE_IDS`).
 
-`context_check` chỉ kiểm tra **tối thiểu** (`min_lessons: 14`, `mau/en/*.wav: 74`),
-nên thêm bài không làm FAIL, nhưng thiếu audio của bài mới thì FAIL.
+## 5. Bẫy
 
-## 4. Sửa bài đang có
+- Bài cho cặp r/d/gi, s/x, tr/ch: `score_pronunciation` gộp theo giọng Bắc (D-38) → một bài
+  luyện riêng các cặp này cần cờ chấm theo bài (ROADMAP).
+- Đổi `id` làm lịch sử cũ trong `learners.json` không còn bài khớp (vẫn giữ, chỉ bị bỏ qua).
+- Không dùng audio TTS để chấm (I13).
 
-- Chỉ đổi `tips`/`title`/`focus_ipa`: chạy lại không `--force` cũng được, nhưng
-  nhớ `build_lessons` **ghi đè toàn bộ** `lessons_en.json` từ `LESSONS`, nên mọi
-  sửa tay trong JSON sẽ mất.
-- Đổi `target` hoặc `words`: bắt buộc `--force` để audio khớp.
-- Đổi `id`: sinh file mới; file cũ còn trong `mau/en/`, phải xóa tay nếu muốn sạch.
-- Không sửa `lessons_en.json` trực tiếp rồi coi đó là nguồn sự thật.
-
-## 5. Bài tiếng Việt
-
-- 3 bài Việt (`vi1`, `vi2`, `vi3`) và 5 guide (`n`, `l`, `nl`, `th`, `sh`) nằm
-  **trong code** (`PRACTICE_SETS`, `GUIDES`), không nằm trong JSON.
-- Muốn thêm bài Việt có cấu trúc như tiếng Anh: phải mở rộng schema + loader +
-  `build_lessons` (hoặc file JSON riêng), cập nhật `docs/DECISIONS.md`.
-  Đừng nhét bài Việt vào `lessons_en.json` — `load_en_lessons` gán cứng `lang="en"`.
-
-## 6. Cạm bẫy
+## 6. Triệu chứng → nguyên nhân
 
 | Triệu chứng | Nguyên nhân |
 |---|---|
-| Nút ▶ phát câu cũ | sửa `target` nhưng chạy build không `--force` |
-| Nút ▶ bị xám | thiếu `mau/en/<id>.wav` hoặc `_slow.wav` |
-| Không thấy nút từ khóa thứ 3 | app chỉ lấy `words[:2]` |
-| `smoke_test` FAIL `SET_IDS=19` | chưa cập nhật assert 18 |
-| `context_check` FAIL "thiếu audio từ khóa" | build lỗi giữa chừng, hoặc `words` có từ chưa sinh |
-| JSON mất sửa tay | `build_lessons.py` ghi đè từ `LESSONS` |
-| Giọng đọc sai/không đúng âm | `edge-tts` đọc theo chính tả; kiểm tra `target` và từ viết thường |
-| `edge-tts` treo | mạng/proxy; chạy lại, file đã có sẽ được bỏ qua |
-| Bài mới không xuất hiện | `id` trùng, hoặc JSON lỗi khiến `load_en_lessons` trả `[]` |
+| Nút ▶ bị xám | file trong `samples` không có trong `mau/` |
+| Bài mới không hiện | quên thêm id vào `_VI_IDS` / `GUIDE_IDS` |
+| Không có biểu đồ ngữ điệu | bài không có `samples` (bình thường) |

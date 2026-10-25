@@ -1,4 +1,4 @@
-# BẢN ĐỒ TÍNH NĂNG
+# BẢN ĐỒ TÍNH NĂNG — Hoa Mi
 
 Mỗi dòng trả lời: tính năng nằm ở đâu, ai chịu trách nhiệm, kiểm thử thế nào,
 và skill nào cần nạp. Dùng file này thay vì grep toàn repo.
@@ -32,30 +32,18 @@ và skill nào cần nạp. Dùng file này thay vì grep toàn repo.
 
 | # | Tính năng | Hành vi | Code | Skill | Kiểm chứng |
 |---|---|---|---|---|---|
-| F3.1 | Chọn bài | combobox 18 mục | `PRACTICE_SETS`, `SET_IDS` | `app-lessons` | đủ 3 Việt + 14 Anh + Tùy chỉnh |
-| F3.2 | Học âm | 5 guide N/L/TH/SH | `GUIDES` | `app-lessons` | hiện hướng dẫn khẩu hình |
-| F3.3 | Nghe mẫu | nút ▶ thường/chậm/từ khóa | `_fill_samples`, `play_wav_file` | `app-lessons` | nghe được, nút xám nếu thiếu file |
+| F3.1 | Chọn bài | combobox 4 mục (vi1–vi3 + Tùy chỉnh tiếng Việt) | `PRACTICE_SETS`, `SET_IDS` | `app-lessons` | `lessons_loaded` |
+| F3.2 | Học âm | 3 guide N, L, so sánh N–L | `GUIDES` | `app-lessons` | hiện hướng dẫn khẩu hình |
+| F3.3 | Nghe mẫu | nút ▶ âm mẫu của Học âm | `_fill_samples`, `play_wav_file` | `app-lessons` | nghe được, nút xám nếu thiếu file (`vi_nen`, `vi_len` đang thiếu) |
 | F3.4 | Thu & tự chấm | đọc → tự dừng → điểm | `_prac_start`, `_prac_stop_and_score` | `app-recording`, `app-pronunciation` | đọc đúng → ~100% |
 | F3.5 | Chấm file có sẵn | `Chấm file…` | `_prac_from_file` | `app-pronunciation` | file im lặng → từ chối chấm |
-| F3.6 | Điểm theo từ | vòng điểm "c/t từ" + chip ✓/!/✕ kèm từ máy nghe | `score_pronunciation`, `build_result_view`, `App._render_result` | `app-pronunciation` | "think"→ chip "! think → nghe ‘tink’" |
+| F3.6 | Điểm theo từ | vòng điểm "c/t từ" + chip ✓/!/✕ kèm từ máy nghe | `score_pronunciation`, `build_result_view`, `App._render_result` | `app-pronunciation` | "Lan"→ "nghe ‘nan’" |
 | F3.7 | Lỗi thanh điệu / vần | thẻ "sai dấu thanh" / "sai vần/dấu" + cách đọc tách | `strip_tone_vi`, `strip_marks_vi`, `vi_north_key`, `vi_spell` | `app-pronunciation` | "má"→"ma" tone; "lắm"→"lám" rhyme |
 | F3.7b | Máy chưa nghe rõ | không hiện điểm khi máy không chắc/bịa câu (D-29) | `evidence_gate` | `app-pronunciation` | hyp "cảm ơn các bạn đã theo dõi" → "Máy chưa nghe rõ bài đọc" |
-| F3.8 | Âm vị CMUdict | `/θ/ → [t]` + mẹo | `pron_en.analyze_pairs` | `app-phonemes` | câu th → báo TH |
-| F3.9 | GOP acoustic | mức "lệch rõ"/"hơi lệch"; số trong "Chi tiết số đo" | `gop.score`, `gop_level` | `app-phonemes` | có torch → log "chấm GOP" |
-| F3.10 | Ngữ điệu | một câu nhận xét + đồ thị có nhãn từ (không trục số) | `prosody.compare`, `inton_view`, `_draw_intonation` | `app-prosody` | bài Anh có mẫu → "Cuối câu bạn … giống mẫu ✓" |
-| F3.10b | Trọng âm + tốc độ | chấm nhấn bạn/mẫu, "Mẫu nhấn …, bạn nhấn …", "Bạn đọc chậm hơn mẫu ~x %" — không điểm | `prosody.word_stress`, `stress_note`, `speed_note`, `mau/en/word_times.json` | `app-prosody` | bài Anh → có câu trọng âm + tốc độ |
+| F3.10 | Ngữ điệu | (chưa dùng) đồ thị khi bài có mẫu người thật | `prosody.compare`, `inton_view`, `_draw_intonation` | `app-prosody` | bài Việt: ghi chú "Biểu đồ ngữ điệu sẽ có…" |
 | F3.11 | Tiến bộ | đường xu hướng ≤ 10 lần + "tốt nhất c/t" + âm hay sai theo ngôn ngữ | `progress_summary`, `_update_prog`, `_draw_spark` | `app-pronunciation` | luyện 2 lần → hiện đường xu hướng |
-| F3.13 | Đọc to transcript YouTube (D-39) | link → đoạn 20–45 s → nghe gốc/đọc → đoạn tô màu, "phụ đề có thể sai" không tính | `ytread_prepare`, `ytread_orig_hyp`, `read_aloud_diff`, `ytread_view`, `App._yt_*` | `app-youtube`, `app-pronunciation` | `tools/ytread_e2e.py <link>` đọc = audio gốc → "Hoàn hảo" |
-| F3.14 | Trôi chảy + từng câu (D-40 R1) | tốc độ, từ/hơi, ngừng giữa cụm "/" , ▶ Mẫu/▶ Bạn đọc mỗi câu | `fluency_view`, `yt_read.sentence_ranges`, `App._yt_render` | `app-prosody` | `tools/ytread_e2e.py` in "trôi chảy: …" |
-| F3.15 | Lưu bản thu | nút "Lưu bản thu" / "Lưu cả N đoạn đã đọc" → Documents\Oriole: x.wav + x.txt + x.json (+ x_goc.wav), hộp xác nhận nơi lưu, "Đã lưu ✓" | `recordings_dir`, `App._save_recording`, `App._save_all`, `App._save_bundle`, `App._sync_rec_pills` | `app-recording` | `ytread_e2e` in "Đã lưu cả 2 đoạn ✓" |
-| F3.16 | Âm hay sai theo mẫu (D-42) | ÂM HAY SAI: tối đa 4 mẫu + ví dụ + mẹo, dòng "Cả video" | `pron_en.error_patterns`, `error_pattern_view`, `App._yt_session_patterns` | `app-phonemes` | molecules→molecule = "Âm cuối & -s" |
-| F3.17 | Báo cáo cuối phiên (D-43) | Kết thúc sớm, màn báo cáo, Lưu báo cáo (HTML + bản thu) | `session_report`, `report_html`, `App._yt_finish`, `App._yt_report_render`, `App._yt_save_report` | `app-ui` | `ytread_e2e` in "lưu báo cáo: [bao-cao.html …]" |
-| F3.18 | Ngữ điệu theo câu (D-44) | NGỮ ĐIỆU: dải cao độ bạn vs người nói; đường cao độ thu nhỏ từng câu; "Giọng đều" trong báo cáo | `prosody.pitch_track`, `prosody.segment_pitch`, `intonation_view`, `ytread_orig_pitch` | `app-prosody` | 4 đoạn thật: bạn ~5,3 · người nói ~12,4 bán cung |
-| F3.19 | Nhịp — từ chức năng (D-45) | NHỊP: từ ngắn bạn vs người nói + ví dụ; báo cáo gộp, "Tốc độ & nhịp" | `pron_en.FUNCTION_WORDS`, `pron_en.syllables`, `rhythm_samples`, `rhythm_view` | `app-prosody` | 4 đoạn thật: ~380 vs ~200 ms |
-| F3.20 | Nối âm — dạy, không chấm (D-46) | gạch chân mối nối trong đoạn (bật/tắt), NỐI ÂM + ▶ từng cụm, báo cáo liệt kê cụm | `pron_en.link_points`, `linking_view`, `App._yt_toggle_links` | `app-phonemes` | "talk about", "think of" được gạch |
-| F3.21 | Đoạn văn tách câu + in đậm từ nên nhấn (D-47) | khoảng trắng/· giữa câu, in đậm, gạch chân nối âm, "Ẩn gợi ý" | `pron_en.stress_word`, `App._yt_fill_text` | `app-ui` | "talk" đậm, "the" thường |
-| F3.22 | Biểu đồ báo cáo (D-47) | 3 biểu đồ trong app (Canvas) và bao-cao.html (SVG) | `report_charts`, `report_svg`, `App._report_charts`, `CHART_COLORS` | `app-ui` | báo cáo có mục BIỂU ĐỒ |
-| F3.23 | Hồ sơ người học + Tiến bộ (D-48) | Người học ▾ ở thanh trái; buổi YouTube tự lưu; màn Tiến bộ có biểu đồ | `learners_load/save`, `learner_add/rename`, `yt_session_summary`, `learner_record_yt`, `progress_view`, `App._learner_menu`, `App._show_progress` | `app-ui` | đổi người học → lịch sử bài câu đổi theo |
+| F3.15 | Lưu bản thu | nút "Lưu bản thu" → Documents\Hoa Mi: x.wav + x.txt + x.json, hộp xác nhận nơi lưu, "Đã lưu ✓" | `recordings_dir`, `App._save_recording`, `App._save_bundle`, `App._sync_rec_pills` | `app-recording` | thu một bài → Lưu → thấy 3 file |
+| F3.23 | Hồ sơ người học (D-48) | Người học ▾ ở thanh trái: chọn, thêm, đổi tên | `learners_load/save`, `learner_add/rename`, `App._learner_menu`, `App._learner_switch` | `app-ui` | đổi người học → lịch sử bài câu đổi theo |
 | F3.12 | Mic & kiểm tra | chọn, làm mới, kiểm tra | `_refresh_mics`, `_test_mic`, `_find_mic_auto` | `app-recording` | nói "a" → dB/TỐT |
 
 ## 4. Cài đặt & nền tảng (Tab 3)
@@ -74,23 +62,18 @@ và skill nào cần nạp. Dùng file này thay vì grep toàn repo.
 
 | # | Thành phần | Nguồn | Sinh lại | Skill |
 |---|---|---|---|---|
-| F5.1 | 14 bài tiếng Anh | `lessons_en.json` | `tools/build_lessons.py --force` | `app-lessons` |
-| F5.2 | 74 clip bài Anh | `mau/en/` | `tools/build_lessons.py --force` | `app-lessons` |
-| F5.3 | 12 clip Việt/Anh cơ bản | `mau/` | `gen_mau.py --force` | `app-lessons` |
-| F5.4 | Lịch sử luyện | `practice_history.json` | tự tạo | `app-pronunciation` |
+| F5.3 | Âm mẫu tiếng Việt (TTS, chỉ để nghe) | `mau/vi_*.wav` | `gen_mau.py --force` | `app-lessons` |
+| F5.4 | Người học + lịch sử luyện | `learners.json` (đọc `practice_history.json` cũ một lần) | tự tạo | `app-pronunciation` |
 | F5.5 | Cài đặt | `config.json` | tự tạo | `app-ui` |
 
 ## 6. Việc chưa có (đừng giả định là có)
 
-- Không có test framework, không có CI, không có git.
-- Không có phân loại 6 thanh tiếng Việt bằng F0 (chỉ so chữ).
-- Không có chip lỗi theo âm vị cho tiếng Việt.
-- Không có bài học tiếng Việt có cấu trúc (IPA/mẹo/cặp tối thiểu) như tiếng Anh.
-- Không có xuất PDF/CSV lịch sử.
-- Không có spectrogram/formant.
-- Không có hàng đợi nhiều file (mỗi lần một file).
-- Không có chế độ dùng GPU.
-- Không có đóng gói `.exe`, icon, installer.
+- Không có CI (chỉ script stdlib: `smoke_test`, `ui_check`, `context_check`).
+- Không có phân loại 6 thanh tiếng Việt bằng F0 (chỉ so chữ) — ROADMAP T1.
+- Không có bài học tiếng Việt có cấu trúc (nhiều câu/bài, cặp tối thiểu, nghe phân biệt) — C2/C3.
+- Không có bài/âm vị/GOP tiếng Anh, không có đọc to YouTube (thuộc Oriole, HM-01).
+- Không có xuất PDF/CSV lịch sử; không spectrogram/formant; không hàng đợi nhiều file; không GPU.
+- Không có đóng gói `.exe`, icon riêng, installer.
 
 Danh sách này là nguồn cho roadmap; khi làm xong, chuyển sang bảng trên và cập nhật
 `docs/PROJECT-STATE.md`.
