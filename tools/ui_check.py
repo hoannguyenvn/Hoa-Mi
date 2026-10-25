@@ -103,9 +103,9 @@ def main() -> int:
         step("21_guide_" + gid, lambda i=i: (a.cb_prac.current(i), a._refresh_practice()))
     step("30_set", lambda: a._set_prac_mode("set"))
     step("30b_bt_mic", lambda: a.mic_var.set("Headset (AirPods Pro Hands-Free AG Audio) [MME]"))
-    step("31_dark", a._toggle_theme)
+    step("31_dark", a._flip_theme)
     step("32_narrow", lambda: a.geometry("1000x760+0+0"))
-    step("33_light", a._toggle_theme)
+    step("33_light", a._flip_theme)
     a.destroy()
 
     for e in errors:
