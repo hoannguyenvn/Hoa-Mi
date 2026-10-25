@@ -1,5 +1,5 @@
 @echo off
-REM Chay app Oriole - dung Miniforge Conda co san
+REM Chay app Hoa Mi - dung Miniforge Conda co san
 cd /d "%~dp0"
 set CONDA_PY=C:\Users\ADMIN\miniforge3\python.exe
 set HF_HUB_DISABLE_SYMLINKS_WARNING=1
@@ -17,7 +17,7 @@ if %errorlevel% neq 0 goto piperr
 goto run
 
 :run
-echo Dang mo app Oriole...
+echo Dang mo app Hoa Mi...
 "%CONDA_PY%" "%~dp0app.py"
 echo.
 echo App da thoat. Ma loi: %errorlevel%

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Test khói cho các hàm thuần của Oriole.
+"""Test khói cho các hàm thuần của Hoa Mi.
 
 Không cần mic, không cần model Whisper, không mở cửa sổ Tk. Mục đích là bắt
 regression nhanh trước khi sửa app.py. Chạy:
@@ -40,14 +40,13 @@ def approx(a: float, b: float, tol: float = 1e-6) -> bool:
 # ---------------------------------------------------------------- bài học
 @case
 def lessons_loaded():
-    assert len(app.SET_IDS) == 18, f"SET_IDS={len(app.SET_IDS)}"
-    assert len(app.SET_IDS) == len(set(app.SET_IDS)), "SET_IDS trùng"
-    assert "en_th" in app.PRACTICE_SETS
+    assert app.SET_IDS == ["vi1", "vi2", "vi3", "custom"], f"SET_IDS={app.SET_IDS}"
+    assert app.GUIDE_IDS == ["n", "l", "nl"], app.GUIDE_IDS
     for sid in app.SET_IDS:
         s = app.PRACTICE_SETS[sid]
         if sid != "custom":
             assert s.get("target"), f"{sid} thiếu target"
-            assert s.get("lang") in ("vi", "en", "auto"), f"{sid} lang lạ"
+        assert s.get("lang") == "vi", f"{sid} lang lạ"
 
 
 @case
@@ -110,289 +109,20 @@ def northern_accent_is_correct():
 
 
 @case
-def yt_caption_clean_and_paragraphs():
-    import yt_read
-    assert yt_read.clean_caption(">> JOHN: [Music] hello (laughs) world ♪") == "hello world"
-    cues = [(0, 3, "[Music]"), (3, 6, "so today we are"), (6, 9, "going to talk."),
-            (9, 25, "about cats"), (27, 30, "and dogs"), (30, 50, "and birds"),
-            (50, 52, "end.")]
-    ps = yt_read.build_paragraphs(cues)
-    assert [(p["start"], p["end"]) for p in ps] == [(3.0, 25.0), (27.0, 52.0)], ps
-    assert ps[0]["text"].startswith("so today"), ps    # cue chỉ có [Music] bị bỏ
-    # không cue nào làm đoạn vượt PARA_MAX_SEC
-    long = [(i * 5.0, i * 5.0 + 5, "word word") for i in range(30)]
-    assert all(p["end"] - p["start"] <= yt_read.PARA_MAX_SEC
-               for p in yt_read.build_paragraphs(long))
-
-
-@case
-def en_tokens_normalise():
-    import yt_read
-    toks = [t for t, _i, _n in yt_read.en_tokens("I'm gonna, um, say it's 1990! Don't")]
-    assert toks == "i am going to say it is nineteen ninety do not".split(), toks
-    assert yt_read.number_words(2024) == "two thousand twenty four"
-    assert yt_read.number_words(1905) == "nineteen oh five"
-    assert yt_read.en_tokens("1,000 50%")[-1][0] == "percent"
-
-
-@case
-def read_aloud_diff_doubts():
-    sub = "So today I'm gonna show you 3 tricks to cook rice."
-    # người học sai "rice"; video thật nói "trick" mà người học đọc "tricks" như phụ đề → vẫn đúng
-    r = app.read_aloud_diff(sub, "so today I am going to show you three tricks to cook lice",
-                            "so today i am going to show you three trick to cook rice")
-    assert (r["correct"], r["total"], r["doubts"]) == (12, 13, 0), r
-    assert r["src_idx"][-1] == 10, r["src_idx"]    # "rice." là từ thứ 10 của phụ đề
-    # người học và video đều không có "really" → phụ đề có thể sai, không tính
-    r = app.read_aloud_diff("It is really good", "it is good", "it is good")
-    kinds = [it[1] for it in r["items"] if it[0]]
-    assert kinds == ["ok", "ok", "doubt", "ok"], r["items"]
-    assert (r["correct"], r["total"]) == (3, 3), r
-    # chữ số đọc khác cách viết → doubt "số"
-    r = app.read_aloud_diff("Room 12", "room one two")
-    assert r["doubts"] >= 1 and r["total"] == 1, r
-
-
-@case
-def ytread_view_marks_and_rows():
-    para = "So today I'm gonna show you 3 tricks, really."
-    res = app.read_aloud_diff(para, "so today I am going to show you three trick",
-                              "so today I am going to show you three tricks")
-    res["words_t"] = [{"w": w, "s": i, "e": i + 0.5, "p": 0.9 if w != "today" else 0.1}
-                      for i, w in enumerate("so today I am going to show you three trick".split())]
-    v = app.ytread_view(res)
-    words = para.split()
-    # "tricks," (từ 7) nuốt âm cuối → warn; "really." (từ 8) người học và video đều không đọc
-    # → phụ đề có thể sai
-    assert v["marks"][7] == "warn" and v["marks"][8] == "doubt", v["marks"]
-    assert v["marks"][1] == "unsure", v["marks"]           # "today" p 0,1 → máy chưa chắc
-    assert words[7].startswith("tricks") and len(v["fixes"]) == 1, v["fixes"]
-    assert v["fixes"][0]["text"].startswith("“tricks”"), v["fixes"]
-    assert "phụ đề có thể sai" not in v["doubts"][0]["text"], v["doubts"]   # tiêu đề đã nói
-    assert v["headline"] == "Đúng %d/%d từ" % (res["correct"], res["total"])
-    assert app.token_spans(res["words_t"], res["target"])[1][:2] == (1, 1.5)
-    u = app.ytread_view(res, "garbage")
-    assert u["state"] == "unsure" and not u["marks"] and u["ring"]["text"] == "?"
-    c = app.prac_controls("loading", True)
-    assert not c["rec_enabled"] and not c["replay_enabled"] and c["show_pbar"]
-
-
-@case
-def fluency_pauses_and_sentences():
-    import yt_read
-    assert yt_read.sentence_ranges("One two. Three four five? Six") == [(0, 1), (2, 4), (5, 5)]
-    long = " ".join("w%d" % i for i in range(30))
-    assert yt_read.sentence_ranges(long, breaks={14}) == [(0, 14), (15, 29)]
-    text = ("When I was in college I had to write a ninety page thesis. "
-            "I planned to start early, but I watched videos instead.")
-    plain = text.lower().replace(".", "").replace(",", "")
-    res = app.read_aloud_diff(text, plain, plain)
-    toks = res["target"].split()
-
-    def times(gaps):
-        t, out = 0.0, []
-        for i, w in enumerate(toks):
-            out.append({"w": w, "s": round(t, 2), "e": round(t + 0.3, 2), "p": 0.9})
-            t += 0.3 + gaps.get(i, 0.02)
-        return out
-    # token 8 = "write", 10 = "ninety": người học ngừng giữa cụm (1,2 s = ngập ngừng);
-    # token 13 = "thesis." (cuối câu) — ngừng ở đó là tự nhiên, không bị báo
-    mine = app.token_spans(times({8: 0.6, 10: 1.2, 13: 0.5}), res["target"])
-    ref = app.token_spans(times({4: 0.5, 13: 0.6}), res["target"])   # người nói ngừng sau "college"
-    v = app.fluency_view(text, res, mine, ref)
-    assert [e["text"] for e in v["extra"]] == ["write / a", "ninety / page"], v["extra"]
-    assert [m["text"] for m in v["missed"]] == ["college"], v["missed"]
-    assert v["hesit"] == 1 and set(v["pause_after"]) == {8, 10}, v
-    assert len(v["sentences"]) == 2 and v["sentences"][0]["extra"] == ["write / a", "ninety / page"]
-    assert v["sentences"][0]["usr"] and v["sentences"][0]["ref"]
-    assert v["wpm_usr"] < v["wpm_ref"] and any("Tốc độ" in ln for ln in v["lines"])
-    # không có audio gốc (transcript do Whisper tạo) → vẫn có tốc độ của bạn, không so
-    v2 = app.fluency_view(text, res, mine, None)
-    assert v2["wpm_ref"] is None and v2["missed"] == []
-
-
-@case
-def ytread_learner_uses_medium_when_on_disk():
-    # D-41: bản đọc Từ YouTube chấm bằng medium nếu đã có trên máy (không tự tải — I9)
-    on, off = (lambda m: True), (lambda m: False)
-    assert app.ytread_model("small", on) == ("medium", True)
-    assert app.ytread_model("base", off) == ("base", False)
-    assert app.ytread_model("medium", on) == ("medium", False)
-    s = app.YtReadSession(None)
-    assert hasattr(s.lock, "acquire")       # nghe trước ở nền + lúc chấm dùng chung khóa
-    s.close()
-
-
-@case
-def english_error_patterns_from_real_reading():
-    # D-42: ví dụ lấy từ 4 đoạn đọc thật của người dùng (2026-10-24)
-    ep = app.pron_en.error_patterns
-    assert ep("molecules", "molecule") == ["final"]
-    assert ep("senses", "scents") == ["final"]            # mất âm tiết -es
-    assert ep("nose", "lowes") == ["nl"] and "nl" in ep("nose", "lobe")
-    assert ep("the", "some") == ["th"]
-    assert ep("bacon", "back") == ["diph"]
-    assert ep("smell", "mail") == ["cluster"] and ep("sniff", "sit") == ["cluster"]
-    assert ep("is", None) == ["short"]
-    assert ep("much", "two") == [] and ep("trash", "just") == []   # nghe nhầm hẳn → không xếp
-    assert ep("your", "you") == [] and ep("their", "the") == []    # bỏ /r/ cuối không phải lỗi
-    fixes = [{"ti": 0, "word": "molecules", "heard": "molecule"},
-             {"ti": 3, "word": "emotions", "heard": "motion"},
-             {"ti": 5, "word": "nose", "heard": "lowes"},
-             {"ti": 7, "word": "much", "heard": "two"},
-             {"ti": 9, "word": "is", "heard": None, "unread": True}]
-    pv = app.error_pattern_view(fixes)
-    assert [g["code"] for g in pv["groups"]] == ["final", "nl"], pv
-    assert pv["groups"][0]["n"] == 2 and pv["grouped"] == 3 and pv["total"] == 4
-    assert "molecules → “molecule”" in app.pattern_example_text(pv["groups"][0]["examples"])
-    # dừng giữa đoạn: ≥3 từ cuối không nghe thấy → "chưa đọc tới", không thành "từ ngắn bị nuốt"
-    res = app.read_aloud_diff("I like it and there are many more of them here",
-                              "I like it and there", None)
-    v = app.ytread_view(res)
-    assert sum(1 for f in v["fixes"] if f.get("unread")) == 6, v["fixes"]
-    assert "dừng trước 6 từ cuối" in v["summary"], v["summary"]
-    assert not app.error_pattern_view(v["fixes"])["groups"]
-
-
-@case
-def session_report_and_html():
-    # D-43: báo cáo cuối gom các đoạn đã đọc (dừng sớm được), lưu HTML có nút nghe lại
-    def para(text, heard, step=0.4):
-        res = app.read_aloud_diff(text, heard, None)
-        res["words_t"] = [{"w": w, "s": i * step, "e": i * step + 0.3, "p": 0.9}
-                          for i, w in enumerate(heard.split())]
-        orig = [{"w": w, "s": i * 0.25, "e": i * 0.25 + 0.2, "p": 0.9}
-                for i, w in enumerate(text.split())]
-        return {"text": text, "res": res, "orig_words": orig}
-    d1 = dict(para("The molecules reach the nose and the brain loves it.",
-                   "the molecule reach the nose and the brain loves it"), idx=0)
-    d2 = dict(para("Odor receptors send molecules to the brain right now and here today.",
-                   "odor receptors send molecule to the brain"), idx=2)
-    d3 = dict(para("Bad audio.", "garbage words"), idx=3, gate="garbage")
-    rep = app.session_report({"title": "Smell <TED>", "url": "u", "n_paras": 6,
-                              "date": "24/10/2026"}, [d1, d2, d3])
-    assert rep["n_read"] == 3 and rep["n_scored"] == 2 and rep["n_paras"] == 6
-    assert rep["paras"][2]["state"] == "unsure"
-    assert rep["patterns"][0]["code"] == "final" and rep["patterns"][0]["n"] == 2, rep["patterns"]
-    assert rep["unread"] == 5 and rep["paras"][1]["unread"] == 5        # "right now and here today."
-    assert rep["focus"] and rep["focus"][0]["title"].startswith("Âm cuối")
-    assert rep["wpm_usr"] and rep["wpm_ref"] and rep["wpm_usr"] < rep["wpm_ref"]
-    assert any(w["word"] == "molecules" and w["n"] == 2 for w in rep["words"])
-    html = app.report_html(rep, {0: ("doan01.wav", "doan01_goc.wav")})
-    assert "<audio controls src='doan01.wav'>" in html and "doan01_goc.wav" in html
-    assert "Smell &lt;TED&gt;" in html and "<TED>" not in html           # thoát ký tự HTML
-    assert "3 điều nên tập trung" in html and "đã đọc 3/6 đoạn" in html
-
-
-@case
-def intonation_range_not_direction():
-    # D-44: so DẢI cao độ từng câu (bền), không kết luận lên/xuống cuối câu
-    import math
-    import prosody
-
-    def track(amp, t0=0.0, dur=4.0):
-        ts = [t0 + i * 0.01 for i in range(int(dur * 100))]
-        return {"t": ts, "st": [None if i % 9 == 0 else round(amp * math.sin(i / 30.0), 2)
-                                for i in range(len(ts))]}
-    flat, lively = track(2.5), track(7.0, t0=10.0)
-    s1 = prosody.segment_pitch(flat, 0.5, 3.5)
-    assert s1 and 3 < s1["range"] < 6 and len(s1["curve"]) == prosody.CURVE_POINTS
-    assert prosody.segment_pitch(flat, 0.5, 0.7) is None            # < 30 khung có giọng
-    sents = [{"usr": (0.5, 3.5), "ref": (10.5, 13.5), "cov_usr": 1.0},
-             {"usr": (0.2, 1.8), "ref": (10.2, 11.8), "cov_usr": 0.3}]   # câu chưa đọc tới
-    v = app.intonation_view(sents, flat, lively)
-    assert v["flat"] and v["range_usr"] < app.FLAT_RATIO * v["range_ref"], v
-    assert v["sentences"][1]["range_usr"] is None and v["sentences"][1]["range_ref"]
-    assert v["lines"] and "giọng bạn đều" in v["lines"][0]
-    assert not any("cuối câu" in ln and ("lên" in ln or "xuống" in ln) for ln in v["lines"][:1])
-    v2 = app.intonation_view(sents, track(7.0), lively)      # người học dao động như người nói
-    assert not v2["flat"] and len(v2["lines"]) == 1, v2
-
-
-@case
-def rhythm_function_words_not_stress():
-    # D-45: nhịp = từ chức năng dài so với người nói; không so từ được nhấn (R-16)
-    text = ("The cat sat on the mat and the dog ran to the park with a ball of string "
-            "for the kids in the yard.")
-    plain = text.lower().replace(".", "")
-    res = app.read_aloud_diff(text, plain, plain)
-    toks = res["target"].split()
-
-    def times(func_d, cont_d):
-        t, out = 0.0, []
-        for w in toks:
-            d = func_d if w in app.pron_en.FUNCTION_WORDS else cont_d * app.pron_en.syllables(w)
-            out.append({"w": w, "s": round(t, 3), "e": round(t + d, 3), "p": 0.9})
-            t += d + 0.03
-        return out
-    mine = app.token_spans(times(0.40, 0.26), res["target"])     # từ ngắn 400 ms
-    ref = app.token_spans(times(0.18, 0.25), res["target"])      # người nói 180 ms
-    smp = app.rhythm_samples(res, mine, ref)
-    v = app.rhythm_view(smp)
-    assert v["even"] and v["lines"] and "dài gấp" in v["lines"][0], v
-    assert v["ex"] and all(w in app.pron_en.FUNCTION_WORDS for w, *_ in v["ex"])
-    same = app.rhythm_view(app.rhythm_samples(res, ref, ref))
-    assert not same["even"] and len(same["lines"]) == 1
-    assert app.rhythm_view({"fu": [0.3], "fr": [0.2], "cu": [0.2], "cr": [0.2]})["lines"] == []
-    assert app.pron_en.syllables("olfactory") == 4 and app.pron_en.syllables("the") == 1
-
-
-@case
-def linking_points_teaching_only():
-    # D-46: chỉ chỉ ra chỗ nên nối + mốc để nghe; không chấm nối/ngắt (R-17)
-    lp = app.pron_en.link_points
-    w = "let's talk about how smell works, from big games we think of".split()
-    pairs = [w[i] + "‿" + w[i + 1] for i, _k in lp(w)]
-    assert "talk‿about" in pairs and "think‿of" in pairs, pairs
-    assert "works,‿from" not in pairs                     # không nối qua dấu phẩy
-    assert dict((w[i], k) for i, k in lp(w))["big"] == "cc"
-    text = "We talk about it every day."
-    res = app.read_aloud_diff(text, text.lower().rstrip("."), None)
-    sp = app.token_spans([{"w": x, "s": i * 0.3, "e": i * 0.3 + 0.25, "p": 0.9}
-                          for i, x in enumerate(res["target"].split())], res["target"])
-    v = app.linking_view(text, res, sp, sp)
-    assert [x["text"] for x in v["links"]] == ["“talk about”", "“about it”", "“it every”"], v
-    assert v["links"][0]["usr"] == (0.3, 0.85) and v["lines"]
-    assert not any("sai" in ln or "đúng" in ln for ln in v["lines"])   # không phán
-
-
-@case
-def report_charts_and_stress_hints():
-    # D-47: biểu đồ báo cáo (dữ liệu chung Tk + SVG) và gợi ý in đậm từ nên nhấn
-    rep = {"paras": [{"idx": 0, "state": "result", "correct": 49, "total": 62},
-                     {"idx": 1, "state": "unsure", "correct": 0, "total": 0}],
-           "wpm_usr": 112, "wpm_ref": 156, "range_usr": 5.3, "range_ref": 12.4,
-           "func_usr": 0.38, "func_ref": 0.2,
-           "patterns": [{"title": "Âm cuối & -s số nhiều", "n": 15},
-                        {"title": "N đọc thành L", "n": 2}]}
-    ch = app.report_charts(rep)
-    assert ch["paras"] == [("Đoạn 1", 79), ("Đoạn 2", None)]
-    assert [c["unit"] for c in ch["compare"]] == ["từ/phút", "bán cung", "ms"]
-    assert ch["compare"][2]["you"] == 380.0 and ch["patterns"][0] == ("Âm cuối & -s số nhiều", 15)
-    figs = app.report_svg(ch)
-    assert len(figs) == 3 and all(s.startswith("<svg") for _c, s in figs)
-    assert "<title>Đoạn 1: 79% từ đúng</title>" in figs[0][1]          # tooltip khi rê chuột
-    assert "class='ref'" in figs[1][1] and "Người nói" in figs[1][1]    # chú giải 2 chuỗi
-    sw = app.pron_en.stress_word
-    assert sw("talk") and sw("molecules,") and sw("can't") and sw("90")
-    assert not sw("the") and not sw("I'm") and not sw("gonna") and not sw("of")
-
-
-@case
 def learner_profiles_and_progress():
-    # D-48: hồ sơ người học cục bộ — chép lịch sử cũ lần đầu, tên hợp lệ, ghi buổi YouTube, xu hướng
+    # D-48: hồ sơ người học cục bộ — chép lịch sử cũ lần đầu, tên hợp lệ, đổi tên
     import json
     import os
     import tempfile
-    d = tempfile.mkdtemp(prefix="oriole_test_")
+    d = tempfile.mkdtemp(prefix="hoami_test_")
     try:
         legacy = os.path.join(d, "practice_history.json")
         path = os.path.join(d, "learners.json")
         with open(legacy, "w", encoding="utf-8") as f:
-            json.dump({"en_th": {"n": 3, "best": 75.0}}, f)
+            json.dump({"vi1": {"n": 3, "best": 75.0}}, f)
         st = app.learners_load(path, legacy)
         assert st["active"] == app.LEARNER_DEFAULT
-        assert st["learners"][app.LEARNER_DEFAULT]["lessons"]["en_th"]["n"] == 3
+        assert st["learners"][app.LEARNER_DEFAULT]["lessons"]["vi1"]["n"] == 3
         assert os.path.exists(legacy)                                   # file cũ để nguyên
         assert app.learner_name_error(st, "  ") and app.learner_name_error(st, "tôi")
         assert app.learner_name_error(st, "x" * 31) and not app.learner_name_error(st, "Lan")
@@ -400,24 +130,9 @@ def learner_profiles_and_progress():
         assert st["active"] == "Lan Anh" and st["learners"]["Lan Anh"]["yt"] == []
         app.learner_rename(st, "Lan Anh", "Lan")
         assert st["active"] == "Lan" and "Lan Anh" not in st["learners"]
-        rep = {"title": "T", "n_read": 2, "n_paras": 6, "correct": 60, "total": 100, "pct": 60,
-               "wpm_usr": 100, "wpm_ref": 150, "range_usr": 5, "range_ref": 12,
-               "func_usr": 0.4, "func_ref": 0.2, "patterns": [{"code": "final", "n": 8}],
-               "words": [{"word": "odor"}]}
-        app.learner_record_yt(st, app.yt_session_summary(rep, "v@1"))
-        rep2 = dict(rep, n_read=3, correct=70, pct=70)
-        app.learner_record_yt(st, app.yt_session_summary(rep2, "v@1"))     # cùng phiên → cập nhật
-        assert len(st["learners"]["Lan"]["yt"]) == 1 and st["learners"]["Lan"]["yt"][0]["pct"] == 70
-        later = dict(rep, correct=80, pct=80, wpm_usr=135, patterns=[{"code": "final", "n": 3}])
-        app.learner_record_yt(st, app.yt_session_summary(later, "v@2"))
         assert app.learners_save(st, path)
         st2 = app.learners_load(path, legacy)
-        assert st2["active"] == "Lan" and len(st2["learners"]["Lan"]["yt"]) == 2
-        pv = app.progress_view(st2["learners"]["Lan"]["yt"])
-        assert pv["n"] == 2 and [s[1] for s in pv["series"]] == [70, 80]
-        assert pv["patterns"][0][0] == "final" and pv["patterns"][0][2] > pv["patterns"][0][3]
-        assert pv["lines"] and "70% → gần nhất 80%" in pv["lines"][0]
-        assert app.progress_view([])["n"] == 0
+        assert st2["active"] == "Lan" and "Lan" in st2["learners"]
         with open(path, "w", encoding="utf-8") as f:
             f.write("{hỏng")
         assert app.learners_load(path, os.path.join(d, "khong_co.json"))["learners"]  # file hỏng
@@ -840,58 +555,6 @@ def auto_captions_rolling_overlap_removed():
 
 
 @case
-def ytread_subtitle_pick_and_session_cleanup():
-    import types
-    pick = app.pick_en_subtitle
-    info = {"language": "en", "subtitles": {"en-GB": [{}], "vi": [{}]},
-            "automatic_captions": {"en-orig": [{}], "en": [{}], "fr": [{}]}}
-    assert pick(info) == ("en-GB", "manual")
-    assert pick(info, "auto") == ("en", "auto")
-    assert pick({"language": "fr", "automatic_captions": {"en": [{}]}}) == (None, None)
-    # lỗi giữa chừng (ở đây: extract_info) → thư mục tạm của phiên bị xóa (I10)
-    made = []
-    real_mkdtemp = app.tempfile.mkdtemp
-
-    def mkdtemp(**kw):
-        made.append(real_mkdtemp(**kw))
-        return made[-1]
-
-    class FakeYDL:
-        def __init__(self, opts):
-            pass
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *a):
-            return False
-
-        def extract_info(self, url, download=False):
-            raise RuntimeError("offline")
-
-    old = sys.modules.get("yt_dlp"), app.tempfile.mkdtemp
-    sys.modules["yt_dlp"] = types.SimpleNamespace(YoutubeDL=FakeYDL)
-    app.tempfile.mkdtemp = mkdtemp
-    try:
-        app.ytread_prepare("u", "base")
-        raise AssertionError("phải ném lỗi")
-    except RuntimeError:
-        pass
-    finally:
-        app.tempfile.mkdtemp = old[1]
-        if old[0] is not None:
-            sys.modules["yt_dlp"] = old[0]
-        else:
-            sys.modules.pop("yt_dlp", None)
-    assert made and not app.os.path.exists(made[0]), made
-    s = app.YtReadSession(real_mkdtemp())
-    s.sub_kind = "whisper"
-    assert app.ytread_orig_hyp(s, 0, None) is None   # transcript tự sinh: không đo phụ đề sai
-    s.close()
-    assert s.work_dir is None
-
-
-@case
 def yt_subtitle_429_falls_back_not_fatal():
     # yt-dlp coi lỗi tải phụ đề là lỗi chết; YouTube hay trả 429 cho phụ đề dịch máy.
     # Lỗi phụ đề phải trả [] (→ Whisper), không được làm hỏng tải video (D-25).
@@ -1205,9 +868,8 @@ def history_keeps_tries_and_migrates():
 @case
 def weakest_sound_is_per_language():
     hist = {"vi2": {"ph": {"N": 10, "AA": 4, "nl": 2}},   # dữ liệu cũ lẫn âm vị Anh
-            "en_th": {"ph": {"TH": 5, "DH": 4}}}
+            "en_th": {"ph": {"TH": 5, "DH": 4}}}              # bài Anh cũ (từ Oriole) bị bỏ qua
     assert app.hist_weakest(hist, "vi") == ("N/L", 2)
-    assert app.hist_weakest(hist, "en") == ("/θ/", 5)
     assert app.hist_weakest({"vi1": {"ph": {"N": 10}}}, "vi") is None
 
 
@@ -1425,14 +1087,6 @@ def stress_picks_loud_high_word():
 def heard_words_map_to_target():
     m = app.map_to_target("Think about this thing.", ["Tink", "about", "um", "this", "thing."])
     assert m == [0, 1, None, 2, 3], m
-    # mốc từ của 14 câu mẫu (build_lessons.py --word-times) phủ đủ mọi từ của câu
-    times = app.load_sample_word_times()
-    assert len(times) == 14, len(times)
-    for lid, words in times.items():
-        target = app.PRACTICE_SETS[lid]["target"]
-        idx = app.map_to_target(target, [w["w"] for w in words])
-        assert sorted(i for i in idx if i is not None) == list(
-            range(len(app.norm_words(target)))), (lid, idx)
 
 
 @case

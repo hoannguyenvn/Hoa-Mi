@@ -12,7 +12,6 @@ MAU = os.path.join(BASE, "mau")
 os.makedirs(MAU, exist_ok=True)
 
 VI = "vi-VN-HoaiMyNeural"
-EN = "en-US-AriaNeural"
 
 # rate 0% = giọng tự nhiên nhất; -10% cũ làm méo, rè, giống robot.
 # Thêm dấu chấm để TTS ngắt nhịp tự nhiên, sau đó cắt im lặng thừa.
@@ -24,11 +23,6 @@ CLIPS = [
     ("nên.", VI, "vi_nen.wav"),
     ("lên.", VI, "vi_len.wav"),
     ("Lan năm nay lên lớp.", VI, "vi_cau.wav"),
-    ("think.", EN, "en_think.wav"),
-    ("this.", EN, "en_this.wav"),
-    ("she.", EN, "en_she.wav"),
-    ("sea.", EN, "en_sea.wav"),
-    ("She sells seashells.", EN, "en_cau.wav"),
 ]
 
 

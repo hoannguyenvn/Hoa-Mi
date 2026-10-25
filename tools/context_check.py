@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Kiểm tra "context drift" của dự án Oriole.
+"""Kiểm tra "context drift" của dự án Hoa Mi.
 
 Vì sao có file này: người dùng chuyển giữa nhiều AI model. Context phải nằm trong
 repo và phải tự phát hiện khi tài liệu/skill nói về symbol/file không còn tồn tại.
