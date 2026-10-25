@@ -31,8 +31,8 @@ Roadmap chỉ nói thứ tự, phạm vi, tiêu chí xong.
 
 ## P1 — Lưới an toàn
 
-- [ ] CI GitHub Action (Ubuntu + Xvfb + `python3-tk`): `py_compile`, `smoke_test`, `ui_check`,
-      `context_check`.
+- [x] CI GitHub Action (Ubuntu + Xvfb + `python3-tk`): `py_compile`, `smoke_test`, `ui_check`,
+      `context_check` (HM-02).
 - [ ] Thêm case `score_pronunciation` tiếng Việt: n/l hai chiều, thanh, vần, giọng Bắc, thiếu/thừa từ.
 
 **Xong khi:** mỗi push đều chạy 4 kiểm tra, < 2 phút.
@@ -61,8 +61,8 @@ Roadmap chỉ nói thứ tự, phạm vi, tiêu chí xong.
 
 Làm ở Oriole trước rồi cherry-pick, hoặc ngược lại — ghi `docs/UPSTREAM.md`.
 
-- [ ] A3 cảnh báo mic bluetooth (HFP) · A4 cắt im lặng không nuốt âm cuối (-t, -c, -p quan trọng
-      với tiếng Việt) · A5 "▶ Bạn đọc" phát bản thu gốc · A6 kiểm tra mic 5 giây.
+- [x] A3 cảnh báo mic bluetooth (HFP) · A4 cắt im lặng không nuốt âm cuối (HM-02).
+- [ ] A5 "▶ Bạn đọc" phát bản thu gốc · A6 kiểm tra mic 5 giây.
 - [ ] A10 lưu bản thu tự nguyện để hiệu chuẩn (nguồn dữ liệu cho T1/P4).
 - [ ] Đo model tiếng Việt tốt hơn `small` (vd bản Whisper tinh chỉnh tiếng Việt chuyển sang
       CTranslate2) bằng `asr_bench --dir` trên bản ghi thật.

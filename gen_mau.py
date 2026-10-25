@@ -1,4 +1,6 @@
 # Tạo thư viện âm mẫu giọng bản ngữ trong thư mục mau/ (chạy 1 lần).
+# Mỗi clip có 2 bản: mau/<x>.wav 16 kHz (app chấm, mốc từ) và mau/hq/<x>.wav 24 kHz (chỉ để nghe, A1).
+# File đã có bản 16 kHz mà thiếu bản hq: chạy lại không --force sẽ chỉ sinh bản hq.
 # Cần mạng + edge-tts (chỉ dùng lúc TẠO, app chạy offline hoàn toàn):
 #   C:\Users\ADMIN\miniforge3\python.exe -m pip install edge-tts
 #   C:\Users\ADMIN\miniforge3\python.exe gen_mau.py [--force]
@@ -41,14 +43,40 @@ async def gen_one(text, voice, mp3, tries=4):
     raise last
 
 
+HQ_RATE = 24000   # bản để NGHE (A1): giữ dải 8–12 kHz của s/sh/th mà bản 16 kHz cắt mất
+
+
+def hq_path(wav):
+    """mau/<x>.wav → mau/hq/<x>.wav (cùng tên, bản 24 kHz chỉ để phát)."""
+    rel = os.path.relpath(wav, MAU)
+    return os.path.join(MAU, "hq", rel)
+
+
+def hf_share(wav, cut=8000.0):
+    """Tỉ lệ năng lượng trên `cut` Hz của file WAV — kiểm bản hq có thật sự giữ dải cao
+    không (nếu ~0 % thì mp3 nguồn đã cắt sẵn, bản hq không lợi gì hơn bản 16 kHz)."""
+    import numpy as np
+    with wave.open(wav, "rb") as w:
+        y = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16).astype(np.float64)
+        rate = w.getframerate()
+    p = np.abs(np.fft.rfft(y)) ** 2
+    f = np.fft.rfftfreq(len(y), 1.0 / rate)
+    return float(p[f > cut].sum() / max(p.sum(), 1e-12))
+
+
 def mp3_to_wav16k(mp3, wav):
-    """mp3 -> wav 16k mono + làm sạch: bỏ DC, cắt im lặng, chuẩn hóa -3dB, fade."""
+    """mp3 -> wav 16k mono (bản app dùng để chấm/căn mốc từ)."""
+    return mp3_to_wav(mp3, wav, 16000)
+
+
+def mp3_to_wav(mp3, wav, rate=16000):
+    """mp3 -> wav mono `rate` Hz + làm sạch: bỏ DC, cắt im lặng, chuẩn hóa -3dB, fade."""
     import av
     import numpy as np
     from av.audio.resampler import AudioResampler
     src = av.open(mp3)
     astream = next(s for s in src.streams if s.type == "audio")
-    res = AudioResampler(format="s16", layout="mono", rate=16000)
+    res = AudioResampler(format="s16", layout="mono", rate=rate)
     chunks = []
     for frame in src.decode(astream):
         for f in res.resample(frame):
@@ -77,26 +105,30 @@ def mp3_to_wav16k(mp3, wav):
     thr = max(0.008, peak * 0.03)
     idx = np.where(mag > thr)[0]
     if len(idx):
-        pad = int(16000 * 0.12)  # giữ 120ms
+        pad = int(rate * 0.12)  # giữ 120ms
         s = max(0, int(idx[0]) - pad)
         e = min(len(x), int(idx[-1]) + pad)
         x = x[s:e]
     peak = float(np.max(np.abs(x))) if len(x) else 0.0
     if peak > 1e-6:
         x = x * (0.70 / peak)  # chuẩn hóa -3dB: to, đều, không vỡ
-    x = np.tanh(x)  # soft-clip chống rè đỉnh
-    f = int(16000 * 0.008)
+    # chỉ nén phần vượt 0,9 (tanh cũ méo cả đỉnh 0,7 → 0,6; A4)
+    a = np.abs(x)
+    over = a > 0.9
+    x[over] = np.sign(x[over]) * (0.9 + 0.1 * np.tanh((a[over] - 0.9) / 0.1))
+    f = int(rate * 0.008)
     if len(x) > 2 * f:
         ramp = np.linspace(0.0, 1.0, f, dtype=np.float32)
         x[:f] *= ramp
         x[-f:] *= ramp[::-1]
     out = (np.clip(x, -1.0, 1.0) * 32767).astype(np.int16)
+    os.makedirs(os.path.dirname(wav) or ".", exist_ok=True)
     with wave.open(wav, "wb") as w:
         w.setnchannels(1)
         w.setsampwidth(2)
-        w.setframerate(16000)
+        w.setframerate(rate)
         w.writeframes(out.tobytes())
-    return len(out) / 16000
+    return len(out) / rate
 
 
 def main():
@@ -104,12 +136,17 @@ def main():
     for text, voice, name in CLIPS:
         mp3 = os.path.join(MAU, name + ".mp3")
         wav = os.path.join(MAU, name)
-        if os.path.exists(wav) and not force:
+        hq = hq_path(wav)
+        need16, needhq = force or not os.path.exists(wav), force or not os.path.exists(hq)
+        if not (need16 or needhq):
             print("skip:", name)
             continue
         print("gen:", name)
         asyncio.run(gen_one(text, voice, mp3))
-        secs = mp3_to_wav16k(mp3, wav)
+        if needhq:
+            mp3_to_wav(mp3, hq, HQ_RATE)
+            print(f"  hq: năng lượng > 8 kHz = {hf_share(hq) * 100:.2f} %")
+        secs = mp3_to_wav16k(mp3, wav) if need16 else 0.0
         try:
             os.remove(mp3)
         except OSError:

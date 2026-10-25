@@ -489,6 +489,74 @@ def headset_without_mic_is_detected():
 
 
 @case
+def enhance_keeps_weak_final_consonant():
+    # A4: nguyên âm to rồi /s/ cuối nhỏ (~-30 dB so với nguyên âm) dài 180 ms — kiểu "cats".
+    # Ngưỡng cắt 4 % đỉnh + đệm 80 ms cũ chỉ giữ ~85 ms ma sát; phải còn ≥ 150 ms.
+    rate = 16000
+    t = np.arange(int(0.4 * rate)) / rate
+    vowel = 0.5 * np.sin(2 * math.pi * 180 * t) + 0.15 * np.sin(2 * math.pi * 360 * t)
+    rng = np.random.default_rng(3)
+    fric = 0.004 * rng.standard_normal(int(0.18 * rate))
+    sil = np.zeros(int(0.5 * rate))
+    x = np.concatenate([sil, vowel, fric, sil])
+    out, info = app.enhance_audio((x * 32767).astype(np.int16), rate)
+    kept = len(out) / rate
+    # 0,08 đầu + 0,4 nguyên âm + ≥ 0,15 ma sát
+    assert kept >= 0.08 + 0.4 + 0.15, (kept, info)
+    assert kept < 0.4 + 0.18 + 0.5, "vẫn phải cắt bớt im lặng cuối"
+
+
+
+@case
+def soft_clip_only_above_knee():
+    # A4: dưới 0,9 giữ nguyên (tanh cũ nén cả đỉnh 0,7 → 0,6, méo mọi bản thu)
+    x = np.array([0.0, 0.3, -0.7, 0.9, 0.95, -1.5, 3.0], dtype=np.float32)
+    y = app.soft_clip(x)
+    assert np.allclose(y[:4], x[:4]), y
+    assert 0.9 < y[4] < 0.95 and -1.0 <= y[5] < -0.9 and 0.9 < y[6] <= 1.0, y
+    assert np.all(np.diff(app.soft_clip(np.linspace(-3, 3, 601))) >= 0), "phải đơn điệu"
+
+
+
+@case
+def listen_path_prefers_hq_copy():
+    # A1: nút ▶ phát bản 24 kHz trong mau/hq/ nếu có; thiếu thì vẫn phát bản 16 kHz
+    import os
+    p = os.path.join(app.MAU_DIR, "vi_na.wav")
+    hq = os.path.join(app.MAU_HQ_DIR, "vi_na.wav")
+    assert app.listen_path(p, exists=lambda x: x == hq) == hq
+    assert app.listen_path(p, exists=lambda x: False) == p
+    outside = os.path.join(app.BASE_DIR, "downloads", "x.wav")
+    assert app.listen_path(outside, exists=lambda x: True) == outside   # không phải âm mẫu
+
+
+
+@case
+def bluetooth_mic_is_recognised():
+    # A3: mic Hands-Free của tai nghe bluetooth làm đục cả tiếng mẫu → phải nhận ra để nhắc
+    assert app.mic_is_bluetooth("Headset (AirPods Pro Hands-Free AG Audio) [Windows WASAPI]")
+    assert app.mic_is_bluetooth("Headset Microphone (Galaxy Buds2) [MME]")
+    assert not app.mic_is_bluetooth("Microphone Array (Intel® Smart Sound) [Windows DirectSound]")
+    assert not app.mic_is_bluetooth("Microphone (USB Audio Device) [MME]")
+    assert not app.mic_is_bluetooth("") and not app.mic_is_bluetooth(None)
+
+
+
+@case
+def preload_only_models_on_disk():
+    # A7: nạp sẵn model đã có trên máy; không bao giờ tải từ mạng (I9)
+    loaded = []
+    assert app.preload_model("base", on_disk=lambda m: False, load=loaded.append) is None
+    assert app.preload_model("bogus", on_disk=lambda m: True, load=loaded.append) is None
+    assert app.preload_model("small", on_disk=lambda m: True, load=loaded.append) >= 0
+    assert loaded == ["small"], loaded
+    line = app.prac_timing_line("base", 0.0, 0.5, 2.0, 2.25)
+    assert line.startswith("Chấm xong 2.2 s") or line.startswith("Chấm xong 2.3 s"), line
+    assert "nạp 0.5 s" in line and "nghe 1.5 s" in line, line
+
+
+
+@case
 def recorder_uses_callback_not_blocking_read():
     # DirectSound trên máy này trả 100 % số 0 với InputStream.read (D-23) — phải giữ
     # callback + queue; quay lại blocking read là lỗi "mic im lặng" tái phát.

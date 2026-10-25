@@ -28,6 +28,7 @@ import app  # noqa: E402
 # ---- an toàn: không đụng file của người dùng ----
 app.save_config = lambda cfg: None
 app.learners_save = lambda *a, **k: True
+app.preload_model = lambda *a, **k: None     # không nạp model Whisper khi thử UI
 app.App._save_hist = lambda self: None
 app.App._record_hist = lambda self, *a, **k: None
 
@@ -101,6 +102,7 @@ def main() -> int:
     for i, gid in enumerate(app.GUIDE_IDS):
         step("21_guide_" + gid, lambda i=i: (a.cb_prac.current(i), a._refresh_practice()))
     step("30_set", lambda: a._set_prac_mode("set"))
+    step("30b_bt_mic", lambda: a.mic_var.set("Headset (AirPods Pro Hands-Free AG Audio) [MME]"))
     step("31_dark", a._toggle_theme)
     step("32_narrow", lambda: a.geometry("1000x760+0+0"))
     step("33_light", a._toggle_theme)

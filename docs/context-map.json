@@ -190,7 +190,12 @@
       "App._set_group",
       "App._set_row",
       "App._autosave",
-      "App._fill_info"
+      "App._fill_info",
+      "listen_path",
+      "mic_is_bluetooth",
+      "preload_model",
+      "soft_clip",
+      "prac_timing_line"
     ],
     "prosody.py": [
       "read_wav",

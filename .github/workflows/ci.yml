@@ -1,0 +1,38 @@
+# Kiểm tra mỗi lần push / PR (ROADMAP P1): cú pháp, context drift, test khói, UI thật (Xvfb).
+# Không cần mic, model Whisper hay mạng ngoài pip/apt.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cài tkinter, Xvfb
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-tk python3-venv xvfb
+
+      - name: Cài gói Python (không có model)
+        run: |
+          python3 -m venv --system-site-packages .venv
+          .venv/bin/pip install --quiet numpy sounddevice imageio-ffmpeg
+
+      - name: py_compile
+        run: .venv/bin/python -m py_compile app.py prosody.py gen_mau.py tools/*.py
+
+      - name: context_check
+        run: .venv/bin/python tools/context_check.py
+
+      - name: smoke_test
+        run: .venv/bin/python tools/smoke_test.py
+
+      - name: ui_check (App thật trên Xvfb)
+        run: xvfb-run -a -s "-screen 0 1400x900x24" .venv/bin/python tools/ui_check.py

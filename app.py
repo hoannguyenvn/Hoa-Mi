@@ -30,6 +30,7 @@ VERSION = "1.0"
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MAU_DIR = os.path.join(BASE_DIR, "mau")  # thư viện âm mẫu giọng bản ngữ (offline)
+MAU_HQ_DIR = os.path.join(MAU_DIR, "hq")  # bản 24 kHz cùng tên, chỉ để NGHE
 HISTORY_PATH = os.path.join(BASE_DIR, "practice_history.json")
 
 SUPPORTED = [
@@ -76,6 +77,11 @@ REC_RATE = 16000          # đích sau khi resample (Whisper cần 16k mono)
 REC_MAX_SEC = 180
 REC_TARGET_PEAK = 0.70  # -3dB: đủ to mà không rè/vỡ khi phát lại
 REC_FADE_MS = 8         # fade đầu/cuối chống "tách" khi cắt im lặng
+REC_TRIM_HEAD_SEC = 0.08  # giữ trước tiếng đầu tiên khi cắt im lặng
+# Giữ sau tiếng cuối: âm cuối nhỏ (-t, -c, -p tắc không bật hơi; -s) dài 100–200 ms; 80 ms cũ có thể
+# nuốt mất (Oriole D-50).
+REC_TRIM_TAIL_SEC = 0.25
+REC_SOFTCLIP_KNEE = 0.9   # chỉ nén mẫu vượt mức này; dưới đó giữ nguyên (tanh cũ méo mọi đỉnh)
 REC_GAIN_MAX = 16.0     # +24dB: đủ kéo micro array yếu lên mức Whisper nghe được
 MIC_MIN_PEAK = 0.008    # -42dB: sàn "có tín hiệu"; nền nhiễu mic thường < 0,1%
 MIC_GOOD_PEAK = 0.03    # dưới mức này: cảnh báo "đầu vào hơi nhỏ"
@@ -574,6 +580,24 @@ def load_model(model_size):
 
 
 PRAC_VI_MODEL = "small"   # base nghe sai cả câu mẫu sạch tiếng Việt; small đúng (D-37)
+
+
+def preload_model(model_size, on_disk=None, load=None):
+    """Nạp sẵn model Whisper đã có trên máy để lần chấm đầu không phải chờ nạp.
+    Không tải từ mạng (I9). -> số giây đã nạp, hoặc None nếu không nạp."""
+    on_disk = on_disk or whisper_model_on_disk
+    load = load or load_model
+    if model_size not in MODELS or not on_disk(model_size):
+        return None
+    t0 = time.time()
+    load(model_size)
+    return time.time() - t0
+
+
+def prac_timing_line(model_size, t0, t_load, t_asr, t_end):
+    """Dòng Nhật ký thời gian chấm: tổng · nạp model · nghe · phần còn lại. Hàm thuần."""
+    return "Chấm xong %.1f s (model %s: nạp %.1f s · nghe %.1f s · phân tích %.1f s)" % (
+        t_end - t0, model_size, t_load - t0, t_asr - t_load, t_end - t_asr)
 
 
 def whisper_model_on_disk(model_size):
@@ -1097,9 +1121,23 @@ def estimate_snr_db(x, rate):
     return round(min(SNR_MAX_DB, 20.0 * math.log10(speech / max(noise, 1e-7))), 1)
 
 
+def soft_clip(x, knee=REC_SOFTCLIP_KNEE):
+    """Nén mềm phần vượt `knee` về dưới 1,0; mẫu |x| <= knee giữ nguyên (không méo). Hàm thuần."""
+    import numpy as np
+    x = np.asarray(x, dtype=np.float32)
+    a = np.abs(x)
+    over = a > knee
+    if not np.any(over):
+        return x
+    room = 1.0 - knee
+    y = x.copy()
+    y[over] = np.sign(x[over]) * (knee + room * np.tanh((a[over] - knee) / room))
+    return y
+
+
 def enhance_audio(samples, rate=16000):
-    """Lọc DC + high-pass mềm (~75Hz) + giới hạn mềm + chuẩn hóa về -3dB
-    + fade + cắt im lặng đầu/cuối. Trả về (int16, info). Hàm thuần, dễ test."""
+    """Lọc DC + high-pass mềm (~75Hz) + chuẩn hóa về -3dB + giới hạn mềm trên 0,9
+    + cắt im lặng đầu/cuối (giữ 250 ms đuôi cho âm cuối) + fade. Trả về (int16, info)."""
     import numpy as np
     x = np.asarray(samples).flatten().astype(np.float32) / 32768.0
     if len(x) == 0:
@@ -1127,9 +1165,7 @@ def enhance_audio(samples, rate=16000):
             # bản thu. Giới hạn +24dB (REC_GAIN_MAX) cho micro array laptop đỉnh 1–3%.
             gain = min(REC_GAIN_MAX, target / max(speech_peak(x, rate), 1e-4))
         x = x * gain
-    # Soft-clip nhẹ chống vỡ đầu ra
-    x = np.tanh(x * 1.0)
-    x = np.clip(x, -1.0, 1.0)
+    x = soft_clip(x)
     peak1 = float(np.max(np.abs(x))) if len(x) else 0.0
     # Cắt im lặng đầu/cuối có hysteresis + fade chống "tách"
     trimmed = 0.0
@@ -1137,9 +1173,8 @@ def enhance_audio(samples, rate=16000):
     thr = max(0.015, peak1 * 0.04)
     idx = np.where(mag > thr)[0]
     if len(idx):
-        pad = max(1, int(rate * 0.08))  # giữ 80ms ngữ cảnh
-        s = max(0, int(idx[0]) - pad)
-        e = min(len(x), int(idx[-1]) + pad)
+        s = max(0, int(idx[0]) - max(1, int(rate * REC_TRIM_HEAD_SEC)))
+        e = min(len(x), int(idx[-1]) + max(1, int(rate * REC_TRIM_TAIL_SEC)))
         trimmed = ((int(idx[0]) - s) + (e - int(idx[-1]))) / rate
         x = x[s:e]
     f = max(1, int(rate * REC_FADE_MS / 1000.0))
@@ -1528,6 +1563,16 @@ SIDE_FRAC, SIDE_MIN, SIDE_MAX = 0.48, 340, 640   # panel kết quả ≈ nửa v
 def side_width(content_w, scale, frac=SIDE_FRAC):
     """Bề rộng panel kết quả: rộng ra theo cửa sổ để cả kết quả nằm trong một trang."""
     return int(max(SIDE_MIN * scale, min(SIDE_MAX * scale, frac * content_w)))
+
+
+_BT_MIC_HINTS = ("hands-free", "handsfree", "airpods", "bluetooth", "buds", "freebuds")
+
+
+def mic_is_bluetooth(name):
+    """Micro thu qua tai nghe bluetooth (profile Hands-Free)? Khi micro này mở, Windows hạ CẢ
+    tiếng phát xuống chất lượng điện thoại (8–16 kHz) — âm mẫu nghe đục (Oriole D-50)."""
+    low = (name or "").lower()
+    return any(h in low for h in _BT_MIC_HINTS)
 
 
 def short_mic_name(name, limit=28):
@@ -2214,6 +2259,18 @@ def play_wav_segment(path, start, end):
     sd.wait()
 
 
+def listen_path(path, exists=os.path.exists):
+    """Âm mẫu để PHÁT: bản 24 kHz trong mau/hq/ nếu có, không thì chính file 16 kHz."""
+    try:
+        rel = os.path.relpath(path, MAU_DIR)
+    except ValueError:                 # ổ đĩa khác (Windows)
+        return path
+    if rel.startswith(".."):
+        return path
+    hq = os.path.join(MAU_HQ_DIR, rel)
+    return hq if exists(hq) else path
+
+
 def play_wav_file(path):
     """Phát file wav (chuẩn hóa -3dB cho đều tai). Ném lỗi nếu không phát được."""
     import numpy as np
@@ -2503,6 +2560,22 @@ class App(tk.Tk):
         self.bind("<Control-Return>", lambda e: self._primary())
         self.bind("<Escape>", lambda e: self._cancel())
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+        self.after(1500, self._preload_model)
+
+    def _preload_model(self):
+        """Nạp model đang chọn ở nền (bài Việt dùng small nếu có — D-37; worker chỉ báo qua queue, I1)."""
+        size = practice_model(self.model_name.get(), "vi")[0]
+
+        def job():
+            try:
+                dt = preload_model(size)
+            except Exception as e:
+                self._queue.put(("log", ("Chưa nạp sẵn được model %s: %s" % (size, e), "warn")))
+                return
+            if dt is not None:
+                self._queue.put(("log", ("Đã nạp sẵn model %s (%.1f s)." % (size, dt), "info")))
+
+        threading.Thread(target=job, daemon=True).start()
 
     # ================= giao diện chung =================
     def px(self, v):
@@ -4739,7 +4812,11 @@ class App(tk.Tk):
         if not name or name.startswith("("):
             self.p_mic_lbl.configure(text="Chưa có micro —")
         else:
-            self.p_mic_lbl.configure(text="Micro: %s  ·" % short_mic_name(name))
+            self.p_mic_lbl.configure(text="Micro: %s%s  ·" % (
+                short_mic_name(name),
+                " (bluetooth: tiếng đục)" if mic_is_bluetooth(name) else ""))
+        if getattr(self, "_mic_hints", None):
+            self._update_mic_hint()
 
     # ----- thanh công cụ: chế độ, bài trước/sau -----
     def _set_prac_mode(self, code):
@@ -5098,7 +5175,7 @@ class App(tk.Tk):
 
         def job():
             try:
-                play_wav_file(path)
+                play_wav_file(listen_path(path))     # bản 24 kHz nếu có
             except Exception as e:
                 self._queue.put(("prac_status", f"Không phát được âm mẫu: {e}"))
             finally:
@@ -5482,6 +5559,7 @@ class App(tk.Tk):
                          daemon=True).start()
 
     def _w_prac(self, wav_path, model_size, lang, target, ref_wav=None, ref_words=None):
+        t0 = time.time()
         try:
             pk = wav_peak(wav_path)
             if pk < MIC_MIN_PEAK:
@@ -5497,7 +5575,9 @@ class App(tk.Tk):
                              "nghe tiếng Việt rõ hơn)…" if upgraded
                              else "Đang nghe lại bài đọc của bạn…"))
             model = load_model(model_size)
+            t_load = time.time()
             asr = transcribe_practice(model, wav_path, asr_lang)
+            t_asr = time.time()
             _info, probs, words_t = asr["info"], asr["probs"], asr["words_t"]
             hyp = asr["hyp"]
             if not hyp:
@@ -5534,6 +5614,8 @@ class App(tk.Tk):
                 except Exception:
                     res["stress"] = None
             res["gop"] = None
+            self._queue.put(("log", (prac_timing_line(model_size, t0, t_load, t_asr, time.time()),
+                                     "info")))
             self._queue.put(("prac_done", res))
         except Exception as e:
             self._queue.put(("prac_error", str(e)))
@@ -5861,8 +5943,13 @@ class App(tk.Tk):
             self._refresh_mics(rescan=True)
 
     def _mic_hint_text(self):
-        """Gợi ý dưới ô Micro: thiết bị bị ẩn và tai nghe bluetooth thiếu micro."""
+        """Gợi ý dưới ô Micro: mic bluetooth, thiết bị bị ẩn, tai nghe bluetooth thiếu micro."""
         parts = []
+        if mic_is_bluetooth(self.mic_var.get()):
+            parts.append(
+                "Micro đang chọn là tai nghe bluetooth: khi thu, Windows chuyển cả tiếng nghe "
+                "sang chất lượng điện thoại — âm mẫu nghe đục, bản thu mất dải cao. "
+                "Khi luyện phát âm nên dùng micro có dây hoặc micro của laptop.")
         missing = headset_mic_missing()
         if missing:
             parts.append(

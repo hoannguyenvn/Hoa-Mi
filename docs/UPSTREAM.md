@@ -33,3 +33,4 @@ Ghi vào bảng dưới mỗi lần chuyển (cả hai chiều).
 | Ngày | Chiều | Commit | Nội dung |
 |---|---|---|---|
 | 2026-10-25 | Hoa Mi → Oriole | (Hoa Mi `f31de82`) | `headset_mic_missing` không import sounddevice khi đã truyền danh sách thiết bị |
+| 2026-10-25 | Oriole → Hoa Mi | Oriole `f889739` (chép tay — commit Oriole gồm cả phần chỉ tiếng Anh) | cắt đuôi 250 ms + `soft_clip`, `mic_is_bluetooth`, `preload_model`, `prac_timing_line`, bản nghe 24 kHz (`listen_path`, `gen_mau.py`), CI GitHub Actions |

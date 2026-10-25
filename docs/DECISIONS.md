@@ -9,6 +9,14 @@ Quy tắc:
 
 ## 0. Hoa Mi — quyết định riêng (mới nhất ở trên)
 
+### HM-02 — Nhận bản sửa âm thanh dùng chung từ Oriole (D-50) (2026-10-25)
+**Quyết định:** chép từ Oriole: cắt im lặng giữ 250 ms đuôi + `soft_clip` (chỉ nén > 0,9), cảnh báo
+mic bluetooth, nạp sẵn model (bài Việt: `small` nếu có), dòng Nhật ký thời gian chấm, bản nghe 24 kHz
+`mau/hq/` (`listen_path`, `gen_mau.py`), CI GitHub Actions.
+**Vì sao:** âm cuối tiếng Việt (-t, -c, -p tắc, không bật hơi) rất nhỏ và ngắn — càng dễ bị cắt;
+phần còn lại giống Oriole. **Hệ quả:** chưa đo `asr_bench` trên giọng thật; bản hq chưa sinh (chạy
+`gen_mau.py` trên máy có mạng — cũng sinh luôn `vi_nen.wav`, `vi_len.wav` còn thiếu). Test: 5 case mới.
+
 ### HM-01 — Hoa Mi tách từ Oriole: chỉ luyện phát âm tiếng Việt (2026-10-25)
 **Quyết định:** người dùng chốt (D-49 của Oriole): Oriole giữ cho người học tiếng Anh; phần
 luyện tiếng Việt (bài N/L `vi1–vi3`, Học âm N/L, luật thanh/vần, giọng Bắc D-38, `small` cho bài

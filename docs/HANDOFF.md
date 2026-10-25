@@ -106,3 +106,14 @@ chuyển sang repo mới `hoannguyenvn/Hoa-Mi`.
 **Cảnh báo cho model sau:**
 - Không thêm lại phần tiếng Anh. Sửa phần dùng chung → ghi `docs/UPSTREAM.md`, cherry-pick sang Oriole.
 - `GUIDES` trỏ `vi_nen.wav`/`vi_len.wav` chưa có file (nút ▶ xám) — có từ trước khi tách.
+
+## 2026-10-25 (tiếp) — Claude Code — HM-02: nhận bản sửa âm thanh từ Oriole + CI
+
+**Đã làm:** `soft_clip`, `REC_TRIM_TAIL_SEC` 0,25 s, `mic_is_bluetooth`, `preload_model` (+ `_preload_model`
+dùng `practice_model(..., "vi")`), `prac_timing_line`, `listen_path` + `MAU_HQ_DIR`, `gen_mau.py` sinh thêm
+bản 24 kHz; `ui_check` chặn preload + bước mic bluetooth; `.github/workflows/ci.yml`; context-map, UPSTREAM.
+**Quyết định mới:** HM-02.
+**Đã kiểm chứng (Linux + Xvfb):** smoke 77/77, `ui_check` 0 lỗi, `context_check` 0 FAIL.
+**Chưa kiểm chứng:** `asr_bench`, thu âm thật, `gen_mau.py` (máy chủ TTS bị chặn ở container), CI chạy lần đầu.
+**Việc tiếp theo:** như PROJECT-STATE mục 1; chạy `gen_mau.py` để có `vi_nen.wav`, `vi_len.wav` + bản hq.
+
