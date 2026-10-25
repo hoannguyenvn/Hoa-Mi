@@ -3,3 +3,4 @@
 *.wav binary
 *.ttf binary
 *.png binary
+tools/fixtures/* -text

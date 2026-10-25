@@ -102,7 +102,7 @@ hiện gợi ý ngay dưới ô Micro nếu thấy tai nghe mà chưa thấy mic
 
 **Thay đổi được lưu ngay** (không còn nút "Lưu cài đặt"); `Khôi phục mặc định` ở góc trên.
 
-- **Micro**: chọn thiết bị thu âm, `Thử 2 giây` (kết quả hiện ngay dưới dòng "Kiểm tra
+- **Micro**: chọn thiết bị thu âm, `Thử 5 giây` (kết quả hiện ngay dưới dòng "Kiểm tra
   micro"), `Quét lại`, `Âm thanh Windows`.
 - **Giao diện và lưu file**: Sáng / Tối, thư mục lưu video và phụ đề.
 - **Phụ đề YouTube mặc định**: kèm phụ đề, ngôn ngữ phụ đề, nhúng vào video.

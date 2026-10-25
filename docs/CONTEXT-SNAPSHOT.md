@@ -1,7 +1,7 @@
 # CONTEXT SNAPSHOT (sinh tự động)
 
 > File này do `tools/context_check.py --snapshot` sinh ra. **Không sửa tay.**
-> Thời điểm: 2026-10-25 07:30:44
+> Thời điểm: 2026-10-25 08:01:15
 > Phiên bản: 1.0
 > Kết quả: 0 FAIL · 0 WARN
 
@@ -10,14 +10,14 @@
 | File | Dòng | Byte | SHA256 (12) |
 |---|---:|---:|---|
 | `AGENTS.md` | 157 | 9770 | `8c78901ec84e` |
-| `README.md` | 172 | 11427 | `67e6791a0e7b` |
-| `app.py` | 6321 | 295655 | `013f181088ea` |
+| `README.md` | 172 | 11427 | `6d5c752164df` |
+| `app.py` | 6433 | 301927 | `2ece28ef7d9f` |
 | `prosody.py` | 351 | 13423 | `9d41e12183e6` |
 | `requirements.txt` | 10 | 267 | `0fe800b21e03` |
-| `docs/context-map.json` | 311 | 6936 | `a008da1b64e5` |
+| `docs/context-map.json` | 318 | 7105 | `942402b1b2a4` |
 | `docs/PROJECT-STATE.md` | 86 | 7540 | `783a597e80ba` |
-| `docs/HANDOFF.md` | 119 | 5807 | `b1650a44d0dc` |
-| `docs/DECISIONS.md` | 603 | 53613 | `24415e598c6d` |
+| `docs/HANDOFF.md` | 127 | 6375 | `14f04a8b9d7a` |
+| `docs/DECISIONS.md` | 610 | 54259 | `9dd58629f8eb` |
 
 ## Dữ liệu
 

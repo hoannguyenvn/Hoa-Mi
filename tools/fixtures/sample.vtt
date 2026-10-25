@@ -1,0 +1,14 @@
+WEBVTT
+Kind: captions
+Language: en
+
+NOTE this is a comment
+
+00:00:00.500 --> 00:00:02.000 align:start position:0%
+think<00:00:01.000><c> about</c>
+
+00:00:02.000 --> 00:00:04.250
+this thing
+
+1:02:03.000 --> 1:02:05.000
+long video hour mark

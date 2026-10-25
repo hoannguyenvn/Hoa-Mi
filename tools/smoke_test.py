@@ -556,6 +556,110 @@ def preload_only_models_on_disk():
 
 
 
+FIXTURES = ROOT / "tools" / "fixtures"
+
+
+@case
+def subtitle_fixtures_parse():
+    # P1: file phụ đề thật kiểu YouTube/ngoài — BOM, CRLF, thẻ HTML/ASS, cue rỗng, WEBVTT có
+    # NOTE + cài đặt cue + mốc từng từ, giờ > 1 tiếng, json3 có sự kiện chỉ xuống dòng.
+    srt = app.read_subtitle_file(str(FIXTURES / "sample.srt"))
+    assert srt == [(1.0, 3.5, "Hello & welcome to the show."), (3.5, 5.0, "Second line")], srt
+    vtt = app.read_subtitle_file(str(FIXTURES / "sample.vtt"))
+    assert [c[2] for c in vtt] == ["think about", "this thing", "long video hour mark"], vtt
+    assert vtt[0][:2] == (0.5, 2.0) and vtt[2][:2] == (3723.0, 3725.0), vtt
+    js = app.read_subtitle_file(str(FIXTURES / "sample.json3"))
+    assert js == [(0.0, 1.5, "Three thousand"), (2.0, 4.0, "thanks.")], js
+    # SRT ghi ra rồi đọc lại phải y như cũ
+    import os
+    import tempfile
+    fd, tmp = tempfile.mkstemp(suffix=".srt")
+    os.close(fd)
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(app.cues_to_srt(vtt))
+        assert app.read_subtitle_file(tmp) == vtt
+    finally:
+        os.remove(tmp)
+
+
+
+@case
+def listen_copy_matches_and_is_cleaned():
+    # A5: bản thu để nghe ở tần số gốc (48 kHz) cắt CÙNG khoảng với bản 16 kHz (mốc từ dùng
+    # chung), giữ dải 10 kHz mà bản 16 kHz mất; xóa bản ghi thì xóa cả bản nghe (I10).
+    import os
+    import wave
+    sr = 48000
+    t = np.arange(int(1.0 * sr)) / sr
+    x = np.concatenate([np.zeros(sr // 2), 0.3 * np.sin(2 * math.pi * 200 * t)
+                        + 0.05 * np.sin(2 * math.pi * 10000 * t), np.zeros(sr // 2)])
+    frames = [(x * 32767).astype(np.int16).reshape(-1, 1)]
+    path, secs, info = app.save_frames_wav(frames, "luyen_test_", sr, listen=True)
+    lc = app.listen_copy_path(path)
+    try:
+        assert os.path.exists(lc) and app.listen_recording(path) == lc
+        with wave.open(lc, "rb") as w:
+            assert w.getframerate() == sr
+            n_hi = w.getnframes() / sr
+            y = np.frombuffer(w.readframes(w.getnframes()), np.int16).astype(np.float64)
+        assert abs(n_hi - secs) < 0.005, (n_hi, secs)
+        spec = np.abs(np.fft.rfft(y))
+        f = np.fft.rfftfreq(len(y), 1.0 / sr)
+        assert spec[(f > 9900) & (f < 10100)].max() > 0.05 * spec.max(), "mất dải 10 kHz"
+    finally:
+        assert app.remove_recording(path)
+    assert not os.path.exists(path) and not os.path.exists(lc)
+    # mic 16 kHz: không có bản nghe riêng, phát chính bản 16 kHz
+    p16, _s, _i = app.save_frames_wav([(x[::3] * 32767).astype(np.int16).reshape(-1, 1)],
+                                      "luyen_test_", 16000, listen=True)
+    try:
+        assert app.listen_recording(p16) == p16 and not os.path.exists(app.listen_copy_path(p16))
+    finally:
+        app.remove_recording(p16)
+
+
+
+@case
+def mic_check_verdicts():
+    # A6: 5 giây (1 giây im + giọng) → đúng một mức + một lời khuyên
+    sr = 16000
+    rng = np.random.default_rng(7)
+
+    def take(amp, noise, hf=True, clip=False):
+        t = np.arange(int(3 * sr)) / sr
+        v = np.sin(2 * math.pi * 180 * t) + 0.5 * np.sin(2 * math.pi * 900 * t)
+        if hf:
+            v = v + 0.4 * rng.standard_normal(len(t))      # ma sát s/sh/th: năng lượng > 4 kHz
+        v = amp * v / np.max(np.abs(v))
+        x = np.concatenate([np.zeros(sr), v, np.zeros(sr)]) + noise * rng.standard_normal(5 * sr)
+        return np.clip(x * (3 if clip else 1), -1, 1)
+    assert app.mic_check_verdict(np.zeros(5 * sr), sr)["level"] == "silent"
+    assert app.mic_check_verdict(take(0.02, 0.0005), sr)["level"] == "quiet"
+    assert app.mic_check_verdict(take(0.5, 0.0005, clip=True), sr)["level"] == "clip"
+    assert app.mic_check_verdict(take(0.3, 0.03), sr)["level"] == "noisy"
+    assert app.mic_check_verdict(take(0.3, 0.0005, hf=False), sr)["level"] == "narrow"
+    good = app.mic_check_verdict(take(0.3, 0.0005), sr, "Microphone Array [DirectSound]")
+    assert good["level"] == "good" and good["snr_db"] > 30, good
+    bt = app.mic_check_verdict(take(0.3, 0.0005), sr, "Headset (AirPods Pro Hands-Free AG Audio)")
+    assert bt["level"] == "narrow" and "bluetooth" in bt["msg"], bt
+
+
+
+@case
+def calibration_info_is_complete():
+    # A10: bản thu tự nguyện phải kèm đủ cách app đã chấm, kể cả lần "máy chưa nghe rõ"
+    v = _view_of("Lan năm nay lên lớp", "nan năm nay nên lớp", "vi")
+    info = app.calib_info({"low_conf": False, "conf": 0.8, "det_lang": "vi"}, v, "set", "vi1",
+                          "Mic A")
+    assert info["state"] == "result" and info["correct"] == 3 and info["total"] == 5, info
+    assert info["gop"] == [] and info["mic"] == "Mic A"
+    u = _view_of("Lan năm nay lên lớp", "cảm ơn các bạn đã theo dõi", "vi")
+    assert app.calib_info({}, u, "set", "vi1", "")["gate"] == "hallucination"
+    assert app.DEFAULT_CFG["calib_save"] is False          # mặc định TẮT (tự nguyện)
+
+
+
 @case
 def recorder_uses_callback_not_blocking_read():
     # DirectSound trên máy này trả 100 % số 0 với InputStream.read (D-23) — phải giữ

@@ -195,7 +195,14 @@
       "mic_is_bluetooth",
       "preload_model",
       "soft_clip",
-      "prac_timing_line"
+      "prac_timing_line",
+      "listen_copy_path",
+      "listen_recording",
+      "remove_recording",
+      "mic_check_verdict",
+      "calib_dir",
+      "calib_info",
+      "App._calib_save"
     ],
     "prosody.py": [
       "read_wav",

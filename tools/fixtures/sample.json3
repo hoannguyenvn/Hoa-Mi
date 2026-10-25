@@ -1,0 +1,5 @@
+{"events": [
+ {"tStartMs": 0, "dDurationMs": 1500, "segs": [{"utf8": "Three "}, {"utf8": "thousand"}]},
+ {"tStartMs": 1500, "dDurationMs": 500, "segs": [{"utf8": "\n"}]},
+ {"tStartMs": 2000, "dDurationMs": 2000, "segs": [{"utf8": "thanks."}]}
+]}

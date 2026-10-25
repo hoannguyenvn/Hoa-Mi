@@ -34,3 +34,4 @@ Ghi vào bảng dưới mỗi lần chuyển (cả hai chiều).
 |---|---|---|---|
 | 2026-10-25 | Hoa Mi → Oriole | (Hoa Mi `f31de82`) | `headset_mic_missing` không import sounddevice khi đã truyền danh sách thiết bị |
 | 2026-10-25 | Oriole → Hoa Mi | Oriole `f889739` (chép tay — commit Oriole gồm cả phần chỉ tiếng Anh) | cắt đuôi 250 ms + `soft_clip`, `mic_is_bluetooth`, `preload_model`, `prac_timing_line`, bản nghe 24 kHz (`listen_path`, `gen_mau.py`), CI GitHub Actions |
+| 2026-10-25 | Oriole → Hoa Mi | Oriole D-53 (`035b9a0`, `30f40b2`, `3c00178`) + fixtures `9bfd49f` (chép tay) | bản thu nghe tần số gốc (`_nghe.wav`), kiểm tra mic 5 giây (`mic_check_verdict`), góp dữ liệu hiệu chuẩn (`calib_save`), fixture phụ đề |

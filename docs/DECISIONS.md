@@ -9,6 +9,13 @@ Quy tắc:
 
 ## 0. Hoa Mi — quyết định riêng (mới nhất ở trên)
 
+### HM-03 — Nhận A5, A6, A10 từ Oriole (D-53) (2026-10-25)
+**Quyết định:** chép: bản thu để nghe ở tần số gốc (`_nghe.wav`, cắt cùng khoảng với bản 16 kHz),
+kiểm tra mic 5 giây có kết luận + lời khuyên (câu đọc: "Lan năm nay lên lớp."), Cài đặt › Góp dữ liệu
+hiệu chuẩn (`calib_save`, mặc định tắt, `Documents\Hoa Mi\hieu-chuan\<ngày>`), fixture phụ đề.
+**Vì sao:** cùng lý do D-53; với tiếng Việt, dữ liệu hiệu chuẩn thật là điều kiện để làm T1 (thanh điệu).
+**Hệ quả:** ngưỡng mic chưa hiệu chuẩn. Test: 4 case mới.
+
 ### HM-02 — Nhận bản sửa âm thanh dùng chung từ Oriole (D-50) (2026-10-25)
 **Quyết định:** chép từ Oriole: cắt im lặng giữ 250 ms đuôi + `soft_clip` (chỉ nén > 0,9), cảnh báo
 mic bluetooth, nạp sẵn model (bài Việt: `small` nếu có), dòng Nhật ký thời gian chấm, bản nghe 24 kHz

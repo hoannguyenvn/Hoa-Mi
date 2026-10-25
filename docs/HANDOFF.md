@@ -117,3 +117,11 @@ bản 24 kHz; `ui_check` chặn preload + bước mic bluetooth; `.github/workfl
 **Chưa kiểm chứng:** `asr_bench`, thu âm thật, `gen_mau.py` (máy chủ TTS bị chặn ở container), CI chạy lần đầu.
 **Việc tiếp theo:** như PROJECT-STATE mục 1; chạy `gen_mau.py` để có `vi_nen.wav`, `vi_len.wav` + bản hq.
 
+## 2026-10-25 (tiếp 2) — Claude Code — HM-03: A5, A6, A10 từ Oriole
+
+**Đã làm:** `_write_wav16`, `listen_copy_path`, `listen_recording`, `remove_recording`, `save_frames_wav(listen=)`,
+`enhance_audio(trim_at=)`; `mic_check_verdict` + `_test_mic` 5 s + link "Kiểm tra"; `calib_save` (config, Cài
+đặt, `calib_dir`, `calib_info`, `_calib_save`); `tools/fixtures/` + 4 test.
+**Đã kiểm chứng (Linux + Xvfb):** smoke 81/81, `ui_check` 0 lỗi (xem ảnh Cài đặt), `context_check` 0 FAIL.
+**Chưa kiểm chứng:** mic/loa thật, Whisper thật.
+

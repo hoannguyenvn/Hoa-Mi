@@ -756,6 +756,24 @@ def documents_dir():
     return os.path.join(os.path.expanduser("~"), "Documents")
 
 
+def calib_dir(day=None):
+    """A10: Documents\\Hoa Mi\\hieu-chuan\\<YYYY-MM-DD> (tạo nếu chưa có)."""
+    d = os.path.join(recordings_dir(), "hieu-chuan", day or time.strftime("%Y-%m-%d"))
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def calib_info(res, view, mode, sid, mic):
+    """Thông tin kèm bản thu hiệu chuẩn: app chấm thế nào (để so với giáo viên — P4). Hàm thuần."""
+    return {"calib": 1, "mode": mode, "lesson": sid, "mic": mic,
+            "state": view.get("state"), "gate": view.get("gate"),
+            "correct": view.get("correct"), "total": view.get("total"),
+            "low_conf": bool(res.get("low_conf")), "conf": res.get("conf"),
+            "det_lang": res.get("det_lang"),
+            "gop": [{"ph": it.get("ph"), "word": it.get("word"), "score": it.get("score")}
+                    for it in ((res.get("gop") or {}).get("issues") or [])]}
+
+
 def recordings_dir():
     """Nơi "Lưu bản thu" ghi file: Documents\\Hoa Mi (tạo nếu chưa có)."""
     d = os.path.join(documents_dir(), "Hoa Mi")
@@ -1102,6 +1120,48 @@ SNR_LOW_DB = 15.0     # giọng hơn nền < 15 dB → ghi chú "phòng hơi ồ
 SNR_MAX_DB = 60.0
 
 
+MIC_CHECK_SEC = 5.0
+MIC_CHECK_LINE = "Lan năm nay lên lớp."
+NARROW_HF_SHARE = 0.002    # < 0,2 % năng lượng trên 4 kHz khi có giọng → mic băng hẹp (HFP)
+
+
+def mic_check_verdict(x, rate, mic_name=""):
+    """A6: 5 giây (im 1 giây rồi đọc một câu) → {level, msg, meas, snr_db}. Hàm thuần.
+    level: silent | quiet | clip | noisy | narrow | good — mỗi mức kèm MỘT lời khuyên cụ thể."""
+    import numpy as np
+    x = np.asarray(x, dtype=np.float32).flatten()
+    peak = float(np.max(np.abs(x))) if len(x) else 0.0
+    rms = float(np.sqrt(np.mean(x * x))) if len(x) else 0.0
+    snr = estimate_snr_db(x, rate) if peak >= MIC_MIN_PEAK else None
+    meas = "đỉnh %.2f%% (%.0f dB), RMS %.2f%%%s" % (
+        peak * 100, 20 * math.log10(peak + 1e-9), rms * 100,
+        (", giọng/nền %.0f dB" % snr) if snr is not None else "")
+    hf = None
+    if peak >= MIC_MIN_PEAK and rate > 9000 and len(x) > 1024:
+        spec = np.abs(np.fft.rfft(x)) ** 2
+        f = np.fft.rfftfreq(len(x), 1.0 / rate)
+        hf = float(spec[f > 4000].sum() / max(spec.sum(), 1e-12))
+    bt = mic_is_bluetooth(mic_name)
+    if peak < MIC_MIN_PEAK:
+        level, msg = "silent", ("Mic gần như IM LẶNG. Bật micro trong Windows (Privacy → "
+                                "Microphone), bỏ Mute, tăng Microphone Level lên 100%.")
+    elif peak >= 0.95:
+        level, msg = "clip", "Mic quá TO/VỠ. Để mic xa hơn hoặc giảm Microphone Level."
+    elif peak < MIC_GOOD_PEAK:
+        level, msg = "quiet", ("Mic hơi NHỎ. App vẫn khuếch đại được, nhưng nên tăng Microphone "
+                               "Level lên 100% và để mic cách miệng 10–20 cm.")
+    elif snr is not None and snr < SNR_LOW_DB:
+        level, msg = "noisy", ("Phòng hơi ỒN so với giọng (giọng chỉ to hơn nền %.0f dB). Tắt "
+                               "quạt/điều hòa gần mic, đóng cửa, hoặc dùng mic gần miệng hơn." % snr)
+    elif (hf is not None and hf < NARROW_HF_SHARE) or bt:
+        level, msg = "narrow", ("Mic thu dải hẹp (kiểu điện thoại)%s — mất âm s, x, ch. Khi luyện "
+                                "phát âm nên dùng mic có dây hoặc mic laptop." %
+                                (" vì là tai nghe bluetooth" if bt else ""))
+    else:
+        level, msg = "good", "Mic tốt — sẵn sàng luyện."
+    return {"level": level, "msg": msg, "meas": meas, "snr_db": snr, "hf_share": hf}
+
+
 def estimate_snr_db(x, rate):
     """Ước lượng giọng/nền (dB): RMS khung 20 ms ở phân vị 90 so với phân vị 10.
 
@@ -1135,15 +1195,17 @@ def soft_clip(x, knee=REC_SOFTCLIP_KNEE):
     return y
 
 
-def enhance_audio(samples, rate=16000):
+def enhance_audio(samples, rate=16000, trim_at=None):
     """Lọc DC + high-pass mềm (~75Hz) + chuẩn hóa về -3dB + giới hạn mềm trên 0,9
-    + cắt im lặng đầu/cuối (giữ 250 ms đuôi cho âm cuối) + fade. Trả về (int16, info)."""
+    + cắt im lặng đầu/cuối (giữ 250 ms đuôi cho âm cuối) + fade. Trả về (int16, info).
+    trim_at=(giây đầu, giây cuối): cắt đúng khoảng đó thay vì tự dò — để bản nghe ở tần số gốc
+    khớp mốc từ của bản 16 kHz. info["span"] = khoảng đã giữ (giây, theo bản gốc)."""
     import numpy as np
     x = np.asarray(samples).flatten().astype(np.float32) / 32768.0
     if len(x) == 0:
         return np.asarray(samples).flatten().astype(np.int16), {
             "peak0": 0.0, "peak1": 0.0, "quiet": True,
-            "clipped": False, "trimmed": 0.0, "snr_db": None}
+            "clipped": False, "trimmed": 0.0, "snr_db": None, "span": None}
     peak_raw = float(np.max(np.abs(x))) if len(x) else 0.0
     clipped = peak_raw >= 0.99
     x = x - float(np.mean(x))  # bỏ DC (ù, lệch mic)
@@ -1172,10 +1234,18 @@ def enhance_audio(samples, rate=16000):
     mag = np.abs(x)
     thr = max(0.015, peak1 * 0.04)
     idx = np.where(mag > thr)[0]
-    if len(idx):
+    span = None
+    if trim_at is not None:
+        s = max(0, min(len(x), int(round(trim_at[0] * rate))))
+        e = max(s, min(len(x), int(round(trim_at[1] * rate))))
+        trimmed = (len(x) - (e - s)) / rate
+        span = (s / rate, e / rate)
+        x = x[s:e]
+    elif len(idx):
         s = max(0, int(idx[0]) - max(1, int(rate * REC_TRIM_HEAD_SEC)))
         e = min(len(x), int(idx[-1]) + max(1, int(rate * REC_TRIM_TAIL_SEC)))
         trimmed = ((int(idx[0]) - s) + (e - int(idx[-1]))) / rate
+        span = (s / rate, e / rate)
         x = x[s:e]
     f = max(1, int(rate * REC_FADE_MS / 1000.0))
     if len(x) > 2 * f:
@@ -1184,7 +1254,7 @@ def enhance_audio(samples, rate=16000):
         x[-f:] = x[-f:] * ramp[::-1]
     out = (x * 32767).astype(np.int16)
     return out, {"peak0": peak_raw, "peak1": peak1, "quiet": peak_raw < 0.05,
-                 "clipped": clipped, "trimmed": trimmed, "snr_db": snr_db}
+                 "clipped": clipped, "trimmed": trimmed, "snr_db": snr_db, "span": span}
 
 
 def flag_pair(t, h, lang):
@@ -1934,6 +2004,7 @@ DEFAULT_CFG = {
     "sub_lang": "auto",
     "mic": "",
     "geometry": "1200x830",
+    "calib_save": False,     # tự lưu mỗi lần luyện để hiệu chuẩn (tự nguyện, chỉ trên máy)
 }
 
 THEMES = {
@@ -2208,8 +2279,35 @@ def remove_temp(path):
     return True
 
 
-def save_frames_wav(frames, prefix, src_rate):
-    """Ghép frame int16 -> lọc ù/chuẩn hóa/cắt im lặng -> file wav 16k mono."""
+def _write_wav16(path, audio, rate):
+    with wave.open(path, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(audio.tobytes())
+
+
+def listen_copy_path(path):
+    """Bản thu để NGHE ở tần số gốc của mic (A5): <tên>_nghe.wav cạnh bản 16 kHz."""
+    return path[:-4] + "_nghe.wav" if path and path.lower().endswith(".wav") else None
+
+
+def listen_recording(path, exists=os.path.exists):
+    """Phát bản thu: bản _nghe (tần số gốc, đủ dải s/sh/th) nếu có, không thì bản 16 kHz."""
+    lc = listen_copy_path(path)
+    return lc if lc and exists(lc) else path
+
+
+def remove_recording(path):
+    """Xóa bản thu tạm + bản _nghe đi kèm (I10). True nếu bản chính không còn."""
+    remove_temp(listen_copy_path(path))
+    return remove_temp(path)
+
+
+def save_frames_wav(frames, prefix, src_rate, listen=False):
+    """Ghép frame int16 -> lọc ù/chuẩn hóa/cắt im lặng -> file wav 16k mono (để nhận dạng).
+    listen=True và mic > 16 kHz: thêm <tên>_nghe.wav ở tần số gốc, cắt ĐÚNG cùng khoảng
+    (mốc từ của Whisper dùng chung) — nút "Bản thu của bạn"/"▶ Bạn đọc" phát bản này (A5)."""
     import numpy as np
     raw = np.concatenate(frames, axis=0).flatten().astype(np.float32) / 32768.0
     y16 = resample_to_16k(raw, src_rate, REC_RATE)
@@ -2217,11 +2315,14 @@ def save_frames_wav(frames, prefix, src_rate):
     audio, info = enhance_audio(audio_i16, REC_RATE)
     fd, path = tempfile.mkstemp(prefix=prefix, suffix=".wav")
     os.close(fd)
-    with wave.open(path, "wb") as w:
-        w.setnchannels(1)
-        w.setsampwidth(2)
-        w.setframerate(REC_RATE)
-        w.writeframes(audio.tobytes())
+    _write_wav16(path, audio, REC_RATE)
+    if listen and src_rate > REC_RATE and info.get("span"):
+        try:
+            raw_i16 = (np.clip(raw, -1.0, 1.0) * 32767).astype(np.int16)
+            hi, _ = enhance_audio(raw_i16, int(src_rate), trim_at=info["span"])
+            _write_wav16(listen_copy_path(path), hi, int(src_rate))
+        except Exception:
+            remove_temp(listen_copy_path(path))     # không có bản nghe thì phát bản 16 kHz
     return path, len(audio) / REC_RATE, info
 
 
@@ -2245,6 +2346,7 @@ def play_wav_segment(path, start, end):
     """Phát một đoạn của file wav (vd một từ trong bản thu — nút "▶ Bạn đọc")."""
     import numpy as np
     import sounddevice as sd
+    path = listen_recording(path)          # bản thu: bản tần số gốc nếu có
     with wave.open(path, "rb") as w:
         n, fr, ch = w.getnframes(), w.getframerate(), w.getnchannels()
         a, b = wav_segment_bounds(n, fr, start, end)
@@ -2275,6 +2377,7 @@ def play_wav_file(path):
     """Phát file wav (chuẩn hóa -3dB cho đều tai). Ném lỗi nếu không phát được."""
     import numpy as np
     import sounddevice as sd
+    path = listen_recording(path)          # bản thu: bản tần số gốc nếu có
     with wave.open(path, "rb") as w:
         n, fr, ch = w.getnframes(), w.getframerate(), w.getnchannels()
         data = np.frombuffer(w.readframes(n), dtype=np.int16).astype(np.float32) / 32768.0
@@ -2481,7 +2584,7 @@ class App(tk.Tk):
         self.out_dir = tk.StringVar(value=self.cfg.get("out_dir") or YT_DIR_DEFAULT)
         self.theme_name = tk.StringVar(value=self.cfg.get("theme", "light"))
         self.status = tk.StringVar(value="Sẵn sàng — chọn nguồn rồi bấm Bắt đầu.")
-        self.mic_test_msg = tk.StringVar(value="Nói “a…” trong 2 giây để đo mức tín hiệu.")
+        self.mic_test_msg = tk.StringVar(value="Im 1 giây rồi đọc to một câu.")
 
         # ----- nguồn -----
         self.src = tk.StringVar(value="file")
@@ -2494,6 +2597,7 @@ class App(tk.Tk):
                                                       YT_QUALITIES[0][1]))
         self.y_subs = tk.BooleanVar(value=bool(self.cfg.get("subs", True)))
         self.y_embed = tk.BooleanVar(value=bool(self.cfg.get("embed", True)))
+        self.calib_save = tk.BooleanVar(value=bool(self.cfg.get("calib_save", False)))
         self.yt_sub_lang = tk.StringVar(
             value={c: n for c, n in YT_SUB_LANGS}.get(self.cfg.get("sub_lang"),
                                                        YT_SUB_LANG_NAMES[0]))
@@ -2550,7 +2654,7 @@ class App(tk.Tk):
         self.update_idletasks()
         self._stt_view()
         # Cài đặt lưu ngay khi đổi (B5) — bật sau khi dựng xong để không ghi lúc khởi động
-        for v in (self.out_dir, self.y_subs, self.y_embed, self.yt_sub_lang, self.yt_kind,
+        for v in (self.out_dir, self.y_subs, self.y_embed, self.calib_save, self.yt_sub_lang, self.yt_kind,
                   self.yt_quality, self.mic_var, self.model_name, self.lang):
             v.trace_add("write", self._autosave)
         self._autosave_on = True
@@ -4564,6 +4668,8 @@ class App(tk.Tk):
         self.p_mic_lbl.pack(side="left")
         self._link_lbl(self.p_micline, "Đổi", lambda: self._show_screen("set"), size=9).pack(
             side="left", padx=(self.px(6), 0))
+        self._lbl(self.p_micline, " · ", fg="muted", size=9).pack(side="left")
+        self._link_lbl(self.p_micline, "Kiểm tra", self._test_mic, size=9).pack(side="left")
         self.p_status_lbl = tk.Label(rb, textvariable=self.p_status, font=(self.F, 9), bd=0,
                                      justify="center")
         self._tw(self.p_status_lbl, bg="card", fg="muted")
@@ -5433,7 +5539,7 @@ class App(tk.Tk):
         """Đổi bản ghi để Nghe lại; xóa bản cũ (file tạm luyen_*) để không rò rỉ (I10)."""
         old = self.last_wav
         if old and old != path:
-            remove_temp(old)
+            remove_recording(old)
         self.last_wav = path
 
     def _prac_stop_and_score(self, reason=None):
@@ -5448,7 +5554,7 @@ class App(tk.Tk):
         if not frames:
             self.p_status.set("Chưa thu được gì — thử lại.")
             return
-        path, secs, info = save_frames_wav(frames, "luyen_", rate)
+        path, secs, info = save_frames_wav(frames, "luyen_", rate, listen=True)
         self._set_last_wav(path)
         self._sync_rec_pills()
         peak0 = float(info.get("peak0", 0.0) or 0.0)
@@ -5634,6 +5740,7 @@ class App(tk.Tk):
 
         self._record_hist(sid, res, v)
         self._update_prog(sid)
+        self._calib_save(res, v, sid)
 
     # ---------- kết quả luyện (S-2, B3/B4a): chỉ VẼ view của build_result_view ----------
     def _render_result(self, v):
@@ -5848,7 +5955,7 @@ class App(tk.Tk):
                           else "Lỗi — xem chi tiết trong hộp thoại.")
         messagebox.showerror("Lỗi", msg)
 
-    def _save_bundle(self, stem, wav, target, res):
+    def _save_bundle(self, stem, wav, target, res, extra=None, mark=True):
         """Ghi một bộ bản thu: stem.wav + stem.txt (dòng 1 = câu mẫu, định dạng
         `asr_bench --dir`) + stem.json (lời máy nghe, mốc từ).
         Trả danh sách tên file đã ghi."""
@@ -5860,11 +5967,29 @@ class App(tk.Tk):
                 "target": target, "hyp": (res or {}).get("hyp"),
                 "items": (res or {}).get("items"), "words_t": (res or {}).get("words_t"),
                 "model": (res or {}).get("model")}
+        info.update(extra or {})
         with open(stem + ".json", "w", encoding="utf-8") as f:
             json.dump(info, f, ensure_ascii=False, indent=1, default=str)
         files.append(stem + ".json")
-        self._saved[wav] = stem
+        if mark:
+            self._saved[wav] = stem
         return [os.path.basename(x) for x in files]
+
+    def _calib_save(self, res, v, sid):
+        """A10: người học bật "Lưu mỗi lần luyện câu" → lưu bộ bản thu vào hieu-chuan/<ngày>/
+        (định dạng `asr_bench --dir`). Lỗi ghi file chỉ vào Nhật ký, không chặn luyện."""
+        if not self.calib_save.get() or not self.last_wav or not os.path.exists(self.last_wav):
+            return
+        try:
+            folder = calib_dir()
+            stem = os.path.join(folder, "hoami_%s_%s" % (
+                sid or self.prac_mode.get(), time.strftime("%H%M%S")))
+            self._save_bundle(stem, self.last_wav, res.get("target", ""), res, mark=False,
+                              extra=calib_info(res, v, self.prac_mode.get(), sid,
+                                               self.mic_var.get()))
+            self._log("Đã lưu bản thu hiệu chuẩn: %s" % stem)
+        except Exception as e:
+            self._log("Không lưu được bản thu hiệu chuẩn: %s" % e, "warn")
 
     def _open_folder_of(self, stem):
         folder = os.path.dirname(stem)
@@ -6016,51 +6141,31 @@ class App(tk.Tk):
         dev, mic, sr = self._resolve_mic()
         if dev is None:
             return
-        self.status.set(f"Đang kiểm tra mic ({mic}) — nói “a…” to trong 2 giây…")
-        self.mic_test_msg.set("Đang nghe… nói “a…” to trong 2 giây.")
+        prompt = "im 1 giây rồi đọc to: “%s”" % MIC_CHECK_LINE
+        self.status.set(f"Đang kiểm tra mic ({mic}) — {prompt}")
+        self.mic_test_msg.set("Đang nghe 5 giây… " + prompt)
+        self.p_status.set("Kiểm tra mic 5 giây: " + prompt)
 
         def job():
             try:
-                import math
-                import numpy as np
                 import sounddevice as sd
-                data = sd.rec(int(sr * 2.0), samplerate=sr, channels=1,
+                data = sd.rec(int(sr * MIC_CHECK_SEC), samplerate=sr, channels=1,
                               dtype="int16", device=dev)
                 sd.wait()
-                x = data.astype(np.float32).flatten() / 32768.0
-                peak = float(np.max(np.abs(x))) if len(x) else 0.0
-                rms = float(np.sqrt(np.mean(x * x))) if len(x) else 0.0
-                db = 20 * math.log10(peak + 1e-9)
-                meas = (f"đỉnh {peak*100:.2f}% ({db:.0f} dB), "
-                        f"RMS {rms*100:.2f}%")
-                if peak < MIC_MIN_PEAK:
-                    msg = (f"Mic gần như IM LẶNG ({meas}). "
-                           "Bật micro trong Windows (Privacy → Microphone), bỏ Mute, "
-                           "tăng Microphone Level lên 100%.")
+                x = data.astype("float32").flatten() / 32768.0
+                v = mic_check_verdict(x, sr, mic)
+                msg = "%s (%s)" % (v["msg"], v["meas"])
+                peak = float(abs(x).max()) if len(x) else 0.0
+                if v["level"] in ("silent", "quiet"):
+                    need = MIC_MIN_PEAK if v["level"] == "silent" else MIC_GOOD_PEAK
                     best = best_input_mic()
-                    if best and best[3] >= max(MIC_MIN_PEAK, peak * 3):
-                        self._queue.put(("mic_found", best))
-                        msg += (f" Đã tìm thấy '{best[1]}' [{best[2]}] có tín hiệu "
-                                f"(đỉnh {best[3]*100:.0f}%) — đã chọn giúp bạn. "
-                                f"Bấm Thu âm & chấm để đọc lại.")
-                    else:
-                        msg += (" Không thấy micro nào khác có tín hiệu — kiểm tra "
-                                "âm lượng micro trong Windows (Settings → System → "
-                                "Sound → Input).")
-                elif peak < MIC_GOOD_PEAK:
-                    msg = (f"Mic hơi NHỎ ({meas}). App vẫn thu và khuếch đại được, "
-                           "nhưng nên tăng Microphone Level lên 100% và để mic "
-                           "gần hơn (10–20cm) để nhận dạng chính xác hơn.")
-                    best = best_input_mic()
-                    if best and best[3] >= max(MIC_GOOD_PEAK, peak * 3):
+                    if best and best[3] >= max(need, peak * 3):
                         self._queue.put(("mic_found", best))
                         msg += (f" Có micro khác khá hơn: '{best[1]}' [{best[2]}] "
                                 f"(đỉnh {best[3]*100:.0f}%) — đã chọn giúp bạn.")
-                elif peak >= 0.95:
-                    msg = (f"Mic quá TO/VỠ ({meas}). "
-                           "Để mic xa hơn hoặc giảm Microphone Level.")
-                else:
-                    msg = f"Mic tốt ({meas})."
+                    elif v["level"] == "silent":
+                        msg += (" Không thấy micro nào khác có tín hiệu — kiểm tra âm lượng "
+                                "micro trong Windows (Settings → System → Sound → Input).")
                 self._queue.put(("status", "Kiểm tra mic: " + msg))
                 self._queue.put(("mic_test", msg))
                 self._queue.put(("prac_status", "Kiểm tra mic: " + msg))
@@ -6102,7 +6207,7 @@ class App(tk.Tk):
         self._mic_combos.append(cb)
         self._tooltip(cb, self.mic_var.get)   # tên mic dài bị cắt trong ô (V-15)
         row, r = self._set_row(g, "Kiểm tra micro", sub_var=self.mic_test_msg)
-        ttk.Button(r, text="Thử 2 giây", style="Accent.TButton",
+        ttk.Button(r, text="Thử 5 giây", style="Accent.TButton",
                    command=self._test_mic).pack(side="right")
         # hai nút xếp DƯỚI chữ: cột hẹp (cửa sổ tối thiểu) không cắt mất nhãn
         row = self._set_row(g, "Không thấy micro mới cắm?", vertical=True, last=True)
@@ -6132,6 +6237,12 @@ class App(tk.Tk):
         ttk.Entry(d, textvariable=self.out_dir).pack(side="left", fill="x", expand=True)
         ttk.Button(d, text="Đổi…", style="Ghost.TButton",
                    command=self._pick_out_dir).pack(side="left", padx=(self.px(8), 0))
+
+        # --- Dữ liệu hiệu chuẩn: tự nguyện, chỉ trên máy ---
+        g = self._set_group(left, "Góp dữ liệu hiệu chuẩn")
+        row, r = self._set_row(g, "Lưu mỗi lần luyện câu",
+                               "Chỉ trên máy · Documents\\Hoa Mi\\hieu-chuan", last=True)
+        self._mk_switch(r, self.calib_save).pack(side="right")
 
         # --- Phụ đề YouTube mặc định ---
         g = self._set_group(right, "Phụ đề YouTube mặc định")
@@ -6267,6 +6378,7 @@ class App(tk.Tk):
             "sub_lang": YT_SUB_LANG_BY_NAME.get(self.yt_sub_lang.get(), "auto"),
             "mic": self.mic_var.get(),
             "geometry": self.cfg.get("geometry") or "1200x830",
+            "calib_save": bool(self.calib_save.get()),
         }
 
     def _save_cfg(self):
